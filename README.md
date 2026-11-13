@@ -1,5 +1,7 @@
 # Pip
 
+[![Check](https://github.com/braydenscuffham2-coder/pip-ai/actions/workflows/check.yml/badge.svg)](https://github.com/braydenscuffham2-coder/pip-ai/actions/workflows/check.yml)
+
 **An AI analyst for local businesses.** Give Pip a website. It reads the site, finds the AI tools the business already runs, pulls in its Google reviews and nearby competitors, and ranks the AI upgrades that would help most, each with the evidence behind it.
 
 **[Try it live →](https://pip-ai-drab.vercel.app)**&nbsp;&nbsp;·&nbsp;&nbsp;Click "See an example first" for a walkthrough that runs without a scan.
