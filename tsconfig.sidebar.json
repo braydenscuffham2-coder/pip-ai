@@ -1,0 +1,1 @@
+{ "extends": "./tsconfig.json", "include": ["sidebar/**/*.ts", "sidebar/**/*.tsx", "next-env.d.ts"] }
