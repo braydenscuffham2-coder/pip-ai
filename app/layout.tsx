@@ -3,7 +3,7 @@ import { BRAND } from '@/lib/knowledge';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: `Pip · ${BRAND}`,
+  title: `${BRAND} · The AI marketplace built around your business`,
   description: 'Give Pip your website. It finds the AI your business is missing and shows it working on your business.',
 };
 

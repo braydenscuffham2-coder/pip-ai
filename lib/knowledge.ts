@@ -1,6 +1,6 @@
 import type { AreaId, Demo, DemoKind, IndustryId, ModuleType, PainId, ToolId } from './types';
 
-export const BRAND = '[Brand Name]';
+export const BRAND = 'Pip';
 
 export const AREAS: Record<AreaId, string> = {
   leads: 'Leads',
