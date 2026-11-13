@@ -10,11 +10,21 @@
 
 Status: live, no paying customers yet.
 
+## Two versions
+
+Pip runs in two places.
+
+**In the Claude app: the current Pip.** A 3D guide, the Recall scan show, then six steps: You, Your market, Try it, What I found, Your team and Lock it in. It runs on the viewer's own Claude plan, with no API keys. The code and details are in [`claude-app/`](claude-app).
+
+<img src="docs/images/claude-app-home.webp" alt="Pip's home screen in the Claude app: a 3D glass character next to the headline 'Meet the upside of being understood.' and a website field." width="100%">
+
+**On the web: [pip-ai-drab.vercel.app](https://pip-ai-drab.vercel.app).** The public Next.js site described below. It also serves the read endpoints the Claude-app version uses.
+
 ## Who it's for
 
 Owners of local businesses: home services, dental offices, salons, auto shops and the like. In about a minute, Pip shows which AI would help their business and why, using their own site, reviews and competitors.
 
-## The flow
+## The web flow
 
 Seven steps, led by Pip, an animated glass guide who talks the owner through each one.
 
@@ -45,7 +55,7 @@ Seven steps, led by Pip, an animated glass guide who talks the owner through eac
 flowchart LR
   subgraph Clients
     W["Pip website<br/>(Next.js on Vercel)"]
-    A["Pip inside the Claude app<br/>(sidebar build)"]
+    A["Pip in the Claude app<br/>(claude-app/)"]
   end
 
   W -->|"/api/scan, streamed"| API["Next.js API routes"]
@@ -115,7 +125,8 @@ npm run build && npm start
 | `lib/server/` | Crawl, tool detection, Google Places, personalization, caching, model calls |
 | `lib/skills/` | Skill specs, the runtime that runs them, setup questions |
 | `app/api/` | API routes; the contract is in [`docs/API.md`](docs/API.md) |
-| `sidebar/` | A build of Pip that runs inside the Claude app on the viewer's own plan |
+| `claude-app/` | The current Pip that runs inside the Claude app, on the viewer's own plan |
+| `sidebar/` | An earlier Claude-app build, built from this repo's components |
 | `supabase/functions/` | Edge functions: lead alerts, voice, site and rival reads, the Brain, the Forge |
 
 ## Stack
