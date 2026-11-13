@@ -4,9 +4,9 @@
 
 **An AI analyst for local businesses.** Give Pip a website. It reads the site, finds the AI tools the business already runs, pulls in its Google reviews and nearby competitors, and ranks the AI upgrades that would help most, each with the evidence behind it.
 
-**[Try it live →](https://pip-ai-drab.vercel.app)**&nbsp;&nbsp;·&nbsp;&nbsp;Click "See an example first" for a walkthrough that runs without a scan.
+**[Try the web version →](https://pip-ai-drab.vercel.app)**&nbsp;&nbsp;·&nbsp;&nbsp;The current version runs inside the Claude app; see [`claude-app/`](claude-app).
 
-<img src="docs/images/flow.webp" alt="Animated walkthrough of Pip's example: Pip scans an HVAC company's site, shows a coverage score of 16, ranks six upgrades by match, and builds a two-upgrade package." width="100%">
+<img src="docs/images/claude-app-home.webp" alt="Pip's home screen in the Claude app: a 3D glass character next to the headline 'Meet the upside of being understood.' and a website field." width="100%">
 
 Status: live, no paying customers yet.
 
@@ -15,8 +15,6 @@ Status: live, no paying customers yet.
 Pip runs in two places.
 
 **In the Claude app: the current Pip.** A 3D guide, the Recall scan show, then six steps: You, Your market, Try it, What I found, Your team and Lock it in. It runs on the viewer's own Claude plan, with no API keys. The code and details are in [`claude-app/`](claude-app).
-
-<img src="docs/images/claude-app-home.webp" alt="Pip's home screen in the Claude app: a 3D glass character next to the headline 'Meet the upside of being understood.' and a website field." width="100%">
 
 **On the web: [pip-ai-drab.vercel.app](https://pip-ai-drab.vercel.app).** The public Next.js site described below. It also serves the read endpoints the Claude-app version uses.
 
@@ -27,6 +25,8 @@ Owners of local businesses: home services, dental offices, salons, auto shops an
 ## The web flow
 
 Seven steps, led by Pip, an animated glass guide who talks the owner through each one.
+
+<img src="docs/images/flow.webp" alt="Animated walkthrough of Pip's example: Pip scans an HVAC company's site, shows a coverage score of 16, ranks six upgrades by match, and builds a two-upgrade package." width="100%">
 
 <table>
   <tr>
