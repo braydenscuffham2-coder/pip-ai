@@ -10,7 +10,7 @@ Pip's backend on Supabase: Deno edge functions next to a Postgres database. The 
 | `rival-read` | Reads each competitor's own homepage: what it says and what it lets a customer do. |
 | `scan-run` | The Brain, as a resumable job. Each call runs one stage and chains the next, so no request outlives the edge-function limit. Has per-scan, per-month and per-IP budget caps. Google review text is used while the job runs and never stored. |
 | `pip-forge` | The building side. Takes an owner's order and turns it into build orders, skill specs and queued build jobs. `POST /intake` takes Pip's own Lock it in order, gives it a code (PIP-XXXX) and files the API Shelf's needs. The API-key engine only builds an order after the Board has had it for the fallback window. |
-| `pip-forge-mcp` | The founder-only "Pip Forge" connector the Forge Board uses: the real order queue, taking an order onto the Board, saving results, go-live, the API Shelf and the Forge's safety settings. Its URL ends in a key; only the key's hash is stored. |
+| `pip-forge-mcp` | The founder-only "Pip Forge" connector the Forge Board uses: the real order queue, taking an order onto the Board, saving results, go-live, the API Shelf, the Forge's safety settings, owner sign-in links through Composio (`client_connect`, `client_connections`) and the red team's read and save (`redteam_pack`, `redteam_save`). Its URL ends in a key; only the key's hash is stored. |
 | `pip-shelf` | The API Shelf's alert. When an order needs an API you don't own, it emails one digest: what to fund, which orders wait on it, the price and the budget so far. It checks keys by secret name only. |
 | `pip-reader` | A small remote MCP server that lets the Pip build inside the Claude app call Pip's own read endpoints, and send an owner's Lock it in order to `pip-forge/intake` (`pip_order`). |
 
@@ -22,6 +22,11 @@ Pip's backend on Supabase: Deno edge functions next to a Postgres database. The 
 - The Forge Board builds it on Brayden's Claude plan. If no Board takes it within the fallback window (6 hours by default), the `pip-forge` cron builds it on the API key, under the per-order cap, the daily cap and the kill switch (`forge_settings`).
 - Every teammate's building blocks are checked against the Shelf (`api_shelf`, `shelf_links`). What isn't owned yet becomes an `api_needs` row and one email. A database trigger refuses go-live while anything is missing.
 - Keys go into Supabase secrets by hand. Nothing here reads a secret's value; the Shelf only checks that a secret with the right name exists.
+
+## Owner sign-ins and the red team
+
+- When a teammate needs the owner's own tool (their Gmail, calendar or job software), ask the Pip Forge connector for `client_connect` with the order and a Composio toolkit name. It returns a sign-in link to send the owner. The owner signs in on Composio's page and Composio keeps the token; `client_connections` stores only ids and a status. It does nothing until `COMPOSIO_API_KEY` is in Supabase secrets and Composio is marked funded on the Shelf.
+- Before go-live, run the **Red team (Promptfoo)** workflow in GitHub Actions with the order code. It attacks each built teammate's real system prompt (prompt injection, prompt extraction, hijacking, made-up promises, impersonation, PII, plus the teammate's own "never" rules), posts a table on the run page and saves passed / total on the teammate. It needs two repository secrets, `PIP_FORGE_URL` and `ANTHROPIC_API_KEY`; without them it stops with a notice. Promptfoo's telemetry, sharing and hosted attack generation are switched off.
 
 ## Differences from what's deployed
 

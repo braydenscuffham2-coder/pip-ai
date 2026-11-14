@@ -1,0 +1,97 @@
+name: Red team (Promptfoo)
+
+# Attacks every built teammate of one Pip order with Promptfoo (MIT, open source) before go-live:
+# prompt injection, prompt extraction, hijacking, made-up promises, impersonation, PII, and each
+# teammate's own "never" rules. Results land on the run page and back on the order in the Forge.
+#
+# Dormant until two repository secrets exist:
+#   PIP_FORGE_URL      the Pip Forge connector URL (the same one added in Claude's connectors)
+#   ANTHROPIC_API_KEY  an Anthropic API key with credit
+# Promptfoo's own servers are kept out: no telemetry, no sharing, no hosted attack generation.
+
+on:
+  workflow_dispatch:
+    inputs:
+      order:
+        description: Order code (PIP-AB12) or order id
+        required: true
+      tests:
+        description: Attacks per check (1 to 10)
+        default: '3'
+      deep:
+        description: Add multi-turn jailbreaks (slower, about 5x the cost)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: redteam-${{ github.event.inputs.order }}
+  cancel-in-progress: false
+
+jobs:
+  redteam:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      PIP_FORGE_URL: ${{ secrets.PIP_FORGE_URL }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ORDER: ${{ github.event.inputs.order }}
+      TESTS: ${{ github.event.inputs.tests }}
+      DEEP: ${{ github.event.inputs.deep }}
+      PROMPTFOO_DISABLE_TELEMETRY: '1'
+      PROMPTFOO_DISABLE_SHARING: '1'
+      PROMPTFOO_DISABLE_UPDATE: '1'
+      PROMPTFOO_DISABLE_REMOTE_GENERATION: 'true'
+    steps:
+      - name: Check the keys are there
+        id: keys
+        run: |
+          if [ -z "$PIP_FORGE_URL" ] || [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::notice::The red team is dormant. Add PIP_FORGE_URL and ANTHROPIC_API_KEY as repository secrets, then run it again."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.keys.outputs.ready == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.keys.outputs.ready == 'true'
+        with:
+          node-version: 24
+
+      - name: Build one config per teammate
+        if: steps.keys.outputs.ready == 'true'
+        run: node redteam/build.mjs
+
+      - name: Attack each teammate
+        if: steps.keys.outputs.ready == 'true'
+        working-directory: redteam/out
+        run: |
+          for f in $(node -e "console.log(require('./order.json').teammates.map(t=>t.file).join(' '))"); do
+            name="${f%.yaml}"
+            echo "::group::$name"
+            if npx -y promptfoo@0.125.1 redteam generate -c "$f" -o "$name.tests.yaml" --no-progress-bar -j 4; then
+              npx -y promptfoo@0.125.1 eval -c "$name.tests.yaml" -o "$name.results.json" --no-progress-bar --no-table -j 4 || echo "::warning::$name has failed checks or errors"
+            else
+              echo "::warning::$name: Promptfoo could not generate attacks"
+            fi
+            echo "::endgroup::"
+          done
+
+      - name: Summarize and save to the Forge
+        if: steps.keys.outputs.ready == 'true'
+        run: node redteam/report.mjs
+
+      - uses: actions/upload-artifact@v4
+        if: steps.keys.outputs.ready == 'true' && always()
+        with:
+          name: redteam-${{ github.run_id }}
+          path: |
+            redteam/out/*.results.json
+            redteam/out/*.tests.yaml
+            redteam/out/order.json
+          retention-days: 30

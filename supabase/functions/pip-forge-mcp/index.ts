@@ -52,6 +52,30 @@ async function settings() {
 }
 const STATUS_MAP: Record<string, string> = { building: 'testing', sandbox: 'sandbox', design_only: 'sandbox', needs_you: 'needs_review', failed: 'needs_review', paused: 'draft' };
 
+// ---------------- Composio: owners connect their own tools ----------------
+// The owner signs in on Composio's hosted page; Composio keeps the token. Pip stores only ids and a status,
+// and no model ever sees, stores or enters a client credential.
+const COMPOSIO = 'https://backend.composio.dev/api/v3.1';
+async function composio(path: string, init: RequestInit = {}) {
+  const key = (Deno.env.get('COMPOSIO_API_KEY') ?? '').trim();
+  if (!key) throw new Error('Composio is not funded yet. Add COMPOSIO_API_KEY in Supabase secrets, then mark it funded on the API Shelf.');
+  const r = await fetch(`${COMPOSIO}${path}`, { ...init, headers: { 'x-api-key': key, 'content-type': 'application/json' }, signal: AbortSignal.timeout(20000) });
+  const t = await r.text();
+  let j: any = null; try { j = t ? JSON.parse(t) : null; } catch { /* not json */ }
+  if (!r.ok) throw new Error(`Composio answered ${r.status}: ${cut(j?.error?.message || j?.message || t, 200)}`);
+  return j;
+}
+async function composioAuthConfig(slug: string) {
+  const list = await composio(`/auth_configs?toolkit_slug=${encodeURIComponent(slug)}&is_composio_managed=true&limit=20`);
+  const hit = (list?.items ?? []).find((c: any) => c?.toolkit?.slug === slug && c?.is_composio_managed !== false && (!c?.status || c.status === 'ENABLED'));
+  if (hit?.id) return String(hit.id);
+  const made = await composio('/auth_configs', { method: 'POST', body: JSON.stringify({ toolkit: { slug }, auth_config: { type: 'use_composio_managed_auth' } }) });
+  const id = made?.auth_config?.id;
+  if (!id) throw new Error(`Composio has no managed sign-in for "${slug}". Check the toolkit name on composio.dev.`);
+  return String(id);
+}
+const CONN_STATUS: Record<string, string> = { ACTIVE: 'active', FAILED: 'failed', EXPIRED: 'expired', INACTIVE: 'revoked' };
+
 // ---------------- the tools ----------------
 const T: Record<string, { description: string; inputSchema: any; readOnly?: boolean; run: (a: any) => Promise<unknown> }> = {
   forge_queue: {
@@ -228,6 +252,91 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
       return { ...(await settings()), spent_today_usd: Number(spent) };
     },
   },
+  redteam_pack: {
+    description: "Everything the Promptfoo red team needs for one order: each built teammate's system prompt (from the Board or the API-key build), its never rules and what it hands to a person. Read-only. Used by the Red team workflow in GitHub Actions.",
+    inputSchema: { type: 'object', properties: { order: { type: 'string', description: 'Order code (PIP-XXXX) or order id.' } }, required: ['order'], additionalProperties: false },
+    readOnly: true,
+    async run(a) {
+      const raw = cut(a?.order, 60);
+      const q = uuid(raw) ? `id=eq.${raw}` : /^PIP-[A-Z0-9]{3,8}$/i.test(raw) ? `code=eq.${raw.toUpperCase()}` : '';
+      if (!q) throw new Error('order must be an order code like PIP-AB12 or an order id');
+      const o = (await rows(`build_orders?${q}&select=id,code,domain,brief->business,brief->industry`))?.[0];
+      if (!o) throw new Error('no such order');
+      const specs = await rows(`skill_specs?order_id=eq.${o.id}&select=skill_id,status,spec,brain->agent`);
+      const str = (v: unknown, n: number) => (typeof v === 'string' ? v.slice(0, n) : '');
+      const list = (v: unknown, n = 12) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()).slice(0, n).map((x: string) => x.slice(0, 300)) : []);
+      return {
+        order: { id: o.id, code: o.code, business: o.business || o.domain, industry: o.industry || 'other' },
+        teammates: (specs ?? []).map((s: any) => {
+          const seats = s.spec?.board?.seats ?? {};
+          const system = str(seats.prompt?.system_prompt, 20000) || str(s.spec?.agent?.persona, 20000);
+          return {
+            id: s.skill_id, status: s.status, name: str(s.agent?.name, 80), teammate: str(s.agent?.teammate?.name, 40), role: str(s.agent?.teammate?.role, 80),
+            tagline: str(s.agent?.presented?.tagline, 240), system_prompt: system || null, source: seats.prompt?.system_prompt ? 'board' : s.spec?.agent?.persona ? 'key' : null,
+            never: [...list(s.spec?.guardrails?.never), ...list(seats.voice?.never_says), ...list(s.agent?.presented?.wont)].slice(0, 16),
+            hands_off: list(s.spec?.guardrails?.escalate_on, 10),
+          };
+        }),
+      };
+    },
+  },
+  redteam_save: {
+    description: "Save a Promptfoo red-team result for one teammate onto its spec (passed, total, the failed checks and the run link), so the Board and go-live can see it.",
+    inputSchema: { type: 'object', properties: { order_id: { type: 'string' }, agent_id: { type: 'string' }, passed: { type: 'number' }, total: { type: 'number' }, failures: { type: 'array', items: { type: 'object' } }, run_url: { type: 'string' } }, required: ['order_id', 'agent_id', 'passed', 'total'], additionalProperties: false },
+    async run(a) {
+      const id = uuid(a?.order_id); if (!id) throw new Error('order_id must be an order id');
+      const agent = cut(a.agent_id, 60);
+      const spec = (await rows(`skill_specs?order_id=eq.${id}&skill_id=eq.${encodeURIComponent(agent)}&select=id,spec`))?.[0];
+      if (!spec) throw new Error('no such teammate on this order');
+      const n = (v: unknown) => Math.max(0, Math.min(100000, Math.round(Number(v) || 0)));
+      const failures = (Array.isArray(a.failures) ? a.failures : []).slice(0, 40).map((f: any) => ({ check: cut(f?.check, 80), attack: cut(f?.attack, 400), reply: cut(f?.reply, 400), why: cut(f?.why, 300) }));
+      const run_url = /^https:\/\/github\.com\//.test(String(a.run_url || '')) ? cut(a.run_url, 300) : undefined;
+      const redteam = { tool: 'promptfoo', passed: n(a.passed), total: n(a.total), failures, run_url, at: now() };
+      await patch('skill_specs', `id=eq.${spec.id}`, { spec: { ...(spec.spec ?? {}), redteam }, updated_at: now() });
+      await insert('events', { kind: 'redteam', domain: null, detail: { order: id, agent, passed: redteam.passed, total: redteam.total } }).catch(() => {});
+      return { ok: true, saved: agent, passed: redteam.passed, total: redteam.total };
+    },
+  },
+  client_connect: {
+    description: "Make a one-time sign-in link so an order's owner can connect one of their own tools (a Composio toolkit slug such as gmail, googlecalendar, outlook, hubspot or quickbooks). The owner signs in on Composio's page; Pip never sees a password or token. Returns the link for Brayden to send to the owner himself. Needs Composio funded on the API Shelf.",
+    inputSchema: { type: 'object', properties: { order_id: { type: 'string' }, toolkit: { type: 'string', description: 'Composio toolkit slug, lowercase.' } }, required: ['order_id', 'toolkit'], additionalProperties: false },
+    async run(a) {
+      const id = uuid(a?.order_id); if (!id) throw new Error('order_id must be an order id');
+      const slug = cut(a?.toolkit, 60).toLowerCase();
+      if (!/^[a-z0-9_]{2,60}$/.test(slug)) throw new Error('toolkit must be a Composio toolkit slug, like gmail');
+      const order = (await rows(`build_orders?id=eq.${id}&select=id,code`))?.[0];
+      if (!order) throw new Error('no such order');
+      const user = `pip-${id}`;
+      const auth = await composioAuthConfig(slug);
+      const link = await composio('/connected_accounts/link', { method: 'POST', body: JSON.stringify({ auth_config_id: auth, user_id: user }) });
+      if (!link?.redirect_url) throw new Error('Composio did not return a sign-in link');
+      await insert('client_connections', { order_id: id, toolkit: slug, composio_user_id: user, connected_account_id: cut(link.connected_account_id, 80) || null, status: 'link_made', link_expires_at: link.expires_at || null });
+      await insert('events', { kind: 'client_connect_link', domain: null, detail: { order: id, toolkit: slug } }).catch(() => {});
+      return { ok: true, order: order.code, toolkit: slug, link: link.redirect_url, expires_at: link.expires_at ?? null, note: 'Send this link to the owner yourself. It opens a Composio sign-in page; nothing goes live until you approve it.' };
+    },
+  },
+  client_connections: {
+    description: "List an order's owner connections (which tools they were asked to connect and which are connected), refreshed from Composio when it is funded. Ids and status only, never a credential.",
+    inputSchema: { type: 'object', properties: { order_id: { type: 'string' } }, required: ['order_id'], additionalProperties: false },
+    readOnly: true,
+    async run(a) {
+      const id = uuid(a?.order_id); if (!id) throw new Error('order_id must be an order id');
+      const mine = (await rows(`client_connections?order_id=eq.${id}&select=id,toolkit,connected_account_id,status,link_expires_at,created_at&order=created_at.desc`)) ?? [];
+      let refreshed = false, note: string | undefined;
+      if (mine.length && (Deno.env.get('COMPOSIO_API_KEY') ?? '').trim()) {
+        try {
+          const live = await composio(`/connected_accounts?user_ids=${encodeURIComponent(`pip-${id}`)}&limit=100`);
+          for (const c of mine) {
+            const hit = (live?.items ?? []).find((x: any) => x?.id === c.connected_account_id) ?? (live?.items ?? []).find((x: any) => x?.toolkit?.slug === c.toolkit && x?.status === 'ACTIVE');
+            const st = hit ? CONN_STATUS[String(hit.status)] : (c.status === 'link_made' && c.link_expires_at && Date.parse(c.link_expires_at) < Date.now() ? 'expired' : undefined);
+            if (st && st !== c.status) { await patch('client_connections', `id=eq.${c.id}`, { status: st, ...(hit?.id ? { connected_account_id: cut(hit.id, 80) } : {}), updated_at: now() }); c.status = st; }
+          }
+          refreshed = true;
+        } catch (e) { note = String((e as Error).message || e).slice(0, 200); }
+      } else if (mine.length) note = 'Composio is not funded, so statuses were not refreshed.';
+      return { refreshed, note, connections: mine.map((c: any) => ({ toolkit: c.toolkit, status: c.status, link_expires_at: c.link_expires_at, asked_at: c.created_at })) };
+    },
+  },
 };
 
 // a small, read-only test call with the key, for providers where one is simple; the key value never leaves this function
@@ -238,6 +347,7 @@ async function probe(provider: string, secret: string): Promise<{ ran: boolean; 
     if (provider === 'anthropic') return await get('https://api.anthropic.com/v1/models', { 'x-api-key': k, 'anthropic-version': '2023-06-01' });
     if (provider === 'elevenlabs') return await get('https://api.elevenlabs.io/v1/user', { 'xi-api-key': k });
     if (provider === 'resend') return await get('https://api.resend.com/domains', { authorization: `Bearer ${k}` });
+    if (provider === 'composio') return await get(`${COMPOSIO}/auth_configs?limit=1`, { 'x-api-key': k });
     if (provider === 'openai-realtime') return await get('https://api.openai.com/v1/models', { authorization: `Bearer ${k}` });
     if (provider === 'twilio') { const sid = (Deno.env.get('TWILIO_ACCOUNT_SID') ?? '').trim(); if (!sid) return { ran: true, ok: false, detail: 'TWILIO_ACCOUNT_SID is missing' }; return await get(`https://api.twilio.com/2010-04-01/Accounts/${sid}.json`, { authorization: `Basic ${btoa(`${sid}:${k}`)}` }); }
   } catch (e) { return { ran: true, ok: false, detail: String((e as Error).message || e).slice(0, 80) }; }
@@ -258,7 +368,7 @@ async function handle(m: Msg): Promise<unknown | null> {
   switch (m.method) {
     case 'initialize': {
       const asked = String(m.params?.protocolVersion || '');
-      return ok({ protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0], capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'pip-forge', title: 'Pip Forge', version: '1.0.0' }, instructions: "Pip's founder-only Forge: the real order queue, Board builds on Brayden's Claude plan, the API Shelf and go-live. Never asks for or returns a secret value." });
+      return ok({ protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0], capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'pip-forge', title: 'Pip Forge', version: '1.1.0' }, instructions: "Pip's founder-only Forge: the real order queue, Board builds on Brayden's Claude plan, the API Shelf, owner sign-in links through Composio, and go-live. Never asks for or returns a secret value or a client credential." });
     }
     case 'ping': return ok({});
     case 'tools/list':
