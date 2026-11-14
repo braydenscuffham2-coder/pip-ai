@@ -1,6 +1,7 @@
 // Pip Reader: a tiny remote MCP server so the Pip artifact can read websites
-// from any Claude app (phone, web, desktop). It does no reading itself: it only
-// forwards to Pip's own scan endpoints and returns their JSON as text.
+// from any Claude app (phone, web, desktop), and send an owner's Lock it in order.
+// pip_read only forwards to Pip's own scan endpoints and returns their JSON as text.
+// pip_order forwards one order to Pip's own intake (pip-forge/intake), which validates it.
 // Stateless Streamable HTTP (JSON responses, no SSE stream).
 
 const SB_URL = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "");
@@ -9,6 +10,7 @@ const ALLOW = new Set([
   `${SB_URL}/functions/v1/rival-read`,
   "https://pip-ai-drab.vercel.app/api/gather",
 ]);
+const INTAKE = `${SB_URL}/functions/v1/pip-forge/intake`;
 const VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 const MAX_CHARS = 2_000_000;
 const UPSTREAM_MS = 115_000;
@@ -27,6 +29,26 @@ const TOOL = {
     additionalProperties: false,
   },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+};
+
+const ORDER_TOOL = {
+  name: "pip_order",
+  title: "Send a Pip order",
+  description:
+    "Sends an owner's Lock it in order (the business, the AI teammates they chose, their name and contact) to Pip's own intake. Returns the order code. Pip validates every field; nothing goes live from this call.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      order: { type: "object", description: "business, domain, industry, rivals and the chosen agents, as Pip imagined them." },
+      owner: { type: "object", description: "name, email or phone, best (times), message." },
+      consent: { type: "object", description: "ai_disclosure_ack and tos_version." },
+      plan: { type: "object", description: "Optional plan summary: estimate, unit, problems, have, perk." },
+      lid: { type: "string", description: "The page's id for this send, so a double tap files one order." },
+    },
+    required: ["order", "owner", "consent"],
+    additionalProperties: false,
+  },
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 };
 
 const CORS = {
@@ -81,6 +103,23 @@ async function read(args: Record<string, unknown>) {
   }
 }
 
+async function order(args: Record<string, unknown>) {
+  const body = JSON.stringify({ ...args, source: "pip-reader" });
+  if (body.length > 400_000) return { isError: true, content: [{ type: "text", text: "That order is too large." }] };
+  try {
+    const r = await fetch(INTAKE, { method: "POST", headers: { "content-type": "application/json" }, body, signal: AbortSignal.timeout(60_000) });
+    const text = await r.text();
+    let j: Record<string, unknown> = {};
+    try { j = JSON.parse(text); } catch { /* not json */ }
+    if (!r.ok || j.ok !== true) {
+      return { isError: true, content: [{ type: "text", text: String(j.error || `Pip's intake answered ${r.status}.`) + (Array.isArray(j.errors) ? `: ${(j.errors as string[]).slice(0, 4).join("; ")}` : "") }] };
+    }
+    return { content: [{ type: "text", text: JSON.stringify({ ok: true, code: j.code, orderId: j.orderId, again: j.again === true }) }], structuredContent: { ok: true, code: j.code, orderId: j.orderId, again: j.again === true } };
+  } catch {
+    return { isError: true, content: [{ type: "text", text: "Pip's intake couldn't be reached." }] };
+  }
+}
+
 type Msg = { jsonrpc?: string; id?: string | number | null; method?: string; params?: Record<string, unknown> };
 
 async function handle(m: Msg): Promise<unknown | null> {
@@ -95,17 +134,20 @@ async function handle(m: Msg): Promise<unknown | null> {
       return ok({
         protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "pip-reader", title: "Pip Reader", version: "1.0.0" },
-        instructions: "Reads Pip's own scan endpoints for the Pip page. One tool: pip_read.",
+        serverInfo: { name: "pip-reader", title: "Pip Reader", version: "1.1.0" },
+        instructions: "Reads Pip's own scan endpoints for the Pip page, and sends an owner's Lock it in order to Pip. Tools: pip_read, pip_order.",
       });
     }
     case "ping":
       return ok({});
     case "tools/list":
-      return ok({ tools: [TOOL] });
+      return ok({ tools: [TOOL, ORDER_TOOL] });
     case "tools/call": {
-      if (m.params?.name !== TOOL.name) return err(-32602, `Unknown tool: ${String(m.params?.name)}`);
-      return ok(await read((m.params?.arguments || {}) as Record<string, unknown>));
+      const name = m.params?.name;
+      const args = (m.params?.arguments || {}) as Record<string, unknown>;
+      if (name === TOOL.name) return ok(await read(args));
+      if (name === ORDER_TOOL.name) return ok(await order(args));
+      return err(-32602, `Unknown tool: ${String(name)}`);
     }
     case "resources/list":
       return ok({ resources: [] });

@@ -2,6 +2,10 @@
 //
 //   POST /pip-forge/order            public: owner submits { scanId, owner, chosen[], consent, state? }
 //                                    → leads row (your lead-alert fires) + build_order + skill_specs + build_jobs, then the chain starts
+//   POST /pip-forge/intake           public: Pip's own Lock it in (the Pip page, its order page, or the PIP Reader tool)
+//                                    sends the owner's chosen team as Pip imagined it → lead + build order with a short
+//                                    order code (PIP-XXXX) + skill specs + queued jobs, and files the Shelf's API needs.
+//                                    Nothing builds on the API key until the fallback window passes (Board first).
 //   POST /pip-forge/run              kick the queue: claim one queued job, run its stage, chain. Public on purpose:
 //                                    it can only drain work an owner already ordered, never create it. The chain
 //                                    calls it after every stage and a pg_cron job calls it every 2 minutes.
@@ -10,7 +14,7 @@
 //
 // Secrets: ANTHROPIC_API_KEY (compile/test), FOUNDER_TOKEN (console). Optional: OPENAI_API_KEY (review pass).
 // deno-lint-ignore-file no-explicit-any
-import { buildOrder, checkOrder, runForgeJob, agentTurn, openaiModel, renderConsole, anthropicModel } from './forge.js';
+import { buildOrder, checkOrder, runForgeJob, agentTurn, openaiModel, renderConsole, anthropicModel, primitive } from './forge.js';
 import type { ForgeDb, ForgeJob, SpecRow } from './forge.js';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
@@ -46,7 +50,7 @@ const forgeDb: ForgeDb = {
 
 function models() {
   if (!ANTHROPIC) return null;
-  const model = anthropicModel({ apiKey: ANTHROPIC, budgetUsd: 6 });
+  const model = anthropicModel({ apiKey: ANTHROPIC, budgetUsd: 6, onUsage: (u: { usd: number }) => { rows('rpc/forge_spend_add', { method: 'POST', body: JSON.stringify({ p_usd: u.usd }) }).catch(() => {}); } });
   const reviewer = OPENAI ? openaiModel({ apiKey: OPENAI }) : null;
   return { model, reviewer };
 }
@@ -78,6 +82,94 @@ async function routeOrder(req: Request) {
   await patch('build_orders', `id=eq.${order_id}`, { status: 'building' });
   chain();
   return json({ ok: true, orderId: order_id, leadId: lead_id, agents: agents.map((a) => ({ id: a.agent_id, lane: a.lane })) });
+}
+
+
+// ---------- Pip's own order intake (Board-first) ----------
+const cut = (v: unknown, n: number) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
+const strs = (v: unknown, n: number, each = 300) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, n).map((x) => (x as string).slice(0, each)) : []);
+async function ipKey(req: Request) {
+  const ip = (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'unknown';
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`pip-intake|${ip}`));
+  return [...new Uint8Array(d)].slice(0, 12).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+function boardAgent(a: any) {
+  const lane = a.lane === 'onprem' || a.lane === 'onsite' ? 'onsite' : a.lane === 'code' ? 'code' : 'spec';
+  const claims = (Array.isArray(a.claims) ? a.claims : []).slice(0, 8).map((c: any) => ({ text: cut(c?.text, 300), status: cut(c?.status, 20) || 'seen', quotes: [...strs(c?.quotes, 4), ...(Array.isArray(c?.evidence) ? c.evidence.map((e: any) => cut(e?.quote, 300)).filter(Boolean) : [])].slice(0, 4) }));
+  return {
+    id: cut(a.id, 60), name: cut(a.name, 80), tagline: cut(a.tagline, 240), power: cut(a.power, 30), lane, wild: !!a.wild,
+    teammate: { name: cut(a.teammate?.name, 30), role: cut(a.teammate?.role, 60), ...(a.teammate?.house ? { house: cut(a.teammate.house, 2) } : {}) },
+    uses: strs(a.uses, 24, 40), how: strs(a.how, 6, 400), wont: strs(a.wont, 6, 300), asks: strs(a.asks, 6, 300), data_needed: strs(a.data_needed, 8, 200),
+    concept: cut(a.concept, 1200), measure: cut(a.measure, 240), why_personal: cut(a.why_personal || a.why, 400),
+    moment: a.moment && typeof a.moment === 'object' ? { when: cut(a.moment.when, 120), what: cut(a.moment.what, 400) } : cut(a.moment, 300), claims,
+  };
+}
+async function routeIntake(req: Request) {
+  const raw = await req.text();
+  if (raw.length > 400_000) return json({ ok: false, error: 'order too large' }, 413);
+  let b: any; try { b = JSON.parse(raw); } catch { return json({ ok: false, error: 'bad json' }, 400); }
+  const o = b?.order || {};
+  const owner = b?.owner || {};
+  const name = cut(owner.name, 80), email = cut(owner.email, 120), phone = cut(owner.phone, 40);
+  if (!name) return json({ ok: false, error: 'missing_name' }, 400);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) && phone.replace(/\D/g, '').length < 10) return json({ ok: false, error: 'invalid_contact' }, 400);
+  const agentsIn = (Array.isArray(o.agents) ? o.agents : []).slice(0, 12).map(boardAgent).filter((a: any) => a.id && a.name && a.uses.length);
+  if (!agentsIn.length) return json({ ok: false, error: 'no teammates chosen' }, 400);
+  const domain = cut(o.domain, 120).toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  const business = cut(o.business, 120) || domain;
+  if (!business) return json({ ok: false, error: 'missing business' }, 400);
+  const lid = cut(b.lid, 60);
+  const source = ['pip-artifact', 'pip-order-page', 'pip-reader'].includes(b.source) ? b.source : 'pip-artifact';
+  if (lid) {
+    const had = (await rows(`build_orders?brief->>lid=eq.${encodeURIComponent(lid)}&select=id,code&limit=1`))?.[0];
+    if (had) return json({ ok: true, again: true, orderId: had.id, code: had.code });
+  }
+  const ip = await ipKey(req);
+  const recent = await rows(`events?kind=eq.intake&detail->>ip=eq.${ip}&created_at=gt.${new Date(Date.now() - 3600_000).toISOString()}&select=id`);
+  if ((recent?.length ?? 0) >= 12) return json({ ok: false, error: 'rate_limited' }, 429);
+
+  const order_id = crypto.randomUUID(), lead_id = crypto.randomUUID();
+  const lane = (l: string) => (l === 'onsite' ? 'onprem' : l);
+  const facts = [...new Set(agentsIn.flatMap((a: any) => a.claims.filter((c: any) => c.status === 'seen').map((c: any) => c.text)).filter(Boolean))].slice(0, 30);
+  const forge = buildOrder({
+    order_id, lead_id, domain: domain || business, scan_id: null,
+    result: { skills: agentsIn.map((a: any) => ({ ...a, lane: lane(a.lane), why: a.why_personal, setup: a.data_needed, moment: typeof a.moment === 'object' ? a.moment.when : a.moment, uses: a.uses.filter((u: string) => !!primitive(u)) })), profile: { name: business, industry: cut(o.industry, 30) || 'other', facts }, answers: {} },
+    owner: { name, email: email || undefined, phone: phone || undefined, best_time: cut(owner.best, 400) || undefined, message: cut(owner.message, 2000) || undefined },
+    chosen: agentsIn.map((a: any) => a.id),
+    consent: { ai_disclosure_ack: b?.consent?.ai_disclosure_ack === true, tos_version: cut(b?.consent?.tos_version, 40) },
+  } as any);
+  const errors = checkOrder(forge).filter((e: string) => !/^version$|scan_id/.test(e));
+  if (errors.length) return json({ ok: false, error: 'invalid order', errors }, 422);
+
+  const plan = b?.plan && typeof b.plan === 'object' ? b.plan : {};
+  const brief = {
+    id: order_id, lid: lid || undefined, business, domain, industry: cut(o.industry, 30) || 'other',
+    read: o.read && typeof o.read === 'object' ? o.read : undefined, moments: Array.isArray(o.moments) ? o.moments.slice(0, 16) : undefined,
+    rivals: strs(o.rivals, 8, 120), agents: agentsIn, created: new Date().toISOString(), scanned_at: cut(o.scanned_at, 40) || undefined,
+    plan: { estimate: plan.estimate, unit: cut(plan.unit, 80) || undefined, problems: Array.isArray(plan.problems) ? plan.problems.slice(0, 8) : undefined, have: strs(plan.have, 12, 80), perk: cut(plan.perk, 40) || undefined, perkUntil: cut(plan.perkUntil, 40) || undefined, example: plan.example === true || undefined },
+  };
+  const agents = [...forge.package.agents, ...(forge.package.wild ? [forge.package.wild] : [])];
+  if (b.dry === true) {
+    const missing = await rows('rpc/shelf_missing', { method: 'POST', body: JSON.stringify({ p_uses: [...new Set(agents.flatMap((a: any) => a.uses))] }) }).catch(() => null);
+    return json({ ok: true, dry: true, agents: agents.map((a: any) => ({ id: a.agent_id, lane: a.lane, uses: a.uses.length })), missing });
+  }
+
+  const code = String(await rows('rpc/forge_order_code', { method: 'POST', body: '{}' }));
+  // 1. the lead: your lead-alert email fires from this row
+  await insert('leads', { id: lead_id, name, contact: email || phone, email: email || null, phone: phone || null, best_time: cut(owner.best, 80) || null, message: [`Order ${code}.`, cut(owner.message, 1900)].filter(Boolean).join(' '), business, site: domain || null, modules: agentsIn.map((a: any) => a.id), profile: { name: business, industry: brief.industry }, stage: 'reserve', source: plan.example ? 'pip-sample' : source, plan: { business, site: domain, code, team: agentsIn.map((a: any) => ({ name: `${a.teammate.name || a.name}, ${a.teammate.role || ''}`.replace(/, $/, ''), tagline: `${a.name}: ${a.tagline}` })), problems: brief.plan.problems, have: brief.plan.have, estimate: brief.plan.estimate, unit: brief.plan.unit, perk: brief.plan.perk } });
+  // 2. the order
+  await insert('build_orders', { id: order_id, code, lead_id, domain: domain || business, order: forge, status: 'received', budget_usd: 20, source, brief: { ...brief, code, source: 'Pip Lock it in' } });
+  // 3. one spec row + one compile job per teammate (the API-key fallback picks these up only after the window)
+  for (const a of agents) {
+    const spec = await insert('skill_specs', { business, domain: domain || business, skill_id: a.agent_id, version: 1, status: 'draft', spec: {}, brain: { facts: forge.business.brain.facts, qa: [], agent: a, lane: a.lane }, order_id, forge_stage: 'queued' }, true);
+    const spec_id = spec?.[0]?.id;
+    if (spec_id) await insert('build_jobs', { order_id, spec_id, stage: 'compile', attempt: 1, status: 'queued', log: [] });
+  }
+  await patch('build_orders', `id=eq.${order_id}`, { status: 'building' });
+  // 4. the Shelf: which APIs these teammates need that you don't own yet (this emails you once)
+  const needs = await rows('rpc/forge_file_needs', { method: 'POST', body: JSON.stringify({ p_order: order_id }) }).catch(() => 0);
+  await insert('events', { kind: 'intake', domain: domain || null, detail: { ip, order: order_id, code, source, agents: agents.length, needs } });
+  return json({ ok: true, orderId: order_id, code, agents: agents.length, needs });
 }
 
 async function routeRun() {
@@ -181,10 +273,11 @@ Deno.serve(async (req) => {
   const path = u.pathname.replace(/^\/pip-forge/, '');
   try {
     if (path === '/order' && req.method === 'POST') return await routeOrder(req);
+    if (path === '/intake' && req.method === 'POST') return await routeIntake(req);
     if (path === '/run' && req.method === 'POST') return await routeRun();
     if (path === '/console') return await routeConsole(req, u);
     if (path.startsWith('/box/')) return await routeBox(req, u);
-    return json({ ok: false, error: 'routes: POST /order, POST /run, GET /console?token=, /box/*' }, 404);
+    return json({ ok: false, error: 'routes: POST /order, POST /intake, POST /run, GET /console?token=, /box/*' }, 404);
   } catch (e) {
     return json({ ok: false, error: String(e).slice(0, 300) }, 500);
   }

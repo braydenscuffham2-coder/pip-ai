@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Call your AI teammate · Pip</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Kalam&display=swap" rel="stylesheet">
+<style>
+/* A demo call with one of Pip's AI teammates. One loud thing: the voice ring. Everything else is quiet.
+   The teammate's note is a classic phone-message slip that fills itself in while you talk. */
+:root{
+  --stage:#141c33; --stage-2:#1c2644; --line:rgba(237,240,247,.12);
+  --moon:#edf0f7; --haze:#a2abc6; --you:#8ad1c6; --mate:#f0a36e;
+  --slip:#f7e1d9; --slip-rule:#c65f55; --ink:#26387a; --ok:#7fd3a8;
+  --serif:"Instrument Serif",Georgia,serif; --sans:"Geist",system-ui,-apple-system,"Segoe UI",sans-serif; --hand:"Kalam","Bradley Hand",cursive;
+  --gut:max(16px, env(safe-area-inset-left));
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--stage);color:var(--moon);font:400 16px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+body{min-height:100dvh;background:radial-gradient(120% 900px at 30% 0%, color-mix(in oklab,var(--mate) 14%,var(--stage)) 0%, var(--stage) 60%) no-repeat}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--moon);outline-offset:3px;border-radius:10px}
+[hidden]{display:none!important}
+
+.top{display:flex;align-items:center;gap:14px;padding:18px var(--gut) 0;max-width:1180px;margin:0 auto}
+.biz{display:flex;align-items:center;gap:10px;min-width:0}
+.mark{width:34px;height:34px;flex:none;border-radius:10px;display:grid;place-items:center;background:var(--accent,#c2410c);color:#fff;font:400 15px var(--serif)}
+.biz b{font:500 15px var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tag{margin:0 0 0 auto;font-size:13px;color:var(--haze);white-space:nowrap}
+.clock{display:flex;align-items:center;gap:8px;font:500 14px var(--sans);font-variant-numeric:tabular-nums;color:var(--moon)}
+.clock svg{width:22px;height:22px;transform:rotate(-90deg)}
+.clock circle{fill:none;stroke-width:3}
+.clock .bg{stroke:var(--line)} .clock .fg{stroke:var(--mate);stroke-linecap:round;transition:stroke-dashoffset 1s linear}
+
+.call{max-width:1180px;margin:0 auto;padding:12px var(--gut) 40px;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);gap:clamp(24px,4vw,64px);align-items:start}
+.presence{display:flex;flex-direction:column;align-items:center;text-align:center;padding-top:clamp(8px,3vh,40px)}
+
+/* the voice ring: June's voice blooms outward in her color, yours glows inside in yours */
+.ring{position:relative;width:min(400px,78vw);aspect-ratio:1;display:grid;place-items:center;transition:width .6s cubic-bezier(.2,.8,.2,1)}
+[data-state=ready] .ring{width:min(300px,62vw)}
+.ring canvas{position:absolute;inset:0;width:100%;height:100%}
+.av{position:relative;width:38%;aspect-ratio:1;border-radius:50%;display:grid;place-items:center;font:400 clamp(56px,9vw,104px)/1 var(--serif);color:var(--stage);background:radial-gradient(circle at 35% 30%, color-mix(in oklab,var(--mate) 55%,#fff), var(--mate) 70%);box-shadow:0 0 0 1px rgba(255,255,255,.15), 0 30px 80px -20px color-mix(in oklab,var(--mate) 70%,transparent)}
+.av i{position:absolute;right:2%;bottom:6%;font:600 13px/1 var(--sans);font-style:normal;letter-spacing:.04em;padding:5px 8px;border-radius:999px;background:var(--moon);color:var(--stage)}
+
+.who{margin:6px 0 0;font:400 clamp(48px,6vw,76px)/1 var(--serif);letter-spacing:-.01em}
+.role{margin:6px 0 0;color:var(--haze);font-size:15px}
+.status{margin:14px 0 0;min-height:24px;font:500 14px var(--sans);color:var(--haze);display:flex;align-items:center;gap:8px}
+.status::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--haze);opacity:.6}
+[data-state=live] .status::before{background:var(--ok);opacity:1;box-shadow:0 0 0 4px color-mix(in oklab,var(--ok) 25%,transparent)}
+[data-mode=speaking] .status::before{background:var(--mate);box-shadow:0 0 0 4px color-mix(in oklab,var(--mate) 25%,transparent)}
+
+.captions{width:min(620px,100%);margin-top:18px;min-height:132px}
+.captions .heard{margin:0 0 8px;font-size:15px;color:var(--you)}
+.captions .heard:empty{display:none}
+.captions .said{margin:0;font:400 clamp(24px,2.6vw,32px)/1.25 var(--serif);text-wrap:pretty}
+
+.ready{width:min(560px,100%);margin-top:18px}
+.lede{margin:0;font:400 clamp(22px,2.4vw,28px)/1.3 var(--serif);text-wrap:pretty}
+.try{list-style:none;margin:18px 0 0;padding:0;display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
+.try li{padding:8px 13px;border-radius:999px;border:1px solid var(--line);font-size:14px;color:var(--haze)}
+
+.controls{display:flex;gap:12px;justify-content:center;margin-top:26px}
+.btn{appearance:none;border:0;cursor:pointer;border-radius:999px;height:56px;padding:0 28px;font:600 16px var(--sans);display:inline-flex;align-items:center;gap:10px;transition:transform .15s ease, background .2s}
+.btn:active{transform:scale(.97)}
+.go{background:var(--moon);color:var(--stage)}
+.go svg,.end svg{width:20px;height:20px}
+.end{background:#e5534b;color:#fff}
+.ghost{background:transparent;border:1px solid var(--line);color:var(--moon)}
+.ghost[aria-pressed=true]{background:var(--moon);color:var(--stage)}
+.fine{margin:18px 0 0;font-size:13px;color:var(--haze);max-width:46ch}
+.err{margin:18px 0 0;padding:12px 16px;border-radius:14px;background:rgba(229,83,75,.14);border:1px solid rgba(229,83,75,.4);color:#ffd8d4;font-size:15px;max-width:52ch;text-align:left}
+
+/* the teammate's note: a phone-message slip, printed in red, filled in blue ballpoint */
+.desk{display:flex;flex-direction:column;gap:18px;position:sticky;top:18px}
+.slip{background:var(--slip);color:var(--ink);border-radius:6px 6px 10px 10px;padding:20px 22px 22px;box-shadow:0 1px 0 rgba(255,255,255,.5) inset, 0 30px 60px -30px rgba(0,0,0,.7);transform:rotate(-.6deg);position:relative;font-family:var(--sans)}
+.slip::before{content:"";position:absolute;left:0;right:0;top:0;height:8px;border-radius:6px 6px 0 0;background:repeating-linear-gradient(90deg,rgba(0,0,0,.08) 0 2px,transparent 2px 6px)}
+.slip h2{margin:0 0 12px;font:italic 400 28px/1 var(--serif);color:var(--slip-rule)}
+.f{display:grid;grid-template-columns:76px minmax(0,1fr);align-items:end;gap:8px;min-height:34px;border-bottom:1px solid color-mix(in oklab,var(--slip-rule) 55%,transparent)}
+.f > span{font:500 12.5px/1.2 var(--sans);color:var(--slip-rule);padding-bottom:6px}
+.f > b{font:400 21px/1.3 var(--hand);color:var(--ink);padding-bottom:2px;min-height:28px;overflow-wrap:anywhere}
+.f > b.w{animation:write .7s steps(18,end) both}
+@keyframes write{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+.checks{display:flex;flex-wrap:wrap;gap:8px 18px;margin:14px 0 6px}
+.checks label{display:flex;align-items:center;gap:7px;font:500 13px var(--sans);color:var(--slip-rule)}
+.box{width:17px;height:17px;border:1.5px solid var(--slip-rule);border-radius:3px;position:relative;flex:none}
+.box.on::after{content:"✓";position:absolute;left:1px;top:-9px;font:400 24px/1 var(--hand);color:var(--ink)}
+.msg{margin-top:8px}
+.msg > span{display:block;font:500 12.5px var(--sans);color:var(--slip-rule)}
+.msg p{margin:2px 0 0;min-height:96px;font:400 20px/32px var(--hand);background:repeating-linear-gradient(transparent 0 31px,color-mix(in oklab,var(--slip-rule) 45%,transparent) 31px 32px)}
+.sign{display:flex;justify-content:space-between;align-items:end;margin-top:10px;font:500 12.5px var(--sans);color:var(--slip-rule)}
+.sign b{font:400 22px var(--hand);color:var(--ink)}
+.stamp{position:absolute;right:20px;top:18px;transform:rotate(-12deg);border:2.5px solid #2f8a5b;color:#2f8a5b;border-radius:8px;padding:5px 10px;font:600 14px var(--sans);letter-spacing:.02em;opacity:.85;animation:stamp .35s cubic-bezier(.2,1.6,.4,1) both}
+@keyframes stamp{from{transform:rotate(-12deg) scale(1.8);opacity:0}}
+.extra{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.extra li{font:400 18px/1.35 var(--hand);color:var(--ink)}
+.extra li::before{content:"+ ";color:var(--slip-rule)}
+.real{margin:0;font-size:13.5px;color:var(--haze)}
+
+.did h3{margin:0 0 10px;font:600 14px var(--sans);color:var(--moon)}
+.did ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.did li{display:grid;grid-template-columns:22px minmax(0,1fr);gap:10px;align-items:start;padding:7px 0;font-size:14.5px;color:var(--haze);border-top:1px solid var(--line)}
+.did li i{width:18px;height:18px;margin-top:2px;border-radius:50%;border:1.5px dashed color-mix(in oklab,var(--haze) 60%,transparent)}
+.did li.on{color:var(--moon)}
+.did li.on i{border:0;background:var(--ok);position:relative;animation:pop .4s cubic-bezier(.2,1.6,.4,1)}
+.did li.on i::after{content:"";position:absolute;left:6px;top:3px;width:5px;height:9px;border:solid var(--stage);border-width:0 2px 2px 0;transform:rotate(45deg)}
+@keyframes pop{from{transform:scale(0)}}
+
+.toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:5;padding:9px 16px;border-radius:999px;background:var(--slip);color:var(--ink);font:400 18px var(--hand);box-shadow:0 12px 30px -10px rgba(0,0,0,.6);animation:toast 2.4s ease both;pointer-events:none;white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
+@keyframes toast{0%{opacity:0;transform:translate(-50%,-8px)}12%,82%{opacity:1;transform:translate(-50%,0)}100%{opacity:0}}
+
+.after{margin-top:22px;display:flex;flex-direction:column;align-items:center;gap:14px}
+.stats{display:flex;flex-wrap:wrap;justify-content:center;gap:10px}
+.stats span{padding:8px 14px;border-radius:12px;background:var(--stage-2);font-size:14px;color:var(--haze)}
+.stats b{color:var(--moon);font-weight:600}
+
+[data-state=ready] .captions,[data-state=connecting] .captions{display:none}
+[data-state=live] .ready,[data-state=ended] .ready,[data-state=connecting] .ready,[data-state=live] .try,[data-state=ended] .try,[data-state=connecting] .try{display:none}
+
+@media (max-width: 860px){
+  .call{grid-template-columns:1fr;padding-bottom:120px}
+  .tag{display:none}
+  .ring{width:min(300px,72vw)}
+  .desk{position:static}
+  .controls{position:fixed;left:0;right:0;bottom:0;z-index:4;margin:0;padding:14px var(--gut) max(14px,env(safe-area-inset-bottom));background:var(--stage);box-shadow:0 -20px 24px -4px var(--stage)}
+  .controls .btn{flex:1;justify-content:center;max-width:340px}
+  .captions{min-height:96px}
+}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="stage" id="app" data-state="ready">
+  <header class="top">
+    <div class="biz"><span class="mark" id="mark">P</span><b id="biz">Your business</b></div>
+    <p class="tag">A demo call with an AI teammate</p>
+    <div class="clock" id="clock" hidden aria-label="Time left on this call">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="bg" cx="12" cy="12" r="9"/><circle class="fg" id="arc" cx="12" cy="12" r="9" stroke-dasharray="56.55" stroke-dashoffset="0"/></svg>
+      <span id="left">3:00</span>
+    </div>
+  </header>
+
+  <main class="call">
+    <section class="presence">
+      <div class="ring" aria-hidden="true"><canvas id="viz"></canvas><span class="av" id="av">J<i>AI</i></span></div>
+      <h1 class="who" id="who">June</h1>
+      <p class="role" id="role">AI teammate</p>
+      <p class="status" id="status" aria-live="polite">Ready when you are</p>
+
+      <div class="ready">
+        <p class="lede" id="lede">You're the customer. Talk out loud, the way you would on a real call.</p>
+      </div>
+
+      <div class="captions" aria-live="polite">
+        <p class="heard" id="heard"></p>
+        <p class="said" id="said"></p>
+      </div>
+
+      <div class="controls">
+        <button class="btn go" id="go" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg><span id="goLabel">Call June</span></button>
+        <button class="btn ghost" id="mute" type="button" aria-pressed="false" hidden>Mute</button>
+        <button class="btn end" id="end" type="button" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>End call</button>
+      </div>
+      <ul class="try" id="try" aria-label="Things to try"></ul>
+      <p class="err" id="err" role="alert" hidden></p>
+      <p class="fine" id="fine">June is an AI. The call lasts up to 3 minutes and uses your microphone. Nothing is texted, booked or charged.</p>
+
+      <div class="after" id="after" hidden>
+        <div class="stats" id="stats"></div>
+        <div class="controls" style="position:static;background:none;padding:0;margin:0">
+          <button class="btn go" id="again" type="button">Call again</button>
+          <button class="btn ghost" id="close" type="button">Back to Pip</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="desk">
+      <article class="slip" aria-label="The note your teammate is writing">
+        <h2>While you were out</h2>
+        <div class="f"><span>For</span><b id="s-for"></b></div>
+        <div class="f"><span>Time</span><b id="s-time"></b></div>
+        <div class="f"><span>From</span><b id="s-name"></b></div>
+        <div class="f"><span>Where</span><b id="s-place"></b></div>
+        <div class="f"><span>Phone</span><b id="s-phone"></b></div>
+        <div class="f"><span>About</span><b id="s-need"></b></div>
+        <div class="checks">
+          <label><span class="box" id="c-called"></span>Called</label>
+          <label><span class="box" id="c-back"></span>Please call back</label>
+          <label><span class="box" id="c-urgent"></span>Urgent</label>
+        </div>
+        <div class="msg"><span>Message</span><p id="s-msg"></p></div>
+        <ul class="extra" id="extra"></ul>
+        <div class="sign"><span>Taken by</span><b id="s-by">June (AI)</b></div>
+      </article>
+      <p class="real" id="real"></p>
+      <section class="did" aria-label="What your teammate did on this call">
+        <h3 id="didH">What June did on this call</h3>
+        <ul id="did"></ul>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.27.0/dist/lib.iife.min.js"></script>
+<script>
+(() => {
+  const TOKEN_URL = "/api/voice-token";
+  const $ = id => document.getElementById(id);
+  const app = $("app");
+
+  // ---------- who is on the line (sent by Pip in the #hash; a sample if opened directly) ----------
+  const SAMPLE = {
+    v: 1, biz: "Goodson Plumbing", short: "Goodson", accent: "#c2410c",
+    mate: { name: "June", role: "Night front desk", voice: "f", handoff: "Your on-call plumber" },
+    scene: "It's 11:40 PM and your boiler just started banging. Call Goodson Plumbing.",
+    tries: ["Do you work on boilers? Ours started banging tonight.", "What will it cost?"],
+    persona: "You are June, the AI front desk for Goodson Plumbing Services in Boise, Idaho, a family-owned plumber since 1997 serving the Treasure Valley (Boise, Meridian, Nampa, Caldwell, Eagle and Star). Services: water heaters (tank and tankless), drain and sewer cleaning, leak detection, repiping, gas lines, boilers, radiators and radiant floors, water softeners and filtration, and fixture repair. Open 24/7 for emergencies, rapid no-obligation estimates, all work warrantied, financing, military and veteran discounts. Phone (208) 629-4278. Never quote prices: it depends on what the plumber finds. Offer a call from the on-call plumber and take the best number. If someone smells gas, tell them to leave the home now and call 911 or the gas company from outside.",
+    facts: ""
+  };
+  function readPayload() {
+    try {
+      const h = location.hash.slice(1);
+      if (!h) return null;
+      const b = atob(h.replace(/-/g, "+").replace(/_/g, "/"));
+      const p = JSON.parse(new TextDecoder().decode(Uint8Array.from(b, c => c.charCodeAt(0))));
+      return p && p.mate && p.mate.name ? p : null;
+    } catch { return null; }
+  }
+  const P = readPayload() || SAMPLE;
+  const M = P.mate, NAME = String(M.name).slice(0, 14), SHORT = String(P.short || P.biz).slice(0, 40);
+  const ROLE = String(M.role || "Assistant"), roleLow = ROLE.charAt(0).toLowerCase() + ROLE.slice(1);
+  const poss = s => /s$/i.test(s) ? s + "'" : s + "'s";
+  const HANDOFF = M.handoff || "Your team";
+
+  // ---------- color: the teammate's voice in the business's own color ----------
+  const hex = /^#[0-9a-f]{6}$/i.test(P.accent || "") ? P.accent : "#c2410c";
+  const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const mix = (a, b, t) => a.map((x, i) => Math.round(x + (b[i] - x) * t));
+  // lift the brand color toward light so it glows on the evening-blue stage
+  const lum = c => (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+  let mc = rgb(hex); while (lum(mc) < 0.5) mc = mix(mc, [255, 255, 255], 0.18);
+  const MATE = `rgb(${mc.join(",")})`, YOU = "rgb(138,209,198)";
+  document.documentElement.style.setProperty("--mate", MATE);
+  document.documentElement.style.setProperty("--accent", hex);
+
+  // ---------- fill the page ----------
+  document.title = `Call ${NAME} · ${P.biz}`;
+  $("biz").textContent = P.biz;
+  $("mark").textContent = P.biz.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+  $("av").firstChild.textContent = NAME.charAt(0);
+  $("who").textContent = NAME;
+  $("role").textContent = `${poss(SHORT)} AI ${roleLow}`;
+  $("goLabel").textContent = `Call ${NAME}`;
+  $("lede").textContent = P.scene || `You're a ${P.biz} customer. Talk to ${NAME} out loud, the way you would on a real call.`;
+  const tries = [...(P.tries || []).slice(0, 2).map(t => `“${t}”`), `Cut in while ${NAME}'s talking`, "Try Spanish"];
+  $("try").innerHTML = ""; tries.forEach(t => { const li = document.createElement("li"); li.textContent = t; $("try").appendChild(li); });
+  $("fine").textContent = `${NAME} is an AI. The call lasts up to 3 minutes and uses your microphone. Nothing is texted, booked or charged.`;
+  $("didH").textContent = `What ${NAME} did on this call`;
+  $("s-by").textContent = `${NAME} (AI)`;
+  $("real").textContent = `In real life, ${NAME} hands this note to ${HANDOFF.charAt(0).toLowerCase() + HANDOFF.slice(1)}. This demo doesn't send it anywhere.`;
+
+  const DID = [
+    ["ai", `Says it's an AI, first thing`],
+    ["fast", "Picks up instantly"],
+    ["cut", `Cut in while ${NAME}'s talking`],
+    ["lang", "Switch languages"],
+    ["caught", "Catches every detail"],
+    ["handoff", "Writes the handoff"],
+  ];
+  const didEl = {};
+  DID.forEach(([k, t]) => { const li = document.createElement("li"); li.innerHTML = "<i></i><span></span>"; li.lastChild.textContent = t; $("did").appendChild(li); didEl[k] = li; });
+  function did(k, text) { const li = didEl[k]; if (!li) return; if (text) li.lastChild.textContent = text; li.classList.add("on"); }
+
+  // ---------- the slip ----------
+  const slipField = { name: "s-name", callback: "s-phone", need: "s-need", place: "s-place" };
+  function write(id, text) { const b = $(id); if (!text || b.textContent === text) return; b.textContent = text; b.classList.remove("w"); void b.offsetWidth; b.classList.add("w"); }
+  function resetSlip() {
+    ["s-name", "s-phone", "s-need", "s-place", "s-time"].forEach(id => { $(id).textContent = ""; $(id).classList.remove("w"); });
+    $("s-msg").textContent = ""; $("extra").innerHTML = "";
+    ["c-called", "c-back", "c-urgent"].forEach(id => $(id).classList.remove("on"));
+    document.querySelector(".stamp")?.remove();
+    write("s-for", HANDOFF);
+    Object.values(didEl).forEach(li => li.classList.remove("on"));
+    DID.forEach(([k, t]) => { didEl[k].lastChild.textContent = t; });
+  }
+  let caught = 0;
+  function toast(t) { const d = document.createElement("div"); d.className = "toast"; d.textContent = t; document.body.appendChild(d); setTimeout(() => d.remove(), 2500); }
+  function note(p) {
+    const kind = String(p?.kind || "").toLowerCase(), label = String(p?.label || "").slice(0, 60), value = String(p?.value || "").slice(0, 80);
+    if (!label && !value) return "ok";
+    caught++;
+    if (slipField[kind]) write(slipField[kind], kind === "callback" ? (value || label) : (value && kind !== "need" ? `${label}, ${value}` : label));
+    else if (kind === "urgency") { write("s-need", $("s-need").textContent || label); if (/urgent|emergenc|tonight|today|now|asap/i.test(label + value)) $("c-urgent").classList.add("on"); addExtra(value ? `${label}: ${value}` : label); }
+    else addExtra(value ? `${label}: ${value}` : label);
+    if (kind === "callback") $("c-back").classList.add("on");
+    did("caught", `Caught ${caught} detail${caught === 1 ? "" : "s"} while you talked`);
+    if (matchMedia("(max-width: 860px)").matches) toast(`✓ ${label}`);
+    return "ok";
+  }
+  function addExtra(t) { if ([...$("extra").children].some(li => li.textContent === t)) return; const li = document.createElement("li"); li.textContent = t; $("extra").appendChild(li); }
+  let handed = false;
+  function handoff(p) {
+    handed = true;
+    if (p?.caller_name) write("s-name", String(p.caller_name).slice(0, 40));
+    if (p?.callback) { write("s-phone", String(p.callback).slice(0, 30)); $("c-back").classList.add("on"); }
+    if (/emergenc|today|tonight|urgent/i.test(p?.urgency || "")) $("c-urgent").classList.add("on");
+    if (/call/i.test(p?.next_step || "")) $("c-back").classList.add("on");
+    $("s-msg").textContent = [p?.summary, p?.next_step].filter(Boolean).join(" ").slice(0, 280);
+    if (!document.querySelector(".stamp")) { const s = document.createElement("span"); s.className = "stamp"; s.textContent = "Ready to hand off"; document.querySelector(".slip").appendChild(s); }
+    did("handoff", `Wrote the handoff for ${HANDOFF.charAt(0).toLowerCase() + HANDOFF.slice(1)}`);
+    return "ok";
+  }
+
+  // ---------- what the teammate is told (the base agent adds nothing else) ----------
+  const SYSTEM = `${P.persona || ""}
+
+${P.facts ? `BUSINESS FACTS\n${P.facts}\n\n` : ""}THIS IS A LIVE VOICE CALL
+You are ${NAME}, ${poss(P.biz)} AI ${roleLow}. You are speaking out loud on a phone call.
+- Sound like a warm, capable person at the front desk: short natural sentences, contractions, one question at a time. No lists, no markdown, no emojis.
+- Acknowledge what the caller is dealing with in a few words, then help. Never open a reply with "No".
+- Your first message already said you're an AI. If anyone asks whether you're a person, say plainly that you're an AI, and offer to have someone on the team call them.
+- Use the caller's first name once you know it. Read numbers back in small groups to confirm them.
+- Never guess prices, insurance, diagnoses or exact availability. Say a team member will confirm, and offer a callback.
+- If the caller speaks another language, switch to it right away.
+- Each time you learn or confirm a useful detail (their name, what they need, where they are, how urgent, best number, when suits them, or a business fact you confirmed), call the note tool with one detail. Never mention the tool or that you're taking notes.
+- When the caller has what they need, call the handoff tool once with what ${HANDOFF.toLowerCase()} should receive, then say a warm goodbye and end the call.
+- The person may be the business owner trying you out. Stay fully in role as if they're a real customer.
+- Calls end after three minutes, so keep things moving.`;
+  const FIRST = P.first || `Thanks for calling ${SHORT}. This is ${NAME}, the AI ${roleLow}. How can I help?`;
+
+  // ---------- the voice ring ----------
+  const cv = $("viz"), cx = cv.getContext("2d");
+  let conv = null, state = "ready", mode = "listening";
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function size() { const r = cv.getBoundingClientRect(), d = Math.min(2, devicePixelRatio || 1); cv.width = r.width * d; cv.height = r.height * d; }
+  addEventListener("resize", size); size();
+  const BARS = 96; const smooth = new Float32Array(BARS);
+  let inLvl = 0;
+  function draw(t) {
+    const W = cv.width, H = cv.height, c = W / 2, R = W * 0.215, maxLen = W * 0.25;
+    cx.clearRect(0, 0, W, H);
+    let out = null;
+    try { if (conv && state === "live") { out = conv.getOutputByteFrequencyData(); inLvl += ((conv.getInputVolume?.() || 0) - inLvl) * 0.25; } } catch { }
+    // caller's voice: a soft inner halo in their color
+    const halo = state === "live" ? Math.min(1, inLvl * 3) : 0;
+    if (halo > 0.02) { const g = cx.createRadialGradient(c, c, R * 0.9, c, c, R * 1.35); g.addColorStop(0, `rgba(138,209,198,${0.55 * halo})`); g.addColorStop(1, "rgba(138,209,198,0)"); cx.fillStyle = g; cx.beginPath(); cx.arc(c, c, R * 1.35, 0, Math.PI * 2); cx.fill(); }
+    // teammate's voice: bars bloom outward, mirrored so the ring stays balanced
+    for (let i = 0; i < BARS; i++) {
+      const k = i < BARS / 2 ? i : BARS - 1 - i;
+      let v = 0;
+      if (out && out.length) { const idx = Math.floor(2 + (k / (BARS / 2)) * (out.length * 0.45)); v = out[idx] / 255; }
+      const idle = still ? 0.08 : 0.06 + 0.05 * Math.sin(t / 900 + i * 0.26) * (state === "connecting" ? 2.4 : 1);
+      smooth[i] += (Math.max(v * 1.15, idle) - smooth[i]) * 0.3;
+      const a = (i / BARS) * Math.PI * 2 - Math.PI / 2, len = 6 + smooth[i] * maxLen;
+      const x1 = c + Math.cos(a) * (R + 10), y1 = c + Math.sin(a) * (R + 10), x2 = c + Math.cos(a) * (R + 10 + len), y2 = c + Math.sin(a) * (R + 10 + len);
+      cx.strokeStyle = MATE; cx.globalAlpha = 0.35 + smooth[i] * 0.65; cx.lineWidth = Math.max(2, W / 170); cx.lineCap = "round";
+      cx.beginPath(); cx.moveTo(x1, y1); cx.lineTo(x2, y2); cx.stroke();
+    }
+    cx.globalAlpha = 1;
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+
+  // ---------- call flow ----------
+  let t0 = 0, firstHeard = false, timer = 0, maxS = 180, startedAt = 0, ended = false;
+  const setState = s => { state = s; app.dataset.state = s; };
+  const status = t => { $("status").textContent = t; };
+  function fail(code) {
+    const m = {
+      mic: `Your microphone is blocked. Allow it from the icon in your browser's address bar, then press Call ${NAME} again.`,
+      daily_cap: `${NAME}'s demo line has taken all its calls for today. It opens again tomorrow.`,
+      monthly_cap: `${NAME}'s demo line is out of minutes for this month. Send us your plan and we'll set up a live demo.`,
+      out_of_minutes: `${NAME}'s demo line is out of minutes for this month. Send us your plan and we'll set up a live demo.`,
+      sdk: "The call couldn't load in this browser. Try the latest Chrome, Edge or Safari.",
+      dropped: "The call dropped. Check your internet connection and call again.",
+    }[code] || "The call couldn't connect. Check your internet connection and try again.";
+    $("err").textContent = m; $("err").hidden = false;
+    stopTimer(); conv = null;
+    setState("ready"); status("Not connected"); $("go").hidden = false; $("end").hidden = true; $("mute").hidden = true; $("goLabel").textContent = `Call ${NAME}`;
+  }
+  async function start() {
+    $("err").hidden = true; $("after").hidden = true; $("fine").hidden = false;
+    if (!window.ElevenLabsClient?.Conversation) return fail("sdk");
+    resetSlip(); caught = 0; handed = false; firstHeard = false; ended = false;
+    $("said").textContent = ""; $("heard").textContent = "";
+    setState("connecting"); status(`Getting ${NAME} on the line`); $("go").hidden = true;
+    try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); s.getTracks().forEach(x => x.stop()); }
+    catch { return fail("mic"); }
+    let tk;
+    try {
+      const r = await fetch(TOKEN_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ biz: P.biz, mate: NAME }) });
+      tk = await r.json().catch(() => ({}));
+      if (!r.ok || !tk.token) return fail(tk.error || "unavailable");
+    } catch { return fail("network"); }
+    maxS = tk.maxSeconds || 180;
+    t0 = performance.now();
+    try {
+      conv = await ElevenLabsClient.Conversation.startSession({
+        conversationToken: tk.token,
+        connectionType: "webrtc",
+        overrides: {
+          agent: { prompt: { prompt: SYSTEM }, firstMessage: FIRST, language: "en" },
+          tts: { voiceId: (tk.voices || {})[M.voice === "m" ? "m" : "f"] },
+        },
+        clientTools: { note, handoff },
+        onConnect: () => { setState("live"); status("Connected"); write("s-time", new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })); $("c-called").classList.add("on"); startTimer(); $("end").hidden = false; $("mute").hidden = false; },
+        onModeChange: ({ mode: m }) => { mode = m; app.dataset.mode = m; if (state === "live") status(m === "speaking" ? `${NAME} is talking` : "Listening"); },
+        onMessage: msg => {
+          const who = msg.role || (msg.source === "ai" ? "agent" : "user");
+          const text = String(msg.message || "").trim(); if (!text) return;
+          if (who === "agent") {
+            $("said").textContent = text;
+            if (!firstHeard) { firstHeard = true; did("fast", `Picked up in ${((performance.now() - t0) / 1000).toFixed(1)} seconds`); if (/\bA\.?I\b|artificial/i.test(text)) did("ai", "Said it's an AI, first thing"); }
+            if (/[¿¡ñáéíóú]|\b(hola|gracias|usted)\b/i.test(text)) did("lang", "Switched to Spanish when you did");
+          } else $("heard").textContent = `You: ${text}`;
+        },
+        onInterruption: () => did("cut", "Stopped and listened when you cut in"),
+        onAgentToolResponse: r => { const n = String(r?.tool_name || r?.tool_type || ""); if (/language/i.test(n)) did("lang", "Switched languages when you did"); },
+        onError: () => { },
+        onDisconnect: d => finish(d && d.reason === "error" ? "dropped" : null),
+      });
+    } catch (e) { conv = null; return fail(/permission|notallowed/i.test(String(e)) ? "mic" : "network"); }
+  }
+  function startTimer() {
+    startedAt = Date.now(); $("clock").hidden = false; tick();
+    timer = setInterval(tick, 1000);
+  }
+  function stopTimer() { clearInterval(timer); timer = 0; }
+  function tick() {
+    const used = (Date.now() - startedAt) / 1000, left = Math.max(0, maxS - used);
+    $("left").textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")}`;
+    $("arc").setAttribute("stroke-dashoffset", String(56.55 * (used / maxS)));
+    if (left <= 0) hangUp();
+  }
+  async function hangUp() { try { await conv?.endSession(); } catch { } finish(null); }
+  function finish(err) {
+    if (ended) return; ended = true;
+    const secs = startedAt ? Math.round((Date.now() - startedAt) / 1000) : 0;
+    stopTimer(); conv = null; app.dataset.mode = "";
+    if (err && !firstHeard) return fail(err);
+    setState("ended"); status("Call ended"); $("clock").hidden = true;
+    $("end").hidden = true; $("mute").hidden = true; $("fine").hidden = true; $("go").hidden = true;
+    if (!handed && !$("s-msg").textContent) $("s-msg").textContent = caught ? `Call ended before ${NAME} wrapped up. Details so far are above.` : "";
+    const fast = didEl.fast.classList.contains("on") ? didEl.fast.lastChild.textContent.replace("Picked up in ", "") : null;
+    $("stats").innerHTML = "";
+    [[`${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`, "on the call"], fast && [fast, "to pick up"], [String(caught), caught === 1 ? "detail caught" : "details caught"]]
+      .filter(Boolean).forEach(([b, s]) => { const e = document.createElement("span"); e.innerHTML = "<b></b> "; e.firstChild.textContent = b; e.append(s); $("stats").appendChild(e); });
+    $("after").hidden = false;
+  }
+
+  $("go").onclick = start;
+  $("again").onclick = start;
+  $("end").onclick = hangUp;
+  $("mute").onclick = () => { const on = $("mute").getAttribute("aria-pressed") !== "true"; $("mute").setAttribute("aria-pressed", String(on)); $("mute").textContent = on ? "Unmute" : "Mute"; try { conv?.setMicMuted(on); } catch { } };
+  $("close").onclick = () => { window.close(); setTimeout(() => { $("close").textContent = "You can close this tab"; $("close").disabled = true; }, 300); };
+  addEventListener("pagehide", () => { try { conv?.endSession(); } catch { } });
+  resetSlip();
+})();
+</script>
+</body>
+</html>

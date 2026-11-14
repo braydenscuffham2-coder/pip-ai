@@ -11,11 +11,13 @@ const MONTHLY_CAP = 25; // Starter plan: 75 minutes = 25 three-minute calls
 const VOICES = { f: "EXAVITQu4vr4xnSDxMaL", m: "cjVigY5qzO86Huf0OWal" };
 const MAX_SECONDS = 180;
 
-const ORIGIN_OK = (o: string) => /^https:\/\/[a-z0-9-]+\.lovable\.app$/.test(o) || /^https:\/\/[a-z0-9-]+\.lovableproject\.com$/.test(o) || /^http:\/\/localhost(:\d+)?$/.test(o);
+// Pip's own call page lives on Pip's Vercel site (pip-ai and its previews). The old Lovable page stays allowed
+// until it is unpublished, so links already sent keep working.
+const ORIGIN_OK = (o: string) => /^https:\/\/pip-ai[a-z0-9-]*\.vercel\.app$/.test(o) || /^https:\/\/[a-z0-9-]+\.lovable\.app$/.test(o) || /^https:\/\/[a-z0-9-]+\.lovableproject\.com$/.test(o) || /^http:\/\/localhost(:\d+)?$/.test(o);
 function cors(req: Request) {
   const o = req.headers.get("origin") ?? "";
   return {
-    "access-control-allow-origin": ORIGIN_OK(o) ? o : "https://pip-plan.lovable.app",
+    "access-control-allow-origin": ORIGIN_OK(o) ? o : "https://pip-ai-drab.vercel.app",
     "access-control-allow-methods": "POST, OPTIONS",
     "access-control-allow-headers": "content-type",
     "vary": "origin",

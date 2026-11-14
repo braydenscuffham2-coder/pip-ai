@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Send your plan · Pip</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Instrument+Serif&display=swap">
+<style>
+/* Pip's own order page: the customer's plan on the left, three questions on the right.
+   Tinted by the business's own brand color when Pip passes one (--accent).
+   When Pip's "Lock it in" already collected the details, it sends on arrival.
+   The order goes to Pip's intake through this site's /api/order, which files it for the Forge and returns its code. */
+:root{
+  --bg:#f6f4ef; --paper:#fdfcf9; --sunk:#f1efe9;
+  --ink:#16140f; --ink-2:#47433b; --ink-3:#6b665b;
+  --rule:rgba(22,20,15,.10); --rule-2:rgba(22,20,15,.18);
+  --accent:#4b44c8; --accent-ink:#3a33a8; --ok:#1d7a4f; --bad:#b23a1c;
+  --display:"Instrument Serif","Iowan Old Style",Georgia,serif;
+  --body:"Geist",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{min-height:100vh;background:var(--bg);color:var(--ink);font:400 16px/1.5 var(--body);-webkit-font-smoothing:antialiased;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:max(20px,env(safe-area-inset-top,0px)) 40px}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+header{display:flex;align-items:center;gap:10px}
+.orb{width:28px;height:28px;border-radius:50%;flex:none;background:radial-gradient(circle at 32% 28%,#fff 0 12%,transparent 32%),radial-gradient(circle at 72% 76%,#5eead9,transparent 62%),radial-gradient(circle at 28% 72%,#9b86ff,transparent 66%),#cfc3ff;box-shadow:0 4px 12px rgba(120,100,240,.35)}
+header b{font:400 21px/1 var(--display)}
+header span{font:500 13px var(--body);color:var(--ink-3);margin-left:4px}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:20px;align-items:start}
+.card{background:var(--paper);border-radius:22px;box-shadow:0 0 0 1px var(--rule),0 24px 50px -36px rgba(22,20,15,.4);padding:clamp(20px,3vw,34px)}
+h1{margin:0;font:400 clamp(34px,1.4rem + 2vw,52px)/1.02 var(--display);letter-spacing:-.01em;text-wrap:balance}
+.lede{margin:10px 0 0;color:var(--ink-2);font-size:17px;max-width:46ch}
+.plan{display:flex;flex-direction:column;gap:16px}
+.code{margin:10px 0 0;display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:var(--sunk);font:600 14px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em}
+.code small{font:500 12px var(--body);letter-spacing:0;color:var(--ink-3)}
+.plan h2{margin:0;font:400 28px/1.1 var(--display)}
+.plan .biz{display:flex;align-items:center;gap:10px}
+.plan .biz i{width:12px;height:12px;border-radius:4px;background:var(--accent);flex:none}
+.plan .sub{margin:2px 0 0;font:500 14px var(--body);color:var(--ink-3)}
+.plan h3{margin:0 0 6px;font:600 14.5px var(--body);color:var(--ink-2)}
+.plan ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.plan li{padding:9px 0;border-bottom:1px solid var(--rule);font:500 15px/1.4 var(--body)}
+.plan li:first-child{border-top:1px solid var(--rule)}
+.plan li span{display:block;font-weight:400;font-size:14px;color:var(--ink-3)}
+.plan li.off{color:var(--ink-3);text-decoration:line-through;text-decoration-color:var(--rule-2)}
+.plan .est{margin:0;padding:12px 14px;border-radius:14px;background:var(--sunk);font:500 15px/1.45 var(--body);color:var(--ink-2)}
+.plan .est b{color:var(--ink)}
+.plan .est.old{color:var(--ink-3)}
+.empty{color:var(--ink-3);font-size:15px;margin:0}
+form{display:flex;flex-direction:column;gap:14px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.f{display:flex;flex-direction:column;gap:6px;min-width:0}
+label{font:600 14px var(--body);color:var(--ink-2)}
+label em{font-style:normal;font-weight:500;color:var(--ink-3)}
+input,select,textarea{width:100%;border-radius:12px;border:1px solid var(--rule-2);background:#fff;padding:11px 13px;font:500 16px/1.4 var(--body);color:var(--ink)}
+textarea{resize:vertical;min-height:110px}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+.hint{margin:0;font:500 13px/1.4 var(--body);color:var(--ink-3)}
+.asked{margin:0;padding:12px 14px;border-radius:12px;background:var(--sunk);font:400 14px/1.45 var(--body);color:var(--ink-2)}
+.asked b{display:block;font-weight:600;color:var(--ink);margin-bottom:4px}
+.asked ul{margin:0;padding-left:18px}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+button{appearance:none;border:0;cursor:pointer;min-height:52px;padding:0 24px;border-radius:14px;background:var(--ink);color:#fff;font:600 17px var(--body);align-self:flex-start;box-shadow:0 10px 22px -12px rgba(22,20,15,.6)}
+button:hover{filter:brightness(1.15)}
+button:disabled{opacity:.5;cursor:default;filter:none}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.err{margin:0;color:var(--bad);font:600 15px var(--body)}
+.fine{margin:0;font:500 13.5px/1.45 var(--body);color:var(--ink-3)}
+.done{display:flex;flex-direction:column;gap:12px}
+.done .check{width:44px;height:44px;border-radius:50%;background:var(--accent);display:grid;place-items:center}
+.done .check::before{content:"";width:16px;height:9px;border-left:3px solid #fff;border-bottom:3px solid #fff;rotate:-45deg;translate:0 -2px}
+.done h2{margin:0;font:400 34px/1.05 var(--display)}
+.done p{margin:0;color:var(--ink-2);font-size:16.5px;max-width:46ch}
+.sending{display:flex;flex-direction:column;gap:12px}
+.sending h2{margin:0;font:400 34px/1.05 var(--display)}
+.sending p{margin:0;color:var(--ink-2);font-size:16.5px}
+.spin{width:44px;height:44px;border-radius:50%;border:3px solid var(--rule);border-top-color:var(--accent);animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (max-width:820px){
+  .grid{grid-template-columns:minmax(0,1fr)}
+  .card.form-card{order:-1}
+  .row{grid-template-columns:minmax(0,1fr)}
+  button{width:100%}
+}
+@media (prefers-reduced-motion:no-preference){.card{animation:in .45s cubic-bezier(.16,1,.3,1) both}.card + .card{animation-delay:.06s}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+@keyframes in{from{opacity:0;transform:translateY(8px)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><span class="orb" aria-hidden="true"></span><b>Pip</b><span>AI plans for local businesses</span></header>
+  <div class="grid">
+    <section class="card form-card" id="form-card">
+      <div class="sending" id="sending-view" hidden aria-live="polite">
+        <span class="spin" aria-hidden="true"></span>
+        <h2>Sending your plan…</h2>
+        <p>Pip already has your details. This takes a second.</p>
+      </div>
+      <div id="form-view">
+        <h1 id="title">Send us your plan</h1>
+        <p class="lede" id="lede">Tell us how to reach you. We'll review your plan and get back to you with pricing and a time to set it up.</p>
+        <form id="f" novalidate style="margin-top:22px">
+          <div class="f"><label for="name">Your name</label><input id="name" autocomplete="name" maxlength="80" required></div>
+          <div class="row">
+            <div class="f"><label for="phone">Phone</label><input id="phone" type="tel" autocomplete="tel" maxlength="30"></div>
+            <div class="f"><label for="email">Email</label><input id="email" type="email" autocomplete="email" maxlength="120"></div>
+          </div>
+          <p class="hint">Phone or email is fine. One is enough.</p>
+          <div class="f">
+            <label for="best">Best time to reach you</label>
+            <select id="best">
+              <option value="">Any time</option>
+              <option>Weekday mornings</option>
+              <option>Weekday afternoons</option>
+              <option>Weekday evenings</option>
+              <option>Weekends</option>
+            </select>
+          </div>
+          <div class="f">
+            <label for="msg">Questions or concerns <em>(optional)</em></label>
+            <textarea id="msg" maxlength="2000" placeholder="Anything you want us to know before we call: what worries you, what you'd want first, how you work today."></textarea>
+          </div>
+          <div id="asked" class="asked" hidden></div>
+          <div class="hp" aria-hidden="true"><label for="company">Company</label><input id="company" tabindex="-1" autocomplete="off"></div>
+          <p class="err" id="err" role="alert" hidden></p>
+          <button type="submit" id="go">Send my plan</button>
+          <p class="fine">No payment and no commitment. Your AI teammates always say they're AI, and nothing goes live until you approve it. Your details go only to us.</p>
+        </form>
+      </div>
+      <div class="done" id="done-view" hidden>
+        <span class="check" aria-hidden="true"></span>
+        <h2 id="done-title">Sent.</h2>
+        <p id="done-text"></p>
+        <p class="code" id="done-code" hidden></p>
+        <p class="fine">You can close this tab.</p>
+      </div>
+    </section>
+    <aside class="card plan" id="plan" aria-label="Your plan"></aside>
+  </div>
+</div>
+<script>
+(() => {
+  const ORDER_URL = "/api/order"; // this site's own route: it files the order with Pip's intake
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  // The plan Pip passes in the link's #fragment (never sent to any server by the browser)
+  let plan = null;
+  try {
+    const h = location.hash.slice(1);
+    if (h) {
+      const b64 = h.replace(/-/g, "+").replace(/_/g, "/");
+      const bin = atob(b64 + "===".slice((b64.length + 3) % 4));
+      plan = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
+      if (!plan || typeof plan !== "object") plan = null;
+    }
+  } catch { plan = null; }
+  const str = (v, n) => typeof v === "string" ? v.slice(0, n) : "";
+  const arr = (v, n) => Array.isArray(v) ? v.slice(0, n) : [];
+
+  // Details Pip's "Lock it in" collected: read once, then take them out of the address bar (and history)
+  const contact = plan && plan.contact && typeof plan.contact === "object" ? plan.contact : null;
+  const auto = !!(plan && plan.auto && contact);
+  const lid = str(plan?.lid, 40).replace(/[^a-z0-9]/gi, "");
+  if (contact) { try { history.replaceState(null, "", location.pathname + location.search); } catch {} }
+  const sentKey = lid ? `pip.sent.${lid}` : "";
+  const readSent = () => { try { return sentKey ? JSON.parse(localStorage.getItem(sentKey) || "null") : null; } catch { return null; } };
+
+  if (plan && /^#[0-9a-f]{6}$/i.test(plan.accent || "")) {
+    document.documentElement.style.setProperty("--accent", plan.accent);
+    document.documentElement.style.setProperty("--accent-ink", plan.accent);
+  }
+  const stage = plan?.stage === "plan" ? "plan" : "reserve";
+  const biz = str(plan?.business, 80);
+  if (stage === "plan") {
+    $("title").textContent = "Get your plan by email";
+    $("lede").textContent = "Tell us how to reach you. We'll send your plan and answer any questions. No call needed unless you want one.";
+    $("go").textContent = "Send me my plan";
+  } else if (biz) {
+    $("title").textContent = `Send us ${biz.split(/\s[-|–—:]\s/)[0]}'s plan`;
+  }
+  document.title = (stage === "plan" ? "Get your plan" : "Send your plan") + " · Pip";
+
+  // The discount earned in Pip's higher-or-lower game: 1% per right answer (up to 5%), held for 7 days
+  const perkM = /^first-period-([1-5])$/.exec(str(plan?.perk, 20));
+  const perkUntil = plan?.perkUntil ? new Date(plan.perkUntil) : null;
+  const perkLive = !!perkM && (!perkUntil || isNaN(perkUntil) || perkUntil.getTime() > Date.now());
+  const perkText = !perkM ? "" : perkLive
+    ? `${perkM[1]}% off your first month${perkUntil && !isNaN(perkUntil) ? `, held until ${perkUntil.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}` : ""}`
+    : "";
+
+  // Plan summary
+  const team = arr(plan?.team, 12), probs = arr(plan?.problems, 6), have = arr(plan?.have, 6), asked = arr(plan?.asked, 8);
+  const P = $("plan");
+  if (!plan) {
+    P.innerHTML = `<h2>Your plan</h2><p class="empty">Open this page from Pip to include the plan Pip built for you. You can still send your details here.</p>`;
+  } else {
+    let h = `<div><div class="biz"><i></i><h2>${esc(biz || "Your business")}</h2></div>${plan.site ? `<p class="sub">${esc(str(plan.site, 80))}</p>` : ""}</div>`;
+    h += `<div><h3>Your AI team</h3>${team.length ? `<ul>${team.map(t => `<li>${esc(str(t.name, 60))}<span>${esc(str(t.tagline, 120))}</span></li>`).join("")}</ul>` : `<p class="empty">No skills picked yet. We'll suggest where to start.</p>`}</div>`;
+    if (probs.length) h += `<div><h3>Problems Pip found</h3><ul>${probs.map(p => `<li class="${p.real === false ? "off" : ""}">${esc(str(p.area, 60))}${p.real === false ? "<span>You said this isn't a problem</span>" : ""}</li>`).join("")}</ul></div>`;
+    if (have.length) h += `<div><h3>What you already use</h3><ul>${have.map(x => `<li>${esc(str(x, 60))}</li>`).join("")}</ul></div>`;
+    const e = plan.estimate;
+    if (e && Array.isArray(e.customers) && e.customers[1] > 0) {
+      h += `<p class="est">Pip's estimate for this team: about <b>${esc(e.customers.join("–"))} ${esc(str(plan.unit, 20) || "customers")}</b> a month${Array.isArray(e.hours) && e.hours[1] > 0 ? ` and <b>${esc(e.hours.join("–"))} hours</b> a week back` : ""}.</p>`;
+    }
+    if (perkText) h += `<p class="est"><b>Discount earned:</b> ${esc(perkText)}.</p>`;
+    else if (perkM) h += `<p class="est old">The game discount has expired.</p>`;
+    P.innerHTML = h;
+  }
+  if (asked.length) {
+    const A = $("asked");
+    A.innerHTML = `<b>Also sent: what you asked Pip</b><ul>${asked.map(q => `<li>${esc(str(q, 200))}</li>`).join("")}</ul>`;
+    A.hidden = false;
+  }
+
+  function nextBusinessDay() {
+    const d = new Date();
+    do d.setDate(d.getDate() + 1); while (d.getDay() === 0 || d.getDay() === 6);
+    return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  }
+  // the call times Pip's chips produce ("Thu, Nov 5 · Afternoon, ..."), or one of this page's choices
+  function bestText(b) {
+    if (!b) return "";
+    const picks = b.split(/,\s(?=[A-Z][a-z]{2},\s)/).map(x => x.replace(" · ", " ").replace(/(Morning|Afternoon|Evening)$/, m => m.toLowerCase()));
+    return picks.length > 1 || / · /.test(b) ? picks.slice(0, 3).join(" or ") : b.toLowerCase();
+  }
+  function showDone(name, best, code) {
+    $("sending-view").hidden = true;
+    $("form-view").hidden = true;
+    $("done-view").hidden = false;
+    const first = String(name || "").trim().split(/\s+/)[0];
+    $("done-title").textContent = first ? `Sent. Thanks, ${first}.` : "Sent.";
+    const when = best && / · /.test(best) ? `We'll call at a time you picked: ${bestText(best)}.` : `We'll reach out by ${nextBusinessDay()}${best ? `, ${bestText(best)} if we can` : ""}.`;
+    $("done-text").textContent = `${when} ${stage === "plan" ? "We'll send your plan and answer your questions." : "We'll go over your plan, pricing and a time to set it up."}`;
+    const c = code || readSent()?.code;
+    if (c) { $("done-code").innerHTML = `${esc(c)} <small>your order number</small>`; $("done-code").hidden = false; }
+  }
+  const check = (name, phone, email) => {
+    if (!name) return "Add your name.";
+    if (!phone && !email) return "Add a phone number or an email so we can reach you.";
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return "That email doesn't look right.";
+    if (phone && phone.replace(/\D/g, "").length < 10) return "Add the phone number with area code.";
+    return "";
+  };
+  const err = m => { $("err").textContent = m; $("err").hidden = !m; };
+
+  // one send: the same fields and table as always; the stored plan leaves out the contact block (it's in its own columns)
+  let sending = false;
+  async function send({ name, phone, email, best, message }) {
+    if (sending) return false;
+    const had = readSent(); if (had) { showDone(name, best, had.code); return true; }
+    sending = true;
+    const stored = plan ? Object.fromEntries(Object.entries(plan).filter(([k]) => !["contact", "auto", "order"].includes(k))) : null;
+    const body = {
+      lid: lid || undefined,
+      order: plan?.order || null,
+      owner: { name, phone: phone || undefined, email: email || undefined, best: best ? best.slice(0, 400) : undefined, message: message || undefined },
+      consent: { ai_disclosure_ack: true, tos_version: str(plan?.tos, 40) || "2026-11" },
+      plan: stored,
+      stage,
+      legacy: plan?.order ? undefined : { business: biz || null, site: str(plan?.site, 120) || null, team: team.map(t => str(t.name, 60)) },
+    };
+    try {
+      const r = await fetch(ORDER_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(String(j.error || r.status));
+      if (sentKey) { try { localStorage.setItem(sentKey, JSON.stringify({ at: Date.now(), code: j.code || null })); } catch {} }
+      showDone(name, best, j.code);
+      return true;
+    } catch {
+      return false;
+    } finally { sending = false; }
+  }
+
+  // Arrived from "Lock it in": fill the form with what Pip collected and send it right away
+  if (contact) {
+    const c = { name: str(contact.name, 80).trim(), phone: str(contact.phone, 30).trim(), email: str(contact.email, 120).trim(), best: str(contact.best, 400).trim(), message: str(contact.message, 2000).trim() };
+    $("name").value = c.name; $("phone").value = c.phone; $("email").value = c.email; $("msg").value = c.message;
+    if (c.best && ![...$("best").options].some(o => o.value === c.best)) $("best").add(new Option(bestText(c.best).replace(/^./, x => x.toUpperCase()), c.best), 1);
+    $("best").value = c.best || "";
+    if (readSent()) showDone(c.name, c.best);
+    else if (auto && !check(c.name, c.phone, c.email)) {
+      $("form-view").hidden = true; $("sending-view").hidden = false;
+      send(c).then(ok => {
+        if (ok) return;
+        $("sending-view").hidden = true; $("form-view").hidden = false;
+        err("That didn't send. Check your connection and press Send my plan.");
+      });
+    }
+  }
+
+  $("f").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    if ($("company").value) return; // bots fill hidden fields
+    const name = $("name").value.trim(), phone = $("phone").value.trim(), email = $("email").value.trim();
+    const m = check(name, phone, email); if (m) return err(m);
+    err("");
+    const btn = $("go");
+    btn.disabled = true; btn.textContent = "Sending…";
+    const ok = await send({ name, phone, email, best: $("best").value, message: $("msg").value.trim() });
+    if (!ok) {
+      btn.disabled = false; btn.textContent = stage === "plan" ? "Send me my plan" : "Send my plan";
+      err("That didn't send. Check your connection and try again.");
+    }
+  });
+})();
+</script>
+</body>
+</html>
