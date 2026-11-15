@@ -56,7 +56,7 @@ function turnsOf(input: unknown): Turn[] | null {
 export async function POST(req: Request) {
   const line = (o: unknown) => JSON.stringify(o) + '\n';
   const fail = (code: string, status: number) => new Response(line({ t: 'err', code }), { status, headers: { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' } });
-  if (!fromPip(req)) return fail('not_granted', 403);
+  if (!fromPip(req)) { console.warn('[sample] refused origin', (req.headers.get('origin') || '-').slice(0, 80)); return fail('not_granted', 403); }
   if (!process.env.ANTHROPIC_API_KEY) return fail('sampling_disabled', 503);
 
   const raw = await req.text();
@@ -72,7 +72,8 @@ export async function POST(req: Request) {
   const model = named || TIERS[tier].model;
   const effort = typeof body.effort === 'string' && EFFORTS.has(body.effort) ? body.effort : TIERS[tier].effort;
 
-  if (!(await guard(req, 'app_llm')).ok) return fail('rate_limited', 429);
+  const g = await guard(req, 'app_llm');
+  if (!g.ok) { console.warn('[sample] over limit', g.why); return fail('rate_limited', 429); }
 
   const client = new Anthropic();
   const enc = new TextEncoder();
@@ -114,4 +115,9 @@ export async function POST(req: Request) {
     },
   });
   return new Response(out, { headers: { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store', 'x-accel-buffering': 'no' } });
+}
+
+/** GET /api/sample -> { ready } : whether model calls can run here (the key is set). Says nothing else. */
+export async function GET() {
+  return new Response(JSON.stringify({ ready: !!process.env.ANTHROPIC_API_KEY }), { headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 }
