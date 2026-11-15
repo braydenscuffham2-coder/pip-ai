@@ -16,7 +16,7 @@ Pip runs in two places.
 
 **In the Claude app: the current Pip.** A 3D guide, the Recall scan show, then six steps: You, Your market, Try it, What I found, Your team and Lock it in. It runs on the viewer's own Claude plan, with no API keys. The code and details are in [`claude-app/`](claude-app).
 
-**On the web: [pip-ai-drab.vercel.app](https://pip-ai-drab.vercel.app).** The public Next.js site described below. It also serves the read endpoints the Claude-app version uses.
+**On the web: [pip-ai-drab.vercel.app](https://pip-ai-drab.vercel.app).** The home page is the same Claude-app Pip (`public/app.html`), so anyone can use it without a Claude account. `public/pip-web-runtime.js` stands in for the Claude app: scan reads go straight to Pip's endpoints, model calls go to `/api/sample` on Pip's API key (behind the spend guard's `app_llm` limits), and saving uses the visitor's browser. The earlier seven-step web flow described below is at [/classic](https://pip-ai-drab.vercel.app/classic). The site also serves the read endpoints the Claude-app version uses.
 
 ## Who it's for
 
