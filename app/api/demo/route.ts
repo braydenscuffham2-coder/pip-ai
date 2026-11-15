@@ -1,6 +1,9 @@
 import { isModuleType, sanitizeProfile } from '@/lib/engine';
 import { receptionist } from '@/lib/server/talk';
 import { bad, json, readJson } from '@/lib/server/http';
+import { llmEnabled } from '@/lib/server/llm';
+import { guard } from '@/lib/server/guard';
+import { previewReceptionist } from '@/lib/preview';
 import type { ChatTurn } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +24,8 @@ export async function POST(req: Request) {
     .map(m => ({ role: m.role, content: m.content.slice(0, 500) }))
     .slice(-16);
   if (!messages.some(m => m.role === 'user')) return bad('no_message');
-  const { reply, usedModel } = await receptionist(profile, type, messages);
+  // Over the limit, the front desk answers from its built-in replies and the model isn't called.
+  const allowed = !llmEnabled() || (await guard(req, 'web_llm')).ok;
+  const { reply, usedModel } = allowed ? await receptionist(profile, type, messages) : { reply: previewReceptionist(profile, type, messages), usedModel: false };
   return json({ reply, source: usedModel ? 'live' : 'preview' });
 }

@@ -1,6 +1,7 @@
 // GET /api/locate?d=example.com&name=...&addr=...&phone=...&about=...
 // Second-chance Google lookup on its own, for checking what it finds. gather calls the same code.
 import { locate, locateEnabled } from '@/lib/server/locate';
+import { guard } from '@/lib/server/guard';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -13,6 +14,7 @@ export async function GET(req: Request) {
   const domain = (q.get('d') || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split(/[/?#]/)[0];
   if (!/^([a-z0-9-]+\.)+[a-z]{2,}$/.test(domain)) return reply({ ok: false, error: 'invalid_url' }, 400);
   if (!locateEnabled()) return reply({ ok: false, error: 'not_configured' });
+  if (!(await guard(req, 'web_places', 3)).ok) return reply({ ok: false, error: 'daily_limit' }, 429);
   const r = await locate({
     domain,
     name: (q.get('name') || '').trim().slice(0, 80),

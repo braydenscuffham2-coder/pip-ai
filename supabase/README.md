@@ -16,6 +16,18 @@ Pip's backend on Supabase: Deno edge functions next to a Postgres database. The 
 
 `scan-run/brain.js` and `pip-forge/forge.js` are bundled build files. They carry the 63-part primitives library and the stage logic.
 
+## The spend guard
+
+Anyone can use Pip without signing in, and a scan buys data and model time. `migrations/20261115_spend_guard.sql` puts every limit on that spending in one table, `pip_limits`, and makes the database the judge.
+
+- **Everyone together:** a cap for the day and for the month on each paid thing: new scans, DataForSEO dollars, Brain scans and Brain dollars, and each kind of request the website serves.
+- **One visitor:** an hourly and a daily allowance, counted on a salted hash of the IP address. The website asks through `pip_gate` (`lib/server/guard.ts`) before it spends; a saved scan replays free and isn't counted.
+- **The pause switch:** `update forge_settings set value = 'true' where key = 'public_pause'` stops every paid visitor action at once. Saved scans, leads and clients' live teammates keep working.
+- `site-kit` still calls `spend_take`; it now reads its limits from `pip_limits`. `scan-run` is held by a trigger on `scan_jobs`: a new scan over a limit is saved as failed with the reason, and nothing runs.
+- `select * from pip_guard_status()` shows today and this month against every limit. A tripped limit writes one `cap_hit` row to `events` per day.
+
+Change a number in `pip_limits` and it applies on the next request. Nothing is redeployed.
+
 ## Board first and the API Shelf
 
 - An order from Pip's Lock it in reaches `pip-forge/intake` three ways: the Pip page through the PIP Reader connector, Pip's order page on this site (`/lock.html` → `/api/order`), or any client that posts the same body.
