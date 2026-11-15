@@ -1,4 +1,5 @@
 import { addLead, storeEnabled } from '@/lib/server/store';
+import { guard } from '@/lib/server/guard';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -19,6 +20,7 @@ export async function POST(req: Request) {
   try { b = JSON.parse(raw); } catch { return json({ ok: false, error: 'bad_request' }, 400); }
   const base = process.env.SUPABASE_URL;
   if (!base) return json({ ok: false, error: 'not_configured' }, 503);
+  if (!(await guard(req, 'web_lead')).ok) return json({ ok: false, error: 'rate_limited' }, 429);
 
   if (b.order && Array.isArray(b.order.agents) && b.order.agents.length) {
     const r = await fetch(`${base}/functions/v1/pip-forge/intake`, {

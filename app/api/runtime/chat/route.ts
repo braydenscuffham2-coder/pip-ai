@@ -2,6 +2,7 @@ import { bad, json, readJson } from '@/lib/server/http';
 import { llm, llmEnabled } from '@/lib/server/llm';
 import { addMessage, getSpec, history, notify, startConversation } from '@/lib/server/runtime-store';
 import { runTurn, type ActionSink, type Llm } from '@/lib/skills/runtime';
+import { guard } from '@/lib/server/guard';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -30,7 +31,10 @@ export async function POST(req: Request) {
   if (!conv) return withCors(bad('store_unavailable', 503));
   const past = (await history(conv)) || [];
 
-  const model: Llm = (system, messages, tier) => llm({ system, messages, tier, maxTokens: 500, timeoutMs: 20000, purpose: `skill:${s.spec.skill_id}`, domain: s.business });
+  // One visitor can't run up a client's teammate: over the limit the model isn't called, the message is still
+  // saved and the owner alerted, and the visitor is told a person will reply.
+  const allowed = !llmEnabled() || (await guard(req, 'skill_turn')).ok;
+  const model: Llm = (system, messages, tier) => !allowed ? Promise.resolve(null) : llm({ system, messages, tier, maxTokens: 500, timeoutMs: 20000, purpose: `skill:${s.spec.skill_id}`, domain: s.business });
   const sink: ActionSink = async (a, approval) => {
     await notify(id, a.tool, { args: a.args, approval, conversation: conv, business: s.business });
     return { ...a, status: approval === 'owner' ? 'waiting_for_owner' : 'done' };

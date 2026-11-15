@@ -37,5 +37,8 @@ export const putScan = (domain: string, raw: Raw, profile: Profile, usedModel: b
   rpc<null>('pip_scan_put', { p_domain: domain, p_raw: raw, p_profile: profile, p_used_model: usedModel });
 export const addLead = (name: string, contact: string, profile: Profile, modules: string[]) =>
   rpc<string>('pip_lead_add', { p_name: name, p_contact: contact, p_business: profile.name, p_site: profile.site || null, p_modules: modules, p_profile: profile });
+/** The spend guard's question (lib/server/guard.ts). Null when the database couldn't answer. */
+export const gate = (kind: string, visitor: string, units = 1) =>
+  rpc<{ ok: boolean; why?: string }>('pip_gate', { p_kind: kind, p_visitor: visitor, p_units: units });
 export const logEvent = (kind: string, domain: string | null, detail: Record<string, unknown> = {}) =>
   rpc<null>('pip_event', { p_kind: kind, p_domain: domain, p_detail: detail });

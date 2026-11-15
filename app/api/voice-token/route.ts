@@ -1,3 +1,5 @@
+import { guard } from '@/lib/server/guard';
+
 export const dynamic = 'force-dynamic';
 
 /**
@@ -9,6 +11,8 @@ export async function POST(req: Request) {
   const base = process.env.SUPABASE_URL;
   const headers = { 'content-type': 'application/json', 'cache-control': 'no-store' };
   if (!base) return new Response(JSON.stringify({ error: 'not_configured' }), { status: 503, headers });
+  // Three demo calls a visitor a day, on top of the edge function's own daily and monthly ceilings.
+  if (!(await guard(req, 'web_voice')).ok) return new Response(JSON.stringify({ error: 'daily_cap' }), { status: 429, headers });
   const body = (await req.text()).slice(0, 4000);
   const r = await fetch(`${base}/functions/v1/voice-token`, { method: 'POST', headers: { 'content-type': 'application/json' }, body, signal: AbortSignal.timeout(20_000) }).catch(() => null);
   if (!r) return new Response(JSON.stringify({ error: 'unavailable' }), { status: 502, headers });

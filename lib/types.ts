@@ -94,7 +94,7 @@ export type ScanEvent =
   | { type: 'competitor'; competitor: Competitor }
   | { type: 'done'; profile: Profile; source: DataSource }
   | { type: 'kit'; kit: Kit }
-  | { type: 'error'; message: string; code?: 'unreachable' | 'invalid_url' | 'blocked' | 'internal' | 'needs_app' };
+  | { type: 'error'; message: string; code?: 'unreachable' | 'invalid_url' | 'blocked' | 'internal' | 'needs_app' | 'limit' | 'not_a_business' };
 
 export type Demo =
   | { kind: 'chat'; c: string; r: string; res: string }

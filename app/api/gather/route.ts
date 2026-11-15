@@ -8,6 +8,7 @@ import { secondChance } from '@/lib/server/locate';
 import { enrich } from '@/lib/server/deep';
 import { reviewsPart } from '@/lib/server/reviews';
 import { marketPass, rankPart } from '@/lib/server/market';
+import { guard, isPlatform } from '@/lib/server/guard';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -37,13 +38,25 @@ async function finish<T extends object>(domain: string, out: T, full: Parameters
   o.timing = { ...(o.timing || {}), total: Date.now() - t0 };
   return out;
 }
+const limited = () => new Response(JSON.stringify({ ok: false, error: 'daily_limit' }), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'access-control-allow-origin': '*' } });
+
 export async function GET(req: Request) {
   const t0 = Date.now();
   const q = new URL(req.url).searchParams;
-  if (q.get('part') === 'reviews') return reviewsPart(q);
-  if (q.get('part') === 'rank') return rankPart(q);
+  // Every branch below buys something (review history, Google searches, a full Google read), so each asks the guard.
+  if (q.get('part') === 'reviews') {
+    if (q.get('start') === '1' && !(await guard(req, 'web_reviews')).ok) return limited();
+    return reviewsPart(q);
+  }
+  if (q.get('part') === 'rank') {
+    const searches = Math.min(4, Math.max(1, (q.get('q') || '').split('|').filter(s => s.trim().length > 2).length));
+    if (!(await guard(req, 'web_places', searches)).ok) return limited();
+    return rankPart(q);
+  }
   const domain = normalizeDomain(q.get('d') || '');
   if (!domain) return bad('invalid_url');
+  if (isPlatform(domain)) return bad('not_a_business', 422);
+  if (!(await guard(req, 'web_gather')).ok) return bad('daily_limit', 429);
   const cached = await getScan(domain);
   if (cached?.raw) {
     // Scans saved before signals existed get them now (DNS and wording only).

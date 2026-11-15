@@ -1,6 +1,7 @@
 import { isModuleType, sanitizeProfile } from '@/lib/engine';
 import { bad, json, readJson } from '@/lib/server/http';
 import { addLead, storeEnabled } from '@/lib/server/store';
+import { guard } from '@/lib/server/guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,7 @@ export async function POST(req: Request) {
   if (!okContact) return bad('invalid_contact');
   if (!profile) return bad('invalid_profile');
   const modules = (Array.isArray(b.modules) ? b.modules : []).filter(isModuleType).slice(0, 11);
+  if (!(await guard(req, 'web_lead')).ok) return bad('rate_limited', 429);
   if (storeEnabled()) {
     const id = await addLead(name, contact, profile, modules);
     if (!id) return bad('save_failed', 503);

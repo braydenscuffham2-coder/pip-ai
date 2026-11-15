@@ -4,7 +4,7 @@ import type { Competitor, Profile, ScanEvent } from '../types';
 import { CrawlError } from './crawl';
 import { gather, type Raw, type RawCompetitor } from './gather';
 import { factProfile, personalize } from './personalize';
-import { getScan, logEvent, putScan } from './store';
+import { getScan, logEvent, putScan, type Cached } from './store';
 import { llmEnabled } from './llm';
 
 export const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -43,9 +43,9 @@ export async function* replay(raw: Raw, profile: Profile): AsyncGenerator<ScanEv
   for (const c of profile.competitors) { yield { type: 'competitor', competitor: c }; await wait(140); }
 }
 
-export async function* liveScan(domain: string, opts: { fresh?: boolean } = {}): AsyncGenerator<ScanEvent> {
+export async function* liveScan(domain: string, opts: { fresh?: boolean; cached?: Cached | null } = {}): AsyncGenerator<ScanEvent> {
   yield { type: 'meta', source: 'live' };
-  const cached = opts.fresh ? null : await getScan(domain);
+  const cached = opts.fresh ? null : opts.cached !== undefined ? opts.cached : await getScan(domain);
   // A facts-only scan from before the model was switched on: reuse the facts, write the rest now.
   if (cached?.raw && !cached.used_model && llmEnabled()) {
     yield* replay(cached.raw, factProfile(cached.raw));

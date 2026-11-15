@@ -56,6 +56,8 @@ function scanErrorText(code: string): string {
   if (code === 'invalid_url') return "That address doesn't look right. Check it and try again.";
   if (code === 'unreachable') return "I couldn't open that site. It may be down or blocking visitors.";
   if (code === 'blocked') return "That site blocks automated visitors, so I can't read it.";
+  if (code === 'limit') return "I've read all the new sites I can for now. Try again in a little while, or enter your details instead.";
+  if (code === 'not_a_business') return "That's a big platform, not a business's own website. Give me your business's site, or enter your details instead.";
   if (code === 'needs_app') return 'I can only read websites from here inside the Claude desktop app. Open this page there, or enter your details instead.';
   return 'Something went wrong while I was reading that site.';
 }

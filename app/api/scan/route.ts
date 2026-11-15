@@ -1,6 +1,9 @@
 import { previewScan, normalizeDomain } from '@/lib/preview';
 import { liveScan } from '@/lib/server/scan';
 import { bad, readJson } from '@/lib/server/http';
+import { getScan } from '@/lib/server/store';
+import { llmEnabled } from '@/lib/server/llm';
+import { guard, isPlatform } from '@/lib/server/guard';
 import type { ScanEvent } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -21,13 +24,31 @@ export async function POST(req: Request) {
   const domain = normalizeDomain(url);
   if (!domain) return bad('invalid_url');
 
+  // A saved scan replays free. Anything else buys data and model time, so it has to pass the spend guard first.
+  const preview = domain === EXAMPLE || process.env.PIP_PREVIEW_ONLY === '1';
+  const cached = preview ? null : await getScan(domain);
+  let refused: 'limit' | 'not_a_business' | null = null;
+  let useFresh = fresh;
+  if (!preview) {
+    const whole = !!(cached?.raw && cached.profile) && (cached.used_model || !llmEnabled());
+    if (!whole || fresh) {
+      if (!cached?.raw && isPlatform(domain)) refused = 'not_a_business';
+      else if (!(await guard(req, 'web_scan')).ok) { if (whole) useFresh = false; else refused = 'limit'; }
+    }
+  }
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (e: ScanEvent) => controller.enqueue(encoder.encode(JSON.stringify(e) + '\n'));
       try {
         // The example business is fictional, so it always uses the labeled preview data.
-        const events = domain === EXAMPLE || process.env.PIP_PREVIEW_ONLY === '1' ? previewScan(domain) : liveScan(domain, { fresh });
+        if (refused) {
+          send({ type: 'meta', source: 'live' });
+          send({ type: 'error', code: refused, message: refused === 'limit' ? "I've read all the new sites I can for now." : "That isn't a business's own website." });
+          return;
+        }
+        const events = preview ? previewScan(domain) : liveScan(domain, { fresh: useFresh, cached });
         for await (const e of events) {
           if (req.signal.aborted) break;
           send(e);
