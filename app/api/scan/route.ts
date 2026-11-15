@@ -3,7 +3,7 @@ import { liveScan } from '@/lib/server/scan';
 import { bad, readJson } from '@/lib/server/http';
 import { getScan } from '@/lib/server/store';
 import { llmEnabled } from '@/lib/server/llm';
-import { guard, isPlatform } from '@/lib/server/guard';
+import { guard, isBot, isPlatform } from '@/lib/server/guard';
 import type { ScanEvent } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     const whole = !!(cached?.raw && cached.profile) && (cached.used_model || !llmEnabled());
     if (!whole || fresh) {
       if (!cached?.raw && isPlatform(domain)) refused = 'not_a_business';
-      else if (!(await guard(req, 'web_scan')).ok) { if (whole) useFresh = false; else refused = 'limit'; }
+      else if ((await isBot()) || !(await guard(req, 'web_scan')).ok) { if (whole) useFresh = false; else refused = 'limit'; }
     }
   }
 

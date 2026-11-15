@@ -230,6 +230,13 @@ button{font:inherit;color:inherit}
     } catch { return null; }
   }
   const P = readPayload() || SAMPLE;
+  // The pass Pip hands out when the owner gives an email before "Your team". Kept for this tab so a refresh still works.
+  const PASS = (() => {
+    let p = "";
+    try { p = new URLSearchParams(location.search).get("pass") || ""; } catch {}
+    try { if (p) sessionStorage.setItem("pip.pass", p); else p = sessionStorage.getItem("pip.pass") || ""; } catch {}
+    return p.slice(0, 120);
+  })();
   const M = P.mate, NAME = String(M.name).slice(0, 14), SHORT = String(P.short || P.biz).slice(0, 40);
   const ROLE = String(M.role || "Assistant"), roleLow = ROLE.charAt(0).toLowerCase() + ROLE.slice(1);
   const poss = s => /s$/i.test(s) ? s + "'" : s + "'s";
@@ -371,6 +378,7 @@ You are ${NAME}, ${poss(P.biz)} AI ${roleLow}. You are speaking out loud on a ph
   function fail(code) {
     const m = {
       mic: `Your microphone is blocked. Allow it from the icon in your browser's address bar, then press Call ${NAME} again.`,
+      needs_email: `This line opens from your team in Pip. Go back to Pip, enter your email on the "Your team" step, and press Call ${NAME} from there.`,
       daily_cap: `${NAME}'s demo line has taken all its calls for today. It opens again tomorrow.`,
       monthly_cap: `${NAME}'s demo line is out of minutes for this month. Send us your plan and we'll set up a live demo.`,
       out_of_minutes: `${NAME}'s demo line is out of minutes for this month. Send us your plan and we'll set up a live demo.`,
@@ -391,7 +399,7 @@ You are ${NAME}, ${poss(P.biz)} AI ${roleLow}. You are speaking out loud on a ph
     catch { return fail("mic"); }
     let tk;
     try {
-      const r = await fetch(TOKEN_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ biz: P.biz, mate: NAME }) });
+      const r = await fetch(TOKEN_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ biz: P.biz, mate: NAME, pass: PASS }) });
       tk = await r.json().catch(() => ({}));
       if (!r.ok || !tk.token) return fail(tk.error || "unavailable");
     } catch { return fail("network"); }
