@@ -2,6 +2,8 @@
 // from any Claude app (phone, web, desktop), and send an owner's Lock it in order.
 // pip_read only forwards to Pip's own scan endpoints and returns their JSON as text.
 // pip_order forwards one order to Pip's own intake (pip-forge/intake), which validates it.
+// pip_read also answers one address itself, .../pip-pass?email=: the email a visitor gives before "Your team".
+// It files a lead and returns a pass that the live-call demo asks for.
 // Stateless Streamable HTTP (JSON responses, no SSE stream).
 
 const SB_URL = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "");
@@ -14,6 +16,48 @@ const INTAKE = `${SB_URL}/functions/v1/pip-forge/intake`;
 const VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 const MAX_CHARS = 2_000_000;
 const UPSTREAM_MS = 115_000;
+
+// ---------- the pass ----------
+// A visitor who gives an email before "Your team" gets a pass: a signed note that says "this visitor is a lead"
+// and when it runs out. The expensive demos (a live call) ask for it. Only this project can sign or check one.
+const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const enc = new TextEncoder();
+const b64u = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+async function sign(msg: string) {
+  const key = await crypto.subtle.importKey("raw", enc.encode(`pip-pass-v1|${SB_KEY}`), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return b64u(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(msg)))).slice(0, 32);
+}
+async function mintPass(email: string, exp: number) {
+  const id = b64u(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(email)))).slice(0, 10);
+  return `p1.${exp}.${id}.${await sign(`${exp}.${id}`)}`;
+}
+// Reached through pip_read like any other Pip address, but answered here: nothing is fetched, so the email
+// never lands in a request log.
+const PASS_URL = `${SB_URL}/functions/v1/pip-pass`;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const NOT_REAL = /@(example\.(com|org|net)|test\.com|mailinator\.com|guerrillamail\.com|yopmail\.com|tempmail\.com|10minutemail\.com)$/;
+const db = (path: string, init: RequestInit = {}) => fetch(`${SB_URL}/rest/v1/${path}`, { ...init, headers: { apikey: SB_KEY, authorization: `Bearer ${SB_KEY}`, "content-type": "application/json", ...((init.headers as Record<string, string>) || {}) }, signal: AbortSignal.timeout(8000) });
+const say = (o: unknown) => ({ content: [{ type: "text", text: JSON.stringify(o) }] });
+
+async function pass(u: URL) {
+  const email = (u.searchParams.get("email") || "").trim().toLowerCase().slice(0, 120);
+  if (!EMAIL.test(email) || NOT_REAL.test(email)) return say({ ok: false, error: "invalid_email" });
+  if (!SB_URL || !SB_KEY) return say({ ok: false, error: "not_configured" });
+  const site = (u.searchParams.get("d") || "").toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split(/[/?#]/)[0].slice(0, 120);
+  const biz = (u.searchParams.get("biz") || "").replace(/\s+/g, " ").trim().slice(0, 80);
+  try {
+    // the day's budget for leads (see pip_limits), then one lead per email a day; lead-alert emails it
+    const why = await db("rpc/pip_take", { method: "POST", body: JSON.stringify({ p_kind: "web_lead", p_units: 1, p_room: 0 }) }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (typeof why === "string") return say({ ok: false, error: "busy" });
+    const since = new Date(Date.now() - 86_400_000).toISOString();
+    const had = await db(`leads?email=eq.${encodeURIComponent(email)}&source=eq.pip-gate&created_at=gte.${encodeURIComponent(since)}&select=id&limit=1`).then((r) => (r.ok ? r.json() : [])).catch(() => []);
+    if (!Array.isArray(had) || !had.length) {
+      await db("leads", { method: "POST", headers: { prefer: "return=minimal" }, body: JSON.stringify({ name: (biz ? `Owner of ${biz}` : "Pip visitor").slice(0, 80), contact: email, email, business: biz || site || null, site: site || null, modules: [], stage: "reserve", source: "pip-gate", message: "Gave this email to see their team. No order yet." }) }).then((r) => r.body?.cancel()).catch(() => {});
+    }
+  } catch { /* the pass is still given: a visitor never waits on the lead list */ }
+  const exp = Math.floor(Date.now() / 1000) + 30 * 86_400;
+  return say({ ok: true, pass: await mintPass(email, exp), until: new Date(exp * 1000).toISOString() });
+}
 
 const TOOL = {
   name: "pip_read",
@@ -78,6 +122,10 @@ function allowed(raw: unknown): URL | null {
 }
 
 async function read(args: Record<string, unknown>) {
+  const raw = typeof args?.url === "string" ? args.url : "";
+  if (raw.length <= 4000 && raw.startsWith(PASS_URL + "?")) {
+    try { return await pass(new URL(raw)); } catch { return say({ ok: false, error: "unavailable" }); }
+  }
   const u = allowed(args?.url);
   if (!u) {
     return { isError: true, content: [{ type: "text", text: "That address isn't one of Pip's scan endpoints." }] };

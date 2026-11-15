@@ -28,6 +28,12 @@ Anyone can use Pip without signing in, and a scan buys data and model time. `mig
 
 Change a number in `pip_limits` and it applies on the next request. Nothing is redeployed.
 
+## The email gate and the bot check
+
+- **The email gate.** Before Pip shows "Your team" for a real business, the owner gives one email: no password, no account. The Pip page sends it through `pip_read` to `.../pip-pass?email=`, which `pip-reader` answers itself. It files a lead (source `pip-gate`, so `lead-alert` emails it) and returns a pass: a signed note that runs out after 30 days.
+- **What the pass opens.** `voice-token` refuses a call without a valid pass (`needs_email`), so only a visitor who left an email can spend ElevenLabs minutes. The Pip page adds the pass to the call link; `public/talk.html` sends it on.
+- **The bot check.** Vercel BotID, basic level, on the website's `POST /api/scan`, `/api/chat` and `/api/demo` (`instrumentation-client.ts`, `isBot()` in `lib/server/guard.ts`). A request that fails it is treated as over the limit. `/api/gather` is left out because `site-kit` and `pip-reader` call it server to server.
+
 ## Board first and the API Shelf
 
 - An order from Pip's Lock it in reaches `pip-forge/intake` three ways: the Pip page through the PIP Reader connector, Pip's order page on this site (`/lock.html` → `/api/order`), or any client that posts the same body.

@@ -7,6 +7,7 @@
 // A visitor is a salted hash of the IP address Vercel reports; the address itself is never stored.
 // If the database can't be asked (a local run with no keys, or a short outage), a small in-memory count
 // with the same per-visitor numbers stands in, so the site keeps working and still can't be hammered.
+import { checkBotId } from 'botid/server';
 import { gate, storeEnabled } from './store';
 
 export type GuardKind = 'web_scan' | 'web_gather' | 'web_places' | 'web_reviews' | 'web_llm' | 'skill_turn' | 'web_voice' | 'web_lead';
@@ -54,6 +55,19 @@ export async function guard(req: Request, kind: GuardKind, units = 1): Promise<V
     if (v && typeof v.ok === 'boolean') return v.ok ? { ok: true } : { ok: false, why: v.why || 'limit' };
   }
   return local(kind, visitor, units);
+}
+
+// ---------- the bot check ----------
+// True when Vercel BotID says this request didn't come from a person's browser. Only for the routes listed in
+// instrumentation-client.ts. If the check itself can't run, the answer is "not a bot": the limits above still hold.
+export async function isBot(): Promise<boolean> {
+  try {
+    const v = await checkBotId({ advancedOptions: { checkLevel: 'basic' } });
+    return 'isBot' in v && v.isBot === true && !v.isVerifiedBot;
+  } catch (e) {
+    console.error('[guard] bot check failed', String(e).slice(0, 120));
+    return false;
+  }
 }
 
 // ---------- websites that are never a local business's own site ----------
