@@ -10,7 +10,7 @@
 import { checkBotId } from 'botid/server';
 import { gate, storeEnabled } from './store';
 
-export type GuardKind = 'web_scan' | 'web_gather' | 'web_places' | 'web_reviews' | 'web_llm' | 'skill_turn' | 'web_voice' | 'web_lead';
+export type GuardKind = 'web_scan' | 'web_gather' | 'web_places' | 'web_reviews' | 'web_llm' | 'skill_turn' | 'web_voice' | 'web_lead' | 'app_llm';
 export interface Verdict { ok: boolean; why?: string }
 
 async function visitorOf(req: Request): Promise<string> {
@@ -27,6 +27,7 @@ async function visitorOf(req: Request): Promise<string> {
 const LOCAL: Record<GuardKind, [number, number, number]> = {
   web_scan: [3, 8, 25], web_gather: [30, 60, 60], web_places: [16, 40, 150], web_reviews: [3, 6, 10],
   web_llm: [40, 120, 600], skill_turn: [60, 240, 3000], web_voice: [3, 3, 20], web_lead: [6, 15, 200],
+  app_llm: [150, 500, 3000],
 };
 const counts = new Map<string, { hour: number; h: number; day: number; d: number }>();
 function bump(key: string, units: number, perHour: number, perDay: number): boolean {
