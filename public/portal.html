@@ -81,6 +81,7 @@ function h(tag, attrs, ...kids) {
 }
 const chip = (text, kind) => h("span", { class: "chip " + (kind || "") }, text);
 function say(text, kind) { S.note = text ? { text, kind } : null; }
+const put = (...kids) => app.replaceChildren(...kids.flat().filter((k) => k != null && k !== false));
 const noteEl = () => S.note ? h("div", { class: "msg " + (S.note.kind || ""), role: "status" }, S.note.text) : null;
 
 async function api(path, body) {
@@ -120,7 +121,7 @@ function signInView(prefill, sent) {
     try { await fetch(FN + "/signin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: v }) }); } catch (e) { /* same message */ }
     out.replaceChildren(h("div", { class: "msg ok" }, "If that email has a Pip Portal, a sign-in link is on its way. It works once and lasts one hour."));
   };
-  app.replaceChildren(
+  put(
     h("div", { class: "top" }, h("span", { class: "brand" }, "Pip Portal")),
     h("h1", {}, "Sign in"),
     h("p", { class: "mut" }, "Use the email you gave Pip. There is no password. We email you a link."),
@@ -180,7 +181,7 @@ function teamTab() {
 function stepBody(s) {
   const d = S.data, locked = !d.setup_unlocked && d.role !== "founder", id = S.bid, kids = [];
   kids.push(h("p", { class: "sm" }, s.can)); if (s.cannot) kids.push(h("p", { class: "sm mut" }, s.cannot));
-  kids.push(h("p", { class: "xs" }, "Usual wait: " + s.lead_time + ". Used by: " + s.agents.join(", ")));
+  kids.push(h("p", { class: "xs" }, "Usual wait: " + s.lead_time + ". Used by: " + s.agents.map((k) => { const a = d.agents.find((x) => x.skill_id === k); return a ? (a.teammate || a.name) : k; }).join(", ")));
   if (s.status === "active") return kids;
   if (!isOwner()) { kids.push(h("p", { class: "xs" }, "An owner finishes this step.")); return kids; }
   if (locked) { kids.push(h("p", { class: "xs" }, "Unlocks when you accept your price.")); return kids; }
@@ -285,13 +286,13 @@ function render() {
   const head = h("div", { class: "top" }, h("span", { class: "brand" }, "Pip Portal"), h("span", { class: "xs" }, S.me.email));
   if (!S.bid || !S.data) {
     const list = S.me.businesses || [];
-    app.replaceChildren(head, noteEl(), S.me.founder ? founderHome() : h("div", {}, h("h1", {}, "Your businesses"), list.length ? list.map((b) => h("div", { class: "card" }, h("div", { class: "row" }, h("h3", {}, b.name), h("button", { onclick: () => openBusiness(b.id) }, "Open")))) : h("p", { class: "mut" }, "This email is not linked to a business yet. Use the email you gave Pip, or ask your owner to add you.")),
+    put(head, noteEl(), S.me.founder ? founderHome() : h("div", {}, h("h1", {}, "Your businesses"), list.length ? list.map((b) => h("div", { class: "card" }, h("div", { class: "row" }, h("h3", {}, b.name), h("button", { onclick: () => openBusiness(b.id) }, "Open")))) : h("p", { class: "mut" }, "This email is not linked to a business yet. Use the email you gave Pip, or ask your owner to add you.")),
       h("div", { class: "btns" }, h("button", { onclick: async () => { await sb.auth.signOut(); location.href = location.pathname; } }, "Sign out")));
     return;
   }
   const d = S.data, tabs = [["team", "Team"], ["setup", "Setup"], ["activity", "Activity"], ["people", "People"], ["settings", "Settings"]];
   const body = { team: teamTab, setup: setupTab, activity: activityTab, people: peopleTab, settings: settingsTab }[S.tab]();
-  app.replaceChildren(head,
+  put(head,
     (S.me.founder || (S.me.businesses || []).length > 1) ? h("button", { class: "link", onclick: () => { S.bid = null; S.data = null; history.replaceState(null, "", location.pathname); load().then(render); } }, "← All businesses") : null,
     h("h1", {}, d.business.name), noteEl(), banner(),
     h("nav", { "aria-label": "Sections" }, tabs.map(([k, l]) => h("button", { "aria-current": S.tab === k ? "true" : "false", onclick: () => { S.tab = k; say(null); render(); } }, l))),
