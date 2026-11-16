@@ -58,11 +58,12 @@ ul.plain{margin:6px 0;padding-left:18px}ul.plain li{margin:3px 0}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 "use strict";
-// Pip Portal. One page, no build step. It talks only to the pip-portal function, with the signed-in session.
+// Pip Portal. One page, no build step. It talks only to the pip-portal and pip-portal-ops functions, with the signed-in session.
 // It never asks for, shows or stores a password. Tool sign-ins happen on the tool's own screen.
 const SB_URL = "https://qqaikvgjzzcdwumnyspb.supabase.co";
 const SB_KEY = "sb_publishable_Uw0vCJdDrXHB1wbSm9bBNg_3m6TdZvs";
 const FN = SB_URL + "/functions/v1/pip-portal";
+const OPS = SB_URL + "/functions/v1/pip-portal-ops";
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } });
 const app = document.getElementById("app");
 const S = { me: null, bid: null, data: null, tab: "team", note: null, log: null };
@@ -84,19 +85,23 @@ function say(text, kind) { S.note = text ? { text, kind } : null; }
 const put = (...kids) => app.replaceChildren(...kids.flat().filter((k) => k != null && k !== false));
 const noteEl = () => S.note ? h("div", { class: "msg " + (S.note.kind || ""), role: "status" }, S.note.text) : null;
 
-async function api(path, body) {
+async function api(path, body, base) {
   const { data } = await sb.auth.getSession();
   const tok = data.session && data.session.access_token;
-  const r = await fetch(FN + path, { method: body ? "POST" : "GET", headers: Object.assign({ "content-type": "application/json" }, tok ? { authorization: "Bearer " + tok } : {}), body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch((base || FN) + path, { method: body ? "POST" : "GET", headers: Object.assign({ "content-type": "application/json" }, tok ? { authorization: "Bearer " + tok } : {}), body: body ? JSON.stringify(body) : undefined });
   let j = {}; try { j = await r.json(); } catch (e) { /* empty */ }
   if (!r.ok) { const err = new Error(j.message || WORDS[j.error] || "Something went wrong. Try again."); err.code = j.error; throw err; }
   return j;
 }
+const rpc = (name, args) => api("/rpc/" + name, { business: S.bid, args: args || {} }, OPS);
+const freshMail = async (e) => { if (e.code === "fresh_sign_in" && S.me) { try { await fetch(FN + "/signin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: S.me.email }) }); } catch (x) { /* shown to the user */ } } };
 const WORDS = {
   sign_in: "Please sign in again.", fresh_sign_in: "For your security, sign in again to do this. We just emailed you a new link.",
   owner_only: "Only an owner can do this.", setup_locked: "Setup unlocks when you accept your price.", connect_off: "Tool sign-ins are not switched on yet. Pip will let you know.",
   connect_failed: "That sign-in could not be started. Pip has been told.", no_managed_sign_in: "Pip cannot connect that tool yet.", bad_number: "Add the number with area code.",
   type_the_name: "Type the business name exactly to confirm.", last_owner: "A business needs at least one owner.", no_price_yet: "Your price has not been sent yet.",
+  not_ready: "This is not switched on yet. Pip is finishing it.", disconnect_first: "Disconnect Pip first. Then you can delete everything.", name_mismatch: "Type the business name exactly to confirm.",
+  vault_not_empty: "Saved logins must be removed first. Pip has been told.", attest_required: "Tick the box to confirm these people asked to hear from you.", too_many: "Add up to 500 at a time.", not_a_pip_step: "That step is checked automatically.",
 };
 async function run(fn, okText) {
   say(null);
@@ -257,7 +262,47 @@ function settingsTab() {
     isOwner() ? h("div", { class: "card" }, h("h3", {}, "Alerts"), h("p", { class: "mut sm" }, "Pip emails you when a teammate has to pause. Text alerts start once Pip's texting is approved."), mob, h("div", { class: "btns" }, h("button", { onclick: () => run(() => api("/business/" + id + "/alerts", { mobile: mob.value }), "Saved.") }, "Save"))) : null,
     isOwner() && b.status !== "disconnected" ? h("div", { class: "card warn" }, h("h3", {}, "Disconnect everything"), h("p", { class: "mut sm" }, "Revokes every tool sign-in and stops every agent right away. One thing only you can undo: call forwarding at your phone company."), h("label", {}, "Type the business name to confirm"), conf,
       h("div", { class: "btns" }, h("button", { class: "danger", onclick: () => run(() => api("/business/" + id + "/disconnect", { confirm: conf.value }), "Everything is disconnected.") }, "Disconnect everything")), h("p", { class: "xs" }, "Needs a sign-in from the last 15 minutes.")) : null,
+    b.status !== "disconnected" ? consentCard() : null,
+    isOwner() && b.status === "disconnected" ? deleteCard() : null,
     h("div", { class: "btns" }, h("button", { onclick: async () => { await sb.auth.signOut(); location.href = location.pathname; } }, "Sign out")));
+}
+function consentCard() {
+  const list = h("textarea", { placeholder: "One per line. Phone numbers or emails." }), kind = h("select", {}, h("option", { value: "phone|sms" }, "Phone numbers that agreed to texts"), h("option", { value: "phone|voice" }, "Phone numbers that agreed to calls"), h("option", { value: "email|email" }, "Emails that agreed to email"));
+  const ok = h("input", { type: "checkbox", id: "att", style: "width:auto;margin-right:8px" }), out = h("div", {});
+  const add = async () => {
+    const [k, c] = kind.value.split("|"), contacts = list.value.split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean);
+    if (!contacts.length) return;
+    try { const r = await rpc("consent_add", { kind: k, channel: c, contacts, attest: ok.checked ? "true" : "" });
+      out.replaceChildren(h("div", { class: "msg ok" }, "Added " + r.added + "." + (r.opted_out_skipped ? " Left out " + r.opted_out_skipped + " who opted out." : "") + (r.already_on_file ? " " + r.already_on_file + " were already on file." : "") + (r.not_valid ? " " + r.not_valid + " did not look right." : ""))); list.value = "";
+    } catch (e) { out.replaceChildren(h("div", { class: "msg err" }, e.message)); }
+  };
+  const csv = async () => {
+    try { const r = await rpc("consent_export"), cols = ["at", "ending", "kind", "channel", "purpose", "status", "method", "code"];
+      const text = [cols.join(",")].concat(r.rows.map((x) => cols.map((c) => '"' + String(x[c] == null ? "" : x[c]).replace(/"/g, '""') + '"').join(","))).join("\n");
+      const a = h("a", { href: URL.createObjectURL(new Blob([text], { type: "text/csv" })), download: "pip-consent-record.csv" }); document.body.append(a); a.click(); a.remove();
+    } catch (e) { out.replaceChildren(h("div", { class: "msg err" }, e.message)); }
+  };
+  return h("div", { class: "card" }, h("h3", {}, "People who agreed to hear from you"),
+    h("p", { class: "mut sm" }, "Your team only calls or texts people who wrote in first or who are on this list. This list covers messages about their own service, like reminders and confirmations. It does not cover promotions. Anyone who has opted out stays opted out."),
+    kind, h("div", { style: "height:8px" }), list,
+    h("label", { for: "att", style: "display:flex;align-items:flex-start;margin-top:10px" }, ok, h("span", { class: "sm" }, "These people asked my business to contact them this way about their own service.")),
+    h("div", { class: "btns" }, h("button", { class: "pri", onclick: add }, "Add to the list"), isOwner() ? h("button", { onclick: csv }, "Download the record") : null), out,
+    h("p", { class: "xs" }, "Pip stores each contact as a one-way code plus its last four characters, never the full number or email."));
+}
+function deleteCard() {
+  const d = S.data, b = d.business, del = h("input", { placeholder: b.name });
+  const go = async () => {
+    say(null);
+    try { await rpc("cancel", { name: del.value });
+      if (d.role === "founder") { S.bid = null; S.data = null; history.replaceState(null, "", location.pathname); say("Deleted.", "ok"); await load(); render(); }
+      else { await sb.auth.signOut(); S.me = null; S.bid = null; S.data = null; history.replaceState(null, "", location.pathname); signInView(); app.prepend(h("div", { class: "msg ok", role: "status" }, "Everything is deleted. Your sign-in is gone too.")); }
+    } catch (e) { await freshMail(e); say(e.message, "err"); render(); }
+  };
+  return h("div", { class: "card warn" }, h("h3", {}, "Cancel and delete all data"),
+    h("p", { class: "mut sm" }, "Deletes your teammates, their instructions, conversations, activity history, connections, your order and every sign-in. This cannot be undone."),
+    h("p", { class: "mut sm" }, "Kept, because the law expects it: opt-out and consent records, the compliance log and signed agreements. Contacts in those records are stored as one-way codes."),
+    h("label", {}, "Type the business name to confirm"), del,
+    h("div", { class: "btns" }, h("button", { class: "danger", onclick: go }, "Delete everything")), h("p", { class: "xs" }, "Needs a sign-in from the last 15 minutes."));
 }
 function founderCard() {
   const d = S.data, b = d.business, id = S.bid, q = b.quote || {};
@@ -267,7 +312,18 @@ function founderCard() {
     b.price_accepted_at ? h("p", { class: "sm" }, "Price accepted " + new Date(b.price_accepted_at).toLocaleDateString() + ".") : h("div", {}, h("label", {}, "Price shown to the owner (you still send the pricing email yourself)"), h("div", { class: "grid2" }, mo, su), h("div", { style: "height:8px" }), sum,
       h("div", { class: "btns" }, h("button", { onclick: () => run(() => api("/founder/quote", { business_id: id, quote: { monthly_usd: Number(mo.value) || 0, setup_usd: Number(su.value) || 0, summary: sum.value.trim() } }), "Price saved. The owner can accept it in the Portal.") }, "Save price"))),
     d.people.length ? h("div", {}, h("label", {}, "One-time sign-in link to send yourself"), who, h("div", { class: "btns" }, h("button", { onclick: async () => { try { const r = await api("/founder/link", { email: who.value }); out.replaceChildren(h("textarea", { readonly: true }, r.link), h("p", { class: "xs" }, r.note)); } catch (e) { out.replaceChildren(h("div", { class: "msg err" }, e.message)); } } }, "Make link")), out) : null,
+    founderSteps(),
     d.health_missing.length ? h("div", {}, h("label", {}, "Health agreements still missing"), d.health_missing.map((m) => h("div", { class: "row", style: "align-items:center;margin:6px 0" }, h("span", { class: "sm" }, m.party), h("button", { onclick: () => confirm("Only mark this signed if the signed agreement is on file.") && run(() => api("/founder/agreement", { business_id: m.kind === "baa_client" ? id : null, kind: m.kind, party: m.kind === "baa_client" ? "Pip" : m.party, status: "signed" }), "Recorded.") }, "Mark signed")))) : null);
+}
+function founderSteps() {
+  const d = S.data, mine = d.checklist.filter((s) => s.kind !== "owner_oauth" && s.kind !== "vault_login");
+  if (!mine.length) return null;
+  return h("div", {}, h("label", {}, "Steps Pip finishes (number, texting, website chat, box)"), mine.map((s) => {
+    const num = s.slot === "phone" ? h("input", { type: "tel", placeholder: "Pip number, like +12085550100", value: (s.detail && s.detail.pip_number) || "", style: "max-width:230px" }) : null;
+    const set = (status, text) => h("button", { onclick: () => run(() => rpc("founder_step", Object.assign({ slot: s.slot, status }, num && num.value.trim() ? { pip_number: num.value.trim() } : {})), "Saved.") }, text);
+    return h("div", { class: "row", style: "align-items:center;margin:6px 0;flex-wrap:wrap;gap:8px" }, h("span", { class: "sm" }, s.label + " · " + ((STEP[s.status] || [s.status])[0])), num,
+      s.status === "active" ? set("needed", "Mark not ready") : h("span", {}, s.status !== "submitted" ? set("submitted", "In progress") : null, " ", set("active", "Mark ready")));
+  }), h("div", { class: "btns" }, h("button", { class: "link", onclick: () => run(async () => { const r = await rpc("supervise_now"); say("Supervisor check: " + r.result.paused + " paused, " + r.result.resumed + " resumed, " + r.result.flagged + " flagged.", "ok"); }) }, "Run the supervisor check now")));
 }
 function founderHome() {
   const f = S.founder || { businesses: [], settings: {}, issues: [] }, set = f.settings || {};
