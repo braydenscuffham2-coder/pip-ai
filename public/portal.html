@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://qqaikvgjzzcdwumnyspb.supabase.co; img-src 'self' data:; base-uri 'none'; form-action 'self'">
+<meta name="referrer" content="no-referrer">
+<title>Pip Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Instrument+Serif&display=swap">
+<style>
+:root{--bg:#fff;--ink:#0b0d1f;--ink2:#4b5175;--ink3:#686e92;--line:rgba(11,13,31,.1);--soft:#f6f5fc;--violet:#5b3fe0;--teal:#087168;--good:#0f7a53;--warn:#b23a1c;--gold:#8a6100;--r:16px}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15.5px/1.5 Geist,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 40px)}
+main{max-width:640px;margin:0 auto;padding:18px 16px}
+h1{font:400 34px/1.1 "Instrument Serif",Georgia,serif;margin:6px 0 4px;letter-spacing:-.01em}
+h2{font:600 17px/1.3 Geist,sans-serif;margin:0 0 4px}
+h3{font:600 15px/1.3 Geist,sans-serif;margin:0}
+p{margin:6px 0}.mut{color:var(--ink2)}.sm{font-size:13.5px}.xs{font-size:12.5px;color:var(--ink3)}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+.brand{font:600 15px Geist,sans-serif;letter-spacing:.02em}
+.card{border:1px solid var(--line);border-radius:var(--r);padding:16px;margin:12px 0;background:#fff}
+.card.soft{background:var(--soft);border-color:transparent}
+.card.warn{border-color:rgba(178,58,28,.35);background:rgba(226,92,58,.05)}
+.row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.chip{display:inline-block;white-space:nowrap;font:600 12px/1 Geist,sans-serif;padding:6px 9px;border-radius:999px;background:var(--soft);color:var(--ink2)}
+.chip.good{background:rgba(17,160,105,.12);color:var(--good)}.chip.warn{background:rgba(226,92,58,.12);color:var(--warn)}
+.chip.wait{background:rgba(227,160,8,.16);color:var(--gold)}.chip.vio{background:rgba(155,134,255,.16);color:var(--violet)}
+button,.btn{font:600 15px Geist,sans-serif;border-radius:13px;border:1px solid var(--line);background:#fff;color:var(--ink);padding:12px 16px;min-height:46px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+button.pri{background:linear-gradient(180deg,#2b2f60,#0b0d1f);color:#fff;border-color:transparent}
+button.danger{color:var(--warn);border-color:rgba(178,58,28,.4)}
+button.link{border:0;background:none;padding:4px 0;min-height:0;color:var(--violet);font-weight:500}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--violet);outline-offset:2px}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+label{display:block;font:500 13.5px Geist,sans-serif;color:var(--ink2);margin:10px 0 4px}
+input,select,textarea{width:100%;font:500 16px Geist,sans-serif;color:var(--ink);border:1px solid rgba(11,13,31,.18);border-radius:12px;padding:12px;background:#fff;min-height:46px}
+textarea{min-height:90px;resize:vertical}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+nav{display:flex;gap:6px;overflow-x:auto;margin:14px -16px 4px;padding:0 16px 6px;position:sticky;top:0;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);z-index:2}
+nav button{min-height:38px;padding:8px 13px;border-radius:999px;font-size:14px;white-space:nowrap}
+nav button[aria-current="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+details{border-top:1px solid var(--line);padding:12px 0}details:first-of-type{border-top:0}
+summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px}
+summary::-webkit-details-marker{display:none}
+.bar{height:8px;border-radius:99px;background:var(--soft);overflow:hidden;margin:10px 0 4px}.bar i{display:block;height:100%;background:linear-gradient(90deg,#5eead9,#9b86ff);border-radius:99px}
+.log li{list-style:none;padding:10px 0;border-top:1px solid var(--line)}.log{margin:0;padding:0}.log li:first-child{border-top:0}
+.msg{padding:11px 13px;border-radius:12px;background:var(--soft);margin:10px 0;font-size:14.5px}.msg.err{background:rgba(226,92,58,.1);color:var(--warn)}.msg.ok{background:rgba(17,160,105,.1);color:var(--good)}
+ul.plain{margin:6px 0;padding-left:18px}ul.plain li{margin:3px 0}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:no-preference){.card{transition:border-color .2s}}
+</style>
+</head>
+<body>
+<main id="app" aria-live="polite"><p class="mut">Loading your Portal…</p></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+"use strict";
+// Pip Portal. One page, no build step. It talks only to the pip-portal and pip-portal-ops functions, with the signed-in session.
+// It never asks for, shows or stores a password. Tool sign-ins happen on the tool's own screen.
+const SB_URL = "https://qqaikvgjzzcdwumnyspb.supabase.co";
+const SB_KEY = "sb_publishable_Uw0vCJdDrXHB1wbSm9bBNg_3m6TdZvs";
+const FN = SB_URL + "/functions/v1/pip-portal";
+const OPS = SB_URL + "/functions/v1/pip-portal-ops";
+const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } });
+const app = document.getElementById("app");
+const S = { me: null, bid: null, data: null, tab: "team", note: null, log: null };
+
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "value") el.value = v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  return el;
+}
+const chip = (text, kind) => h("span", { class: "chip " + (kind || "") }, text);
+function say(text, kind) { S.note = text ? { text, kind } : null; }
+const put = (...kids) => app.replaceChildren(...kids.flat().filter((k) => k != null && k !== false));
+const noteEl = () => S.note ? h("div", { class: "msg " + (S.note.kind || ""), role: "status" }, S.note.text) : null;
+
+async function api(path, body, base) {
+  const { data } = await sb.auth.getSession();
+  const tok = data.session && data.session.access_token;
+  const r = await fetch((base || FN) + path, { method: body ? "POST" : "GET", headers: Object.assign({ "content-type": "application/json" }, tok ? { authorization: "Bearer " + tok } : {}), body: body ? JSON.stringify(body) : undefined });
+  let j = {}; try { j = await r.json(); } catch (e) { /* empty */ }
+  if (!r.ok) { const err = new Error(j.message || WORDS[j.error] || "Something went wrong. Try again."); err.code = j.error; throw err; }
+  return j;
+}
+const rpc = (name, args) => api("/rpc/" + name, { business: S.bid, args: args || {} }, OPS);
+const freshMail = async (e) => { if (e.code === "fresh_sign_in" && S.me) { try { await fetch(FN + "/signin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: S.me.email }) }); } catch (x) { /* shown to the user */ } } };
+const WORDS = {
+  sign_in: "Please sign in again.", fresh_sign_in: "For your security, sign in again to do this. We just emailed you a new link.",
+  owner_only: "Only an owner can do this.", setup_locked: "Setup unlocks when you accept your price.", connect_off: "Tool sign-ins are not switched on yet. Pip will let you know.",
+  connect_failed: "That sign-in could not be started. Pip has been told.", no_managed_sign_in: "Pip cannot connect that tool yet.", bad_number: "Add the number with area code.",
+  type_the_name: "Type the business name exactly to confirm.", last_owner: "A business needs at least one owner.", no_price_yet: "Your price has not been sent yet.",
+  not_ready: "This is not switched on yet. Pip is finishing it.", disconnect_first: "Disconnect Pip first. Then you can delete everything.", name_mismatch: "Type the business name exactly to confirm.",
+  vault_not_empty: "Saved logins must be removed first. Pip has been told.", attest_required: "Tick the box to confirm these people asked to hear from you.", too_many: "Add up to 500 at a time.", not_a_pip_step: "That step is checked automatically.",
+};
+async function run(fn, okText) {
+  say(null);
+  try { await fn(); if (okText) say(okText, "ok"); }
+  catch (e) {
+    if (e.code === "fresh_sign_in" && S.me) { try { await fetch(FN + "/signin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: S.me.email }) }); } catch (x) { /* shown below */ } }
+    if (e.code === "sign_in") { await sb.auth.signOut(); S.me = null; }
+    say(e.message, "err");
+  }
+  await load(); render();
+}
+
+// ---------- sign-in ----------
+function signInView(prefill, sent) {
+  const email = h("input", { type: "email", id: "em", autocomplete: "email", inputmode: "email", placeholder: "you@yourbusiness.com", value: prefill || "", required: true });
+  const out = h("div", {});
+  const go = async (ev) => {
+    if (ev) ev.preventDefault();
+    const v = email.value.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) { out.replaceChildren(h("div", { class: "msg err" }, "That email doesn't look right.")); return; }
+    out.replaceChildren(h("div", { class: "msg" }, "Sending…"));
+    try { await fetch(FN + "/signin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: v }) }); } catch (e) { /* same message */ }
+    out.replaceChildren(h("div", { class: "msg ok" }, "If that email has a Pip Portal, a sign-in link is on its way. It works once and lasts one hour."));
+  };
+  put(
+    h("div", { class: "top" }, h("span", { class: "brand" }, "Pip Portal")),
+    h("h1", {}, "Sign in"),
+    h("p", { class: "mut" }, "Use the email you gave Pip. There is no password. We email you a link."),
+    h("form", { class: "card", onsubmit: go }, h("label", { for: "em" }, "Email"), email, h("div", { class: "btns" }, h("button", { class: "pri", type: "submit" }, "Email me a sign-in link")), out),
+    h("p", { class: "xs" }, "Pip never asks for a password or a code by email or text.")
+  );
+  if (sent) go();
+}
+
+// ---------- data ----------
+async function load() {
+  if (!S.me) return;
+  if (S.bid) { try { S.data = await api("/business/" + S.bid); } catch (e) { S.data = null; S.bid = null; say(e.message, "err"); } }
+  if (S.me.founder && !S.bid) { try { S.founder = await api("/founder/businesses", {}); } catch (e) { S.founder = null; } }
+}
+async function openBusiness(id) { S.bid = id; S.tab = "team"; S.log = null; S.data = null; history.replaceState(null, "", "?b=" + id); await load(); render(); }
+
+// ---------- pieces ----------
+const AGENT = { draft: ["Being built", ""], testing: ["Being tested", ""], needs_review: ["Being built", ""], sandbox: ["Ready, waiting on setup", "vio"], approved: ["Ready", "vio"], live: ["Working", "good"], paused: ["Paused", "warn"] };
+const STEP = { needed: ["To do", "wait"], link_made: ["Finish sign-in", "wait"], active: ["Connected", "good"], failed: ["Try again", "warn"], expired: ["Reconnect", "warn"], revoked: ["Disconnected", "warn"], submitted: ["With Pip", "vio"], unsupported: ["Pip is adding it", "vio"] };
+const STATES = "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split(" ");
+const isOwner = () => S.data && (S.data.role === "owner" || S.data.role === "founder");
+
+function banner() {
+  const d = S.data, b = d.business, steps = d.checklist, done = steps.filter((s) => s.status === "active").length;
+  if (b.status === "disconnected") return h("div", { class: "card warn" }, h("h2", {}, "Everything is disconnected"), h("p", { class: "mut" }, "Every tool sign-in was revoked and every agent is stopped. Remember to turn off call forwarding at your phone company."));
+  if (!b.price_accepted_at) {
+    if (!b.quote) return h("div", { class: "card soft" }, h("h2", {}, "Your team is being built"), h("p", { class: "mut" }, "Each teammate shows here as it is built. Your price comes by email from Brayden. Setup unlocks once you accept it."));
+    const q = b.quote, box = d.terms_url ? h("input", { type: "checkbox", id: "tc", style: "width:auto;min-height:0;margin-right:8px" }) : null;
+    return h("div", { class: "card" }, h("h2", {}, "Your price"),
+      q.monthly_usd != null ? h("p", {}, h("strong", {}, "$" + Number(q.monthly_usd).toLocaleString() + " a month"), q.setup_usd ? " plus $" + Number(q.setup_usd).toLocaleString() + " one-time setup" : "") : null,
+      q.summary ? h("p", { class: "mut", style: "white-space:pre-wrap" }, q.summary) : null,
+      box ? h("label", { for: "tc", style: "display:flex;align-items:center;color:var(--ink)" }, box, h("span", {}, "I agree to the ", h("a", { href: d.terms_url, target: "_blank", rel: "noopener" }, "terms"), ".")) : null,
+      isOwner() ? h("div", { class: "btns" }, h("button", { class: "pri", onclick: () => run(() => api("/business/" + S.bid + "/accept", { terms: box ? box.checked : undefined }), "Accepted. Setup is unlocked.") }, "Accept and start setup")) : h("p", { class: "xs" }, "An owner accepts the price."));
+  }
+  const pct = steps.length ? Math.round(done / steps.length * 100) : 100;
+  return h("div", { class: "card soft" }, h("h2", {}, done === steps.length ? "Setup is done" : "Setup: " + done + " of " + steps.length + " done"), h("div", { class: "bar", role: "progressbar", "aria-valuenow": pct, "aria-valuemin": 0, "aria-valuemax": 100 }, h("i", { style: "width:" + pct + "%" })),
+    h("p", { class: "mut sm" }, done === steps.length ? "Brayden does a final check and switches each teammate on." : "Stop any time. Each step saves on its own."));
+}
+
+function teamTab() {
+  const d = S.data;
+  return h("div", {}, d.agents.length ? null : h("p", { class: "mut" }, "Your teammates will show here."),
+    d.agents.map((a) => {
+      const st = AGENT[a.status] || [a.status, ""], paused = a.pauses.length > 0;
+      return h("div", { class: "card" }, h("div", { class: "row" }, h("div", {}, h("h3", {}, a.teammate ? a.teammate + " · " + a.name : a.name), a.role ? h("p", { class: "mut sm" }, a.role) : null), chip(paused && a.status !== "paused" ? "Held" : st[0], paused ? "warn" : st[1])),
+        a.needs.length ? h("p", { class: "xs" }, "Needs: " + a.needs.join(", ")) : null,
+        a.pauses.map((p) => h("p", { class: "sm", style: "color:var(--warn)" }, "Paused: " + (p.detail || ({ owner: "by an owner", staff: "by staff", founder: "by Pip", expired_access: "a sign-in stopped working", disconnect: "everything was disconnected" }[p.reason] || p.reason)))),
+        h("div", { class: "btns" },
+          paused ? (isOwner() ? h("button", { onclick: () => run(() => api("/business/" + S.bid + "/agents/" + a.spec_id + "/resume", {}), "Resumed.") }, "Resume") : h("span", { class: "xs" }, "An owner can resume."))
+                 : h("button", { onclick: () => run(() => api("/business/" + S.bid + "/agents/" + a.spec_id + "/pause", {}), "Paused. The rest of your team keeps working.") }, a.status === "live" ? "Pause" : "Hold before go-live")));
+    }),
+    d.business.health_lane ? h("div", { class: "card warn" }, h("h3", {}, "Health agreements"), h("p", { class: "mut sm" }, "No health teammate goes live until each of these is signed."),
+      d.health_missing.length ? h("ul", { class: "plain sm" }, d.health_missing.map((m) => h("li", {}, m.party))) : h("p", { class: "sm", style: "color:var(--good)" }, "All signed.")) : null);
+}
+
+function stepBody(s) {
+  const d = S.data, locked = !d.setup_unlocked && d.role !== "founder", id = S.bid, kids = [];
+  kids.push(h("p", { class: "sm" }, s.can)); if (s.cannot) kids.push(h("p", { class: "sm mut" }, s.cannot));
+  kids.push(h("p", { class: "xs" }, "Usual wait: " + s.lead_time + ". Used by: " + s.agents.map((k) => { const a = d.agents.find((x) => x.skill_id === k); return a ? (a.teammate || a.name) : k; }).join(", ")));
+  if (s.status === "active") return kids;
+  if (!isOwner()) { kids.push(h("p", { class: "xs" }, "An owner finishes this step.")); return kids; }
+  if (locked) { kids.push(h("p", { class: "xs" }, "Unlocks when you accept your price.")); return kids; }
+  const other = () => h("button", { class: "link", onclick: () => { const t = prompt("What do you use for this?"); if (t && t.trim()) run(() => api("/business/" + id + "/unsupported", { tool_name: t.trim(), slot: s.slot }), "Thanks. Pip will add it and tell you. The rest of your team can still go live."); } }, "I use something else");
+  if (s.kind === "owner_oauth") {
+    kids.push(h("p", { class: "xs" }, "You sign in on the tool's own screen. Pip never sees your password. That screen lists what the connection can reach; Pip limits your agents to what is written above."));
+    kids.push(h("div", { class: "btns" }, s.choices.map((c) => c.toolkit
+      ? h("button", { class: "pri", disabled: !d.connect_on, onclick: () => run(async () => { const r = await api("/business/" + id + "/connect", { slot: s.slot, toolkit: c.toolkit }); location.href = r.url; }) }, (s.status === "needed" ? "Connect " : "Reconnect ") + c.label)
+      : h("button", { onclick: () => run(() => api("/business/" + id + "/unsupported", { tool_name: c.label, slot: s.slot }), "Thanks. Pip will add " + c.label + " and tell you.") }, "I use " + c.label))));
+    if (s.status === "link_made") kids.push(h("button", { class: "link", onclick: () => run(() => api("/business/" + id + "/refresh", {}), "Checked.") }, "I finished signing in. Check again."));
+    kids.push(other());
+  } else if (s.kind === "number") {
+    if (s.status === "submitted") kids.push(h("p", { class: "sm" }, "Saved. Pip will assign your number and send the forwarding step for your phone company, then ask you to make one test call."));
+    const num = h("input", { type: "tel", autocomplete: "tel", placeholder: "(208) 555-0100", value: (d.phone && d.phone.business_number) || "" });
+    const car = h("select", {}, ["", "AT&T", "Verizon", "T-Mobile", "Spectrum", "Comcast Business", "RingCentral", "Office phone system", "Other or not sure"].map((c) => h("option", { value: c, selected: d.phone && d.phone.carrier === c }, c || "Pick your phone company")));
+    kids.push(h("label", {}, "Your business number"), num, h("label", {}, "Phone company"), car, h("div", { class: "btns" }, h("button", { class: "pri", onclick: () => run(() => api("/business/" + id + "/phone", { business_number: num.value, carrier: car.value }), "Saved.") }, "Save")));
+  } else if (s.kind === "registration") {
+    if (s.status === "submitted") kids.push(h("p", { class: "sm" }, "Saved. Carriers review this before any text is sent. Everything else can start without it."));
+    const t = d.texting || {}, f = {
+      legal_name: h("input", { autocomplete: "organization", value: t.legal_name || "", placeholder: "Legal business name" }),
+      business_type: h("select", {}, [["", "Business type"], ["llc", "LLC"], ["corporation", "Corporation"], ["sole_proprietor", "Sole proprietor"], ["partnership", "Partnership"], ["nonprofit", "Nonprofit"], ["other", "Other"]].map(([v, l]) => h("option", { value: v, selected: t.business_type === v }, l))),
+      line1: h("input", { autocomplete: "address-line1", placeholder: "Street address" }), city: h("input", { autocomplete: "address-level2", placeholder: "City" }),
+      state: h("input", { autocomplete: "address-level1", placeholder: "State", maxlength: 2, value: d.business.state || "" }), zip: h("input", { autocomplete: "postal-code", inputmode: "numeric", placeholder: "ZIP" }),
+      website: h("input", { type: "url", placeholder: "Website", value: t.website || (d.business.domain ? "https://" + d.business.domain : "") }) };
+    kids.push(h("label", {}, "Legal business name"), f.legal_name, h("label", {}, "Business type"), f.business_type, h("label", {}, "Address"), f.line1, h("div", { class: "grid2", style: "margin-top:8px" }, f.city, h("div", { class: "grid2" }, f.state, f.zip)), h("label", {}, "Website"), f.website,
+      h("p", { class: "xs" }, "We ask for your tax ID later, only at the moment carriers open your registration. Do not send it by email or text."),
+      h("div", { class: "btns" }, h("button", { class: "pri", onclick: () => run(() => api("/business/" + id + "/texting", Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value]))), "Saved.") }, "Save")));
+  } else {
+    kids.push(s.status === "submitted" ? h("p", { class: "sm" }, "Pip is finishing this step with you and will be in touch.")
+      : h("div", { class: "btns" }, h("button", { class: "pri", onclick: () => run(() => api("/business/" + id + "/ack", { slot: s.slot }), "Pip will finish this step with you.") }, s.kind === "hardware" ? "I'm ready for my box" : "Ask Pip to finish this with me")));
+  }
+  return kids;
+}
+function setupTab() {
+  const d = S.data, b = d.business, id = S.bid, need = d.checklist.filter((s) => s.status !== "active");
+  const st = h("select", {}, [h("option", { value: "" }, "Pick your state")].concat(STATES.map((x) => h("option", { value: x, selected: b.state === x }, x))));
+  const tool = h("input", { placeholder: "Tool name" }), page = h("input", { type: "url", placeholder: "Its sign-in page (optional)" });
+  return h("div", {},
+    h("div", { class: "card" + (b.state ? "" : " warn") }, h("h3", {}, "Where is your business?"), h("p", { class: "mut sm" }, "Call, text, recording and camera rules differ by state. Your agents follow the rules for yours."),
+      isOwner() ? h("div", { class: "row", style: "align-items:center;margin-top:8px" }, st, h("button", { onclick: () => st.value && run(() => api("/business/" + id + "/profile", { state: st.value }), "Saved.") }, "Save")) : h("p", { class: "sm" }, b.state || "Not set yet")),
+    h("div", { class: "card" }, d.checklist.length ? null : h("p", { class: "mut" }, "Nothing to connect yet."),
+      d.checklist.map((s, i) => { const c = STEP[s.status] || [s.status, ""]; const wait = s.status !== "active" && s.waiting_on === "pip" && s.status !== "submitted";
+        return h("details", { open: need[0] === s && d.setup_unlocked }, h("summary", {}, h("h3", {}, s.label), chip(wait ? "Waiting on Pip" : c[0], wait ? "vio" : c[1])), stepBody(s)); })),
+    isOwner() && d.setup_unlocked ? h("div", { class: "card" }, h("h3", {}, "A tool that only has a username and password?"), h("p", { class: "mut sm" }, "Tell us which one. The locked vault for these is not open yet, so we do not take the password now. Never send a password by email or text."),
+      tool, h("div", { style: "height:8px" }), page, h("div", { class: "btns" }, h("button", { onclick: () => tool.value.trim() && run(() => api("/business/" + id + "/vault", { tool_name: tool.value.trim(), login_url: page.value.trim() }), "Saved. No password was taken.") }, "Save for the vault"))) : null);
+}
+function activityTab() {
+  const id = S.bid, box = h("textarea", { placeholder: "What went wrong, and when?" });
+  if (!S.log) { S.log = []; api("/business/" + id + "/activity").then((r) => { S.log = r.items; if (S.tab === "activity") render(); }).catch(() => {}); }
+  return h("div", {},
+    h("div", { class: "card" }, S.log.length ? h("ul", { class: "log" }, S.log.map((l) => h("li", {}, h("div", { class: "row" }, h("span", {}, l.summary), l.outcome === "failed" ? chip("Failed", "warn") : l.outcome === "paused" ? chip("Paused", "warn") : null), h("div", { class: "xs" }, new Date(l.at).toLocaleString() + (l.agent ? " · " + l.agent : ""))))) : h("p", { class: "mut" }, "Nothing yet. Every action your team takes will show here in plain words.")),
+    h("div", { class: "card" }, h("h3", {}, "Report a problem"), box, h("div", { class: "btns" }, h("button", { onclick: () => box.value.trim().length > 2 && run(() => api("/business/" + id + "/issue", { body: box.value.trim() }), "Sent to Pip.") }, "Send to Pip")),
+      S.data.issues.length ? h("p", { class: "xs" }, S.data.issues.length + " open report(s).") : null));
+}
+function peopleTab() {
+  const d = S.data, id = S.bid, em = h("input", { type: "email", placeholder: "name@yourbusiness.com" }), role = h("select", {}, h("option", { value: "staff" }, "Staff: can view, pause and report problems"), h("option", { value: "owner" }, "Owner: can also manage people, tools and billing"));
+  if (!isOwner()) return h("p", { class: "mut" }, "Owners manage who has access.");
+  return h("div", {}, h("div", { class: "card" }, d.people.map((p) => h("details", {}, h("summary", {}, h("span", {}, p.email), chip(p.role === "owner" ? "Owner" : "Staff", p.status === "invited" ? "wait" : "")), p.status === "invited" ? h("p", { class: "xs" }, "Invited, has not signed in yet.") : null,
+      h("div", { class: "btns" }, h("button", { class: "danger", onclick: () => confirm("Remove " + p.email + "?") && run(() => api("/business/" + id + "/remove-person", { member_id: p.id }), "Removed.") }, "Remove"))))),
+    h("div", { class: "card" }, h("h3", {}, "Add someone"), h("label", {}, "Their email"), em, h("label", {}, "Access"), role, h("div", { class: "btns" }, h("button", { class: "pri", onclick: () => run(() => api("/business/" + id + "/people", { email: em.value.trim(), role: role.value }), "Added. They will get an email.") }, "Add")), h("p", { class: "xs" }, "Changing people needs a sign-in from the last 15 minutes.")));
+}
+function settingsTab() {
+  const d = S.data, b = d.business, id = S.bid, a = b.alert_prefs || {}, us = d.rules.find((r) => r.state === "US") || {}, st = d.rules.find((r) => r.state === b.state && r.state !== "US");
+  const mob = h("input", { type: "tel", autocomplete: "tel", placeholder: "Mobile for alerts", value: a.mobile || "" }), conf = h("input", { placeholder: b.name });
+  const hrs = (st && st.outbound_hours) || us.outbound_hours || {}, win = (k) => (hrs[k] || []).join(" to ");
+  return h("div", {},
+    h("div", { class: "card" }, h("h3", {}, "How your agents behave" + (b.state ? " in " + b.state : "")), h("ul", { class: "plain sm" },
+      h("li", {}, "They say they are an AI at the start of every call, text thread and chat."), h("li", {}, "Every recorded call starts with a recording notice."),
+      h("li", {}, "They only call or text people who wrote in first or agreed to it, and they honor STOP at once in every channel."),
+      us.outbound_hours ? h("li", {}, "Outbound calls and texts only go out Monday to Saturday " + ((us.outbound_hours.mon_sat || []).join(" to ")) + " and Sunday " + ((us.outbound_hours.sun || []).join(" to ")) + ", your local time.") : null,
+      st && st.telemarketing ? h("li", {}, b.state + ": " + st.telemarketing) : null, st && st.ai_disclosure ? h("li", {}, b.state + ": " + st.ai_disclosure) : null, st && st.biometric ? h("li", {}, b.state + ": " + st.biometric) : null),
+      h("p", { class: "xs" }, "These defaults are being reviewed by a lawyer. They are not legal advice.")),
+    isOwner() ? h("div", { class: "card" }, h("h3", {}, "Alerts"), h("p", { class: "mut sm" }, "Pip emails you when a teammate has to pause. Text alerts start once Pip's texting is approved."), mob, h("div", { class: "btns" }, h("button", { onclick: () => run(() => api("/business/" + id + "/alerts", { mobile: mob.value }), "Saved.") }, "Save"))) : null,
+    isOwner() && b.status !== "disconnected" ? h("div", { class: "card warn" }, h("h3", {}, "Disconnect everything"), h("p", { class: "mut sm" }, "Revokes every tool sign-in and stops every agent right away. One thing only you can undo: call forwarding at your phone company."), h("label", {}, "Type the business name to confirm"), conf,
+      h("div", { class: "btns" }, h("button", { class: "danger", onclick: () => run(() => api("/business/" + id + "/disconnect", { confirm: conf.value }), "Everything is disconnected.") }, "Disconnect everything")), h("p", { class: "xs" }, "Needs a sign-in from the last 15 minutes.")) : null,
+    b.status !== "disconnected" ? consentCard() : null,
+    isOwner() && b.status === "disconnected" ? deleteCard() : null,
+    h("div", { class: "btns" }, h("button", { onclick: async () => { await sb.auth.signOut(); location.href = location.pathname; } }, "Sign out")));
+}
+function consentCard() {
+  const list = h("textarea", { placeholder: "One per line. Phone numbers or emails." }), kind = h("select", {}, h("option", { value: "phone|sms" }, "Phone numbers that agreed to texts"), h("option", { value: "phone|voice" }, "Phone numbers that agreed to calls"), h("option", { value: "email|email" }, "Emails that agreed to email"));
+  const ok = h("input", { type: "checkbox", id: "att", style: "width:auto;margin-right:8px" }), out = h("div", {});
+  const add = async () => {
+    const [k, c] = kind.value.split("|"), contacts = list.value.split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean);
+    if (!contacts.length) return;
+    try { const r = await rpc("consent_add", { kind: k, channel: c, contacts, attest: ok.checked ? "true" : "" });
+      out.replaceChildren(h("div", { class: "msg ok" }, "Added " + r.added + "." + (r.opted_out_skipped ? " Left out " + r.opted_out_skipped + " who opted out." : "") + (r.already_on_file ? " " + r.already_on_file + " were already on file." : "") + (r.not_valid ? " " + r.not_valid + " did not look right." : ""))); list.value = "";
+    } catch (e) { out.replaceChildren(h("div", { class: "msg err" }, e.message)); }
+  };
+  const csv = async () => {
+    try { const r = await rpc("consent_export"), cols = ["at", "ending", "kind", "channel", "purpose", "status", "method", "code"];
+      const text = [cols.join(",")].concat(r.rows.map((x) => cols.map((c) => '"' + String(x[c] == null ? "" : x[c]).replace(/"/g, '""') + '"').join(","))).join("\n");
+      const a = h("a", { href: URL.createObjectURL(new Blob([text], { type: "text/csv" })), download: "pip-consent-record.csv" }); document.body.append(a); a.click(); a.remove();
+    } catch (e) { out.replaceChildren(h("div", { class: "msg err" }, e.message)); }
+  };
+  return h("div", { class: "card" }, h("h3", {}, "People who agreed to hear from you"),
+    h("p", { class: "mut sm" }, "Your team only calls or texts people who wrote in first or who are on this list. This list covers messages about their own service, like reminders and confirmations. It does not cover promotions. Anyone who has opted out stays opted out."),
+    kind, h("div", { style: "height:8px" }), list,
+    h("label", { for: "att", style: "display:flex;align-items:flex-start;margin-top:10px" }, ok, h("span", { class: "sm" }, "These people asked my business to contact them this way about their own service.")),
+    h("div", { class: "btns" }, h("button", { class: "pri", onclick: add }, "Add to the list"), isOwner() ? h("button", { onclick: csv }, "Download the record") : null), out,
+    h("p", { class: "xs" }, "Pip stores each contact as a one-way code plus its last four characters, never the full number or email."));
+}
+function deleteCard() {
+  const d = S.data, b = d.business, del = h("input", { placeholder: b.name });
+  const go = async () => {
+    say(null);
+    try { await rpc("cancel", { name: del.value });
+      if (d.role === "founder") { S.bid = null; S.data = null; history.replaceState(null, "", location.pathname); say("Deleted.", "ok"); await load(); render(); }
+      else { await sb.auth.signOut(); S.me = null; S.bid = null; S.data = null; history.replaceState(null, "", location.pathname); signInView(); app.prepend(h("div", { class: "msg ok", role: "status" }, "Everything is deleted. Your sign-in is gone too.")); }
+    } catch (e) { await freshMail(e); say(e.message, "err"); render(); }
+  };
+  return h("div", { class: "card warn" }, h("h3", {}, "Cancel and delete all data"),
+    h("p", { class: "mut sm" }, "Deletes your teammates, their instructions, conversations, activity history, connections, your order and every sign-in. This cannot be undone."),
+    h("p", { class: "mut sm" }, "Kept, because the law expects it: opt-out and consent records, the compliance log and signed agreements. Contacts in those records are stored as one-way codes."),
+    h("label", {}, "Type the business name to confirm"), del,
+    h("div", { class: "btns" }, h("button", { class: "danger", onclick: go }, "Delete everything")), h("p", { class: "xs" }, "Needs a sign-in from the last 15 minutes."));
+}
+function founderCard() {
+  const d = S.data, b = d.business, id = S.bid, q = b.quote || {};
+  const mo = h("input", { type: "number", inputmode: "decimal", placeholder: "Monthly $", value: q.monthly_usd != null ? q.monthly_usd : "" }), su = h("input", { type: "number", inputmode: "decimal", placeholder: "Setup $ (optional)", value: q.setup_usd || "" }), sum = h("textarea", { placeholder: "What is included, per teammate, and the overage rate" }); sum.value = q.summary || "";
+  const who = h("select", {}, d.people.map((p) => h("option", { value: p.email }, p.email))), out = h("div", {});
+  return h("div", { class: "card soft" }, h("h3", {}, "Founder"), h("p", { class: "xs" }, "Only you see this card."),
+    b.price_accepted_at ? h("p", { class: "sm" }, "Price accepted " + new Date(b.price_accepted_at).toLocaleDateString() + ".") : h("div", {}, h("label", {}, "Price shown to the owner (you still send the pricing email yourself)"), h("div", { class: "grid2" }, mo, su), h("div", { style: "height:8px" }), sum,
+      h("div", { class: "btns" }, h("button", { onclick: () => run(() => api("/founder/quote", { business_id: id, quote: { monthly_usd: Number(mo.value) || 0, setup_usd: Number(su.value) || 0, summary: sum.value.trim() } }), "Price saved. The owner can accept it in the Portal.") }, "Save price"))),
+    d.people.length ? h("div", {}, h("label", {}, "One-time sign-in link to send yourself"), who, h("div", { class: "btns" }, h("button", { onclick: async () => { try { const r = await api("/founder/link", { email: who.value }); out.replaceChildren(h("textarea", { readonly: true }, r.link), h("p", { class: "xs" }, r.note)); } catch (e) { out.replaceChildren(h("div", { class: "msg err" }, e.message)); } } }, "Make link")), out) : null,
+    founderSteps(),
+    d.health_missing.length ? h("div", {}, h("label", {}, "Health agreements still missing"), d.health_missing.map((m) => h("div", { class: "row", style: "align-items:center;margin:6px 0" }, h("span", { class: "sm" }, m.party), h("button", { onclick: () => confirm("Only mark this signed if the signed agreement is on file.") && run(() => api("/founder/agreement", { business_id: m.kind === "baa_client" ? id : null, kind: m.kind, party: m.kind === "baa_client" ? "Pip" : m.party, status: "signed" }), "Recorded.") }, "Mark signed")))) : null);
+}
+function founderSteps() {
+  const d = S.data, mine = d.checklist.filter((s) => s.kind !== "owner_oauth" && s.kind !== "vault_login");
+  if (!mine.length) return null;
+  return h("div", {}, h("label", {}, "Steps Pip finishes (number, texting, website chat, box)"), mine.map((s) => {
+    const num = s.slot === "phone" ? h("input", { type: "tel", placeholder: "Pip number, like +12085550100", value: (s.detail && s.detail.pip_number) || "", style: "max-width:230px" }) : null;
+    const set = (status, text) => h("button", { onclick: () => run(() => rpc("founder_step", Object.assign({ slot: s.slot, status }, num && num.value.trim() ? { pip_number: num.value.trim() } : {})), "Saved.") }, text);
+    return h("div", { class: "row", style: "align-items:center;margin:6px 0;flex-wrap:wrap;gap:8px" }, h("span", { class: "sm" }, s.label + " · " + ((STEP[s.status] || [s.status])[0])), num,
+      s.status === "active" ? set("needed", "Mark not ready") : h("span", {}, s.status !== "submitted" ? set("submitted", "In progress") : null, " ", set("active", "Mark ready")));
+  }), h("div", { class: "btns" }, h("button", { class: "link", onclick: () => run(async () => { const r = await rpc("supervise_now"); say("Supervisor check: " + r.result.paused + " paused, " + r.result.resumed + " resumed, " + r.result.flagged + " flagged.", "ok"); }) }, "Run the supervisor check now")));
+}
+function founderHome() {
+  const f = S.founder || { businesses: [], settings: {}, issues: [] }, set = f.settings || {};
+  const toggle = (key, label, hint) => h("div", { class: "row", style: "align-items:center;margin:10px 0" }, h("div", {}, h("div", {}, label), h("div", { class: "xs" }, hint)), h("button", { onclick: () => run(() => api("/founder/setting", { key, value: !set[key] }), "Saved.") }, set[key] ? "On" : "Off"));
+  return h("div", {}, h("h1", {}, "All businesses"),
+    f.businesses.map((b) => h("div", { class: "card" }, h("div", { class: "row" }, h("div", {}, h("h3", {}, b.name), h("p", { class: "xs" }, [b.domain, b.state, b.health_lane ? "health lane" : null].filter(Boolean).join(" · "))), chip(b.price_accepted_at ? "Setup" : b.quote ? "Priced" : "Building", b.price_accepted_at ? "good" : "")), h("div", { class: "btns" }, h("button", { onclick: () => openBusiness(b.id) }, "Open")))),
+    h("div", { class: "card soft" }, h("h3", {}, "Switches"),
+      toggle("portal_invites", "Email owners at Lock it in", "Off: no owner is emailed automatically. Needs your own sending domain on Resend first."),
+      toggle("portal_golive_gate", "Go-live gate", "On: an agent cannot go live until price, location, connections and agreements are in place.")),
+    f.issues.length ? h("div", { class: "card" }, h("h3", {}, "Open reports"), h("ul", { class: "log" }, f.issues.map((i) => h("li", {}, h("div", { class: "sm" }, i.body), h("div", { class: "xs" }, i.opened_by + " · " + new Date(i.created_at).toLocaleString()), h("button", { class: "link", onclick: () => run(() => api("/founder/resolve", { issue_id: i.id }), "Resolved.") }, "Mark resolved"))))) : null);
+}
+
+// ---------- render ----------
+function render() {
+  if (!S.me) return signInView();
+  const head = h("div", { class: "top" }, h("span", { class: "brand" }, "Pip Portal"), h("span", { class: "xs" }, S.me.email));
+  if (!S.bid || !S.data) {
+    const list = S.me.businesses || [];
+    put(head, noteEl(), S.me.founder ? founderHome() : h("div", {}, h("h1", {}, "Your businesses"), list.length ? list.map((b) => h("div", { class: "card" }, h("div", { class: "row" }, h("h3", {}, b.name), h("button", { onclick: () => openBusiness(b.id) }, "Open")))) : h("p", { class: "mut" }, "This email is not linked to a business yet. Use the email you gave Pip, or ask your owner to add you.")),
+      h("div", { class: "btns" }, h("button", { onclick: async () => { await sb.auth.signOut(); location.href = location.pathname; } }, "Sign out")));
+    return;
+  }
+  const d = S.data, tabs = [["team", "Team"], ["setup", "Setup"], ["activity", "Activity"], ["people", "People"], ["settings", "Settings"]];
+  const body = { team: teamTab, setup: setupTab, activity: activityTab, people: peopleTab, settings: settingsTab }[S.tab]();
+  put(head,
+    (S.me.founder || (S.me.businesses || []).length > 1) ? h("button", { class: "link", onclick: () => { S.bid = null; S.data = null; history.replaceState(null, "", location.pathname); load().then(render); } }, "← All businesses") : null,
+    h("h1", {}, d.business.name), noteEl(), banner(),
+    h("nav", { "aria-label": "Sections" }, tabs.map(([k, l]) => h("button", { "aria-current": S.tab === k ? "true" : "false", onclick: () => { S.tab = k; say(null); render(); } }, l))),
+    body, d.role === "founder" ? founderCard() : null);
+}
+
+// ---------- boot ----------
+(async function boot() {
+  const q = new URLSearchParams(location.search), hash = new URLSearchParams(location.hash.slice(1)), th = hash.get("th");
+  if (th) {
+    history.replaceState(null, "", location.pathname + location.search);
+    let r = await sb.auth.verifyOtp({ token_hash: th, type: "email" });
+    if (r.error) r = await sb.auth.verifyOtp({ token_hash: th, type: "magiclink" });
+    if (r.error) say("That link was already used or has expired. Ask for a new one.", "err");
+  }
+  const { data } = await sb.auth.getSession();
+  if (!data.session) { signInView(q.get("e") || "", !!q.get("e") && !th); const n = noteEl(); if (n) app.prepend(n); return; }
+  try { S.me = await api("/me"); } catch (e) { await sb.auth.signOut(); signInView(q.get("e") || ""); return; }
+  const want = q.get("b"), mine = S.me.businesses || [];
+  S.bid = want || (!S.me.founder && mine.length === 1 ? mine[0].id : null);
+  if (q.get("connected") && S.bid) { S.tab = "setup"; try { await api("/business/" + S.bid + "/refresh", {}); } catch (e) { /* shown on load */ } history.replaceState(null, "", "?b=" + S.bid); }
+  await load(); render();
+})();
+</script>
+</body>
+</html>
