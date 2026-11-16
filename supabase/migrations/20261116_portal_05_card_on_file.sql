@@ -1,0 +1,4 @@
+-- Applied to the pip-ai database on 2026-11-16 as migration portal_05_card_on_file.
+-- Adds businesses.stripe_customer_id, card_on_file_at, card_hint; functions portal_billing_ctx,
+-- portal_billing_set_customer, portal_billing_save; and the billing_status action on portal_api.
+-- The full text lives in the database's migration history (supabase_migrations.schema_migrations).

@@ -102,6 +102,7 @@ const WORDS = {
   type_the_name: "Type the business name exactly to confirm.", last_owner: "A business needs at least one owner.", no_price_yet: "Your price has not been sent yet.",
   not_ready: "This is not switched on yet. Pip is finishing it.", disconnect_first: "Disconnect Pip first. Then you can delete everything.", name_mismatch: "Type the business name exactly to confirm.",
   vault_not_empty: "Saved logins must be removed first. Pip has been told.", attest_required: "Tick the box to confirm these people asked to hear from you.", too_many: "Add up to 500 at a time.", not_a_pip_step: "That step is checked automatically.",
+  card_off: "Card setup is not switched on yet. Pip will let you know.", card_not_saved: "That card was not saved. Try again.", card_failed: "The card page could not be opened. Try again in a minute.", disconnected: "This business is disconnected.",
 };
 async function run(fn, okText) {
   say(null);
@@ -139,6 +140,7 @@ function signInView(prefill, sent) {
 // ---------- data ----------
 async function load() {
   if (!S.me) return;
+  S.bill = undefined;
   if (S.bid) { try { S.data = await api("/business/" + S.bid); } catch (e) { S.data = null; S.bid = null; say(e.message, "err"); } }
   if (S.me.founder && !S.bid) { try { S.founder = await api("/founder/businesses", {}); } catch (e) { S.founder = null; } }
 }
@@ -262,9 +264,19 @@ function settingsTab() {
     isOwner() ? h("div", { class: "card" }, h("h3", {}, "Alerts"), h("p", { class: "mut sm" }, "Pip emails you when a teammate has to pause. Text alerts start once Pip's texting is approved."), mob, h("div", { class: "btns" }, h("button", { onclick: () => run(() => api("/business/" + id + "/alerts", { mobile: mob.value }), "Saved.") }, "Save"))) : null,
     isOwner() && b.status !== "disconnected" ? h("div", { class: "card warn" }, h("h3", {}, "Disconnect everything"), h("p", { class: "mut sm" }, "Revokes every tool sign-in and stops every agent right away. One thing only you can undo: call forwarding at your phone company."), h("label", {}, "Type the business name to confirm"), conf,
       h("div", { class: "btns" }, h("button", { class: "danger", onclick: () => run(() => api("/business/" + id + "/disconnect", { confirm: conf.value }), "Everything is disconnected.") }, "Disconnect everything")), h("p", { class: "xs" }, "Needs a sign-in from the last 15 minutes.")) : null,
+    isOwner() && b.status !== "disconnected" ? cardCard() : null,
     b.status !== "disconnected" ? consentCard() : null,
     isOwner() && b.status === "disconnected" ? deleteCard() : null,
     h("div", { class: "btns" }, h("button", { onclick: async () => { await sb.auth.signOut(); location.href = location.pathname; } }, "Sign out")));
+}
+function cardCard() {
+  if (S.bill === undefined) { S.bill = null; rpc("billing_status").then((r) => { S.bill = r; if (S.tab === "settings") render(); }).catch(() => { S.bill = { off: true }; if (S.tab === "settings") render(); }); }
+  const bill = S.bill || {}, locked = !S.data.setup_unlocked && S.data.role !== "founder", out = h("div", {});
+  const go = async () => { out.replaceChildren(h("div", { class: "msg" }, "Opening the secure card page…")); try { const r = await api("/billing/start", { business: S.bid }, OPS); location.href = r.url; } catch (e) { out.replaceChildren(h("div", { class: "msg err" }, e.message)); } };
+  return h("div", { class: "card" }, h("h3", {}, "Card on file"),
+    h("p", { class: "mut sm" }, "Pip charges this card for your monthly price. You type the card on a secure page run by Stripe. Pip never sees or stores the card number."),
+    bill.card_on_file_at ? h("p", { class: "sm" }, bill.card_hint + ", saved " + new Date(bill.card_on_file_at).toLocaleDateString() + ".") : h("p", { class: "sm" }, S.bill ? "No card saved yet." : "Checking…"),
+    locked ? h("p", { class: "xs" }, "Unlocks when you accept your price.") : h("div", { class: "btns" }, h("button", { class: bill.card_on_file_at ? "" : "pri", onclick: go }, bill.card_on_file_at ? "Replace the card" : "Add a card")), out);
 }
 function consentCard() {
   const list = h("textarea", { placeholder: "One per line. Phone numbers or emails." }), kind = h("select", {}, h("option", { value: "phone|sms" }, "Phone numbers that agreed to texts"), h("option", { value: "phone|voice" }, "Phone numbers that agreed to calls"), h("option", { value: "email|email" }, "Emails that agreed to email"));
@@ -370,6 +382,7 @@ function render() {
   const want = q.get("b"), mine = S.me.businesses || [];
   S.bid = want || (!S.me.founder && mine.length === 1 ? mine[0].id : null);
   if (q.get("connected") && S.bid) { S.tab = "setup"; try { await api("/business/" + S.bid + "/refresh", {}); } catch (e) { /* shown on load */ } history.replaceState(null, "", "?b=" + S.bid); }
+  if (q.get("card") && S.bid) { S.tab = "settings"; try { await api("/billing/confirm", { business: S.bid, session: q.get("card") }, OPS); say("Card saved.", "ok"); } catch (e) { say(e.message, "err"); } history.replaceState(null, "", "?b=" + S.bid); }
   await load(); render();
 })();
 </script>
