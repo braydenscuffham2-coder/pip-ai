@@ -97,7 +97,7 @@ export function baseTables() {
       spec: { name: "Front desk", board: { seats: { gate: { system_prompt: "You are Hallie, the front desk for TEST Fork." } } } },
       brain: { facts: ["Open 9 to 5, Monday to Friday."] } }],
     build_orders: [{ id: IDS.order, business_id: IDS.business }],
-    businesses: [{ id: IDS.business, name: "TEST Fork", status: "active", timezone: "America/Boise", composio_user_id: "pip_test_fork" }],
+    businesses: [{ id: IDS.business, name: "TEST Fork", status: "active", timezone: "America/Boise", composio_user_id: "pip_test_fork", owner_email: "owner@testfork.example" }],
     agent_manifests: [{ spec_id: IDS.spec, manifest: { teammate: "Hallie", uses: ["notify_owner", "capture_lead", "request_booking", "calendar", "email"] } }],
     forge_settings: [],
     connection_catalog: [
@@ -116,7 +116,7 @@ export function baseTables() {
         shape: "busy_only", hide: ["q"], fixed: { calendarId: "primary" }, schema_at: fresh(),
         schema: { description: "List events.", input: { type: "object", properties: { timeMin: { type: "string" }, timeMax: { type: "string" }, q: { type: "string" }, calendarId: { type: "string" } }, required: ["timeMin", "calendarId"] } } },
       { slug: "GMAIL_SEND_EMAIL", block: "email", toolkit: "gmail", access: "write", label: "sent an email", enabled: true,
-        guard: "email", hide: ["bcc"], fixed: {}, schema_at: fresh(),
+        guard: "email", hide: ["bcc", "from_email", "include_signature"], fixed: {}, schema_at: fresh(),
         schema: { description: "Send an email.", input: { type: "object", properties: { recipient_email: { type: "string" }, subject: { type: "string" }, body: { type: "string" }, bcc: { type: "string" } }, required: ["recipient_email", "body"] } } },
     ],
     conversations: [], messages: [], notifications: [], usage_events: [], portal_notices: [],
