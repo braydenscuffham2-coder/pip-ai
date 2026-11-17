@@ -29,13 +29,18 @@ const MODELS = new Set(['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-
 const EFFORTS = new Set(['low', 'medium', 'high']);
 const MAX_CHARS = 900_000;
 
-// Only the Pip page itself may call this from a browser.
+// Only the Pip page itself may call this from a browser. Pip's own domains are named here; any other domain later
+// attached to this Vercel project also passes, because a page calling from the same host it is served on is Pip's
+// own page (another website's page carries its own origin).
+const PIP_HOSTS = new Set(['hirepip.com', 'www.hirepip.com', 'pip-ai-drab.vercel.app', 'localhost']);
 function fromPip(req: Request): boolean {
   const o = req.headers.get('origin') || '';
   if (!o) return false;
   try {
     const h = new URL(o).hostname;
-    return h === 'pip-ai-drab.vercel.app' || /^pip-[a-z0-9-]+-braydenscuffham2-coders-projects\.vercel\.app$/.test(h) || h === 'localhost';
+    if (PIP_HOSTS.has(h) || /^pip-[a-z0-9-]+-braydenscuffham2-coders-projects\.vercel\.app$/.test(h)) return true;
+    const self = (req.headers.get('x-forwarded-host') || req.headers.get('host') || '').split(',')[0].trim().split(':')[0].toLowerCase();
+    return !!self && h === self;
   } catch { return false; }
 }
 
