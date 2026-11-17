@@ -1704,7 +1704,7 @@ function stepBody(s, i) {
     if (!d.connect_on) kids.push(h("p", { class: "note info" }, icon("info"), h("span", {}, "Tool sign-ins are not switched on yet. Pip will let you know.")));
     let firstPri = true;
     kids.push(h("div", { class: "connects" }, s.choices.map((c) => {
-      if (c.toolkit) { const pri = firstPri; firstPri = false; return h("button", { class: "btn " + (pri ? "pri" : "ghost"), disabled: !d.connect_on, "data-k": "con-" + s.slot + "-" + c.toolkit, "data-pip": pri ? "step-" + s.slot : null, onclick: () => run(async () => { const r = await api("/business/" + id + "/connect", { slot: s.slot, toolkit: c.toolkit }); location.href = r.url; }) }, h("span", { class: "tl", "aria-hidden": "true" }, String(c.label).charAt(0)), (s.status === "needed" ? "Connect " : "Reconnect ") + c.label, icon("arrow", "arr")); }
+      if (c.toolkit) { const pri = firstPri; firstPri = false; return h("button", { class: "btn " + (pri ? "pri" : "ghost"), disabled: !d.connect_on, "data-k": "con-" + s.slot + "-" + c.toolkit, "data-pip": pri ? "step-" + s.slot : null, onclick: () => run(async () => { const r = await api("/business/" + id + "/connect", { slot: s.slot, toolkit: c.toolkit }); try { sessionStorage.setItem("pip-chain", JSON.stringify({ provider: c.provider || "", slot: s.slot, n: 0 })); } catch (e) { /* the chain is a convenience */ } location.href = r.url; }) }, h("span", { class: "tl", "aria-hidden": "true" }, String(c.label).charAt(0)), (s.status === "needed" ? "Connect " : "Reconnect ") + c.label, icon("arrow", "arr")); }
       return h("button", { class: "btn ghost", "data-k": "use-" + s.slot + "-" + c.label, onclick: () => run(() => api("/business/" + id + "/unsupported", { tool_name: c.label, slot: s.slot }), "Thanks. I'll add " + c.label + " and tell you.") }, h("span", { class: "tl", "aria-hidden": "true" }, String(c.label).charAt(0)), "I use " + c.label);
     })));
     const links = [];
@@ -1759,7 +1759,31 @@ function setupTab() {
         det.addEventListener("toggle", () => { if (!S.openTouched) { S.openTouched = true; S.openSlots = new Set(d.checklist.filter((x) => document.getElementById("step-" + x.slot) && document.getElementById("step-" + x.slot).open).map((x) => x.slot)); } else if (det.open) S.openSlots.add(s.slot); else S.openSlots.delete(s.slot); Pip.sync(); });
         return det;
       }))),
+    isOwner() && !locked && d.connect_on ? anyToolCard() : null,
     isOwner() && d.setup_unlocked ? vaultCard() : null];
+}
+// ---------- any other tool: search for it and connect it without leaving setup ----------
+function anyToolCard() {
+  const d = S.data, id = S.bid, out = h("div", { "aria-live": "polite" });
+  const q = h("input", { class: "in", id: "tool-q", "data-k": "tool-q", placeholder: "Type a tool, like QuickBooks or Slack", autocomplete: "off" });
+  let timer = null;
+  const ask = (name) => run(() => api("/business/" + id + "/unsupported", { tool_name: name }), "Thanks. I'll add " + name + " and tell you.");
+  const show = (tools, typed) => out.replaceChildren(tools.length
+    ? h("div", { class: "connects", style: { marginTop: "12px" } }, tools.map((t) => h("button", { class: "btn ghost", "data-k": "tool-" + t.toolkit, title: t.about || "", onclick: () => run(async () => { const r = await api("/business/" + id + "/connect-tool", { toolkit: t.toolkit, name: t.name }); location.href = r.url; }) }, h("span", { class: "tl", "aria-hidden": "true" }, String(t.name).charAt(0)), "Connect " + t.name, icon("arrow", "arr"))))
+    : h("p", { class: "small", style: { marginTop: "12px" } }, "No match yet. ", h("button", { class: "btn link", type: "button", "data-k": "tool-ask", onclick: () => ask(typed) }, "Ask Pip to add " + typed)));
+  q.addEventListener("input", () => {
+    clearTimeout(timer); const v = q.value.trim();
+    if (v.length < 2) { out.replaceChildren(); return; }
+    timer = setTimeout(async () => {
+      try { const r = await api("/business/" + id + "/tools?q=" + encodeURIComponent(v)); if (q.value.trim() === v) show(r.tools || [], v); }
+      catch (e) { out.replaceChildren(h("p", { class: "note err", style: { marginTop: "12px" }, role: "alert" }, icon("alert"), h("span", {}, e.message))); }
+    }, 350);
+  });
+  const mine = d.extra_tools || [], word = { active: "connected", link_made: "sign-in not finished", expired: "needs to be reconnected", failed: "did not connect" };
+  return h("section", { class: "card rise", style: { "--i": 3 }, "aria-label": "Connect another tool" }, kick("Anything else"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "Use a tool that is not listed?"),
+    h("p", { class: "small", style: { marginTop: "6px" } }, "Search for it and connect it here. You sign in on the tool's own screen, so Pip never sees your password. Pip then adds it to your team and tells you when it is in use."),
+    h("label", { class: "field", for: "tool-q", style: { marginTop: "14px" } }, h("span", { class: "lab" }, "Tool name"), q), out,
+    mine.length ? h("ul", { class: "rules", style: { marginTop: "14px" } }, mine.map((t) => h("li", {}, icon(t.status === "active" ? "check" : "info"), h("span", {}, t.toolkit + ": " + (word[t.status] || t.status))))) : null);
 }
 function vaultCard() {
   const id = S.bid, tool = h("input", { class: "in", id: "v-tool", placeholder: "Tool name" }), page = h("input", { class: "in", id: "v-page", type: "url", placeholder: "Its sign-in page (optional)" });
@@ -2161,12 +2185,33 @@ async function boot() {
   try { S.me = await api("/me"); } catch (e) { await sb.auth.signOut(); signInView(q.get("e") || ""); return; }
   const want = q.get("b"), mine = S.me.businesses || [];
   S.bid = want || (!S.me.founder && mine.length === 1 ? mine[0].id : null);
-  if (q.get("connected") && S.bid) { S.tab = "setup"; try { await api("/business/" + S.bid + "/refresh", {}); } catch (e) { /* shown on load */ } history.replaceState(null, "", "?b=" + S.bid); }
+  const cameBack = !!(q.get("connected") && S.bid);
+  if (cameBack) { S.tab = "setup"; try { await api("/business/" + S.bid + "/refresh", {}); } catch (e) { /* shown on load */ } history.replaceState(null, "", "?b=" + S.bid); }
   let cardNote = null;
   if (q.get("card") && S.bid) { S.tab = "settings"; try { await api("/billing/confirm", { business: S.bid, session: q.get("card") }, OPS); cardNote = ["Card saved.", "ok"]; } catch (e) { cardNote = [e.message, "err"]; } history.replaceState(null, "", "?b=" + S.bid); }
   loadingView();
   await load(); if (cardNote) say(cardNote[0], cardNote[1]); render();
   if (th) Pip.wave("Welcome back. Good to see you.");
+  if (cameBack) await nextInChain();
+}
+// One sign-in often covers several steps (Google: calendar, email, sheet). After a step comes back connected, the
+// next step that uses the same account family starts on its own, so the owner approves instead of hunting for buttons.
+async function nextInChain() {
+  let c = null;
+  try { c = JSON.parse(sessionStorage.getItem("pip-chain") || "null"); sessionStorage.removeItem("pip-chain"); } catch (e) { c = null; }
+  if (!c || !c.provider || !S.data || !isOwner() || c.n >= 4) return;
+  const list = S.data.checklist || [], was = list.find((s) => s.slot === c.slot);
+  if (!was || was.status !== "active") return; // the last one did not finish, so stop and let the owner look
+  const next = list.find((s) => s.kind === "owner_oauth" && s.status === "needed" && (s.choices || []).some((x) => x.toolkit && x.provider === c.provider));
+  if (!next) { say("All set. Every step that uses that account is connected.", "ok"); return; }
+  const pick = next.choices.find((x) => x.toolkit && x.provider === c.provider);
+  say("One more approval with the same account: " + next.label + ".", "ok");
+  await new Promise((r) => setTimeout(r, 1400));
+  try {
+    const r = await api("/business/" + S.bid + "/connect", { slot: next.slot, toolkit: pick.toolkit });
+    try { sessionStorage.setItem("pip-chain", JSON.stringify({ provider: c.provider, slot: next.slot, n: (c.n || 0) + 1 })); } catch (e) { /* stop the chain */ }
+    location.href = r.url;
+  } catch (e) { say(e.message, "err"); }
 }
 function installArt(art) {
   let css = "";
