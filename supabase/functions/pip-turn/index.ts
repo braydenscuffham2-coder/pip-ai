@@ -30,6 +30,7 @@ const MODEL = Deno.env.get("PIP_FAST_MODEL") || "claude-haiku-5-5";
 const PRICE: Record<string, [number, number]> = { "claude-haiku-5-5": [0.1, 0.5], "claude-sonnet-5-5": [2, 10], "claude-opus-5-5": [4, 20] };
 const AI_RE = /(\b(ai|artificial intelligence|automated assistant|virtual assistant|bot)\b|\ba\.i\.)/i;
 const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
+const EMAIL_ONE = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
 // deno-lint-ignore no-explicit-any
 type J = any;
 const cut = (v: unknown, n: number) => String(v ?? "").slice(0, n);
@@ -200,7 +201,7 @@ async function load(specId: string) {
   let biz: J = null;
   if (s.order_id) {
     const { data: o } = await db.from("build_orders").select("business_id").eq("id", s.order_id).maybeSingle();
-    if (o?.business_id) biz = (await db.from("businesses").select("id,name,status,timezone,composio_user_id").eq("id", o.business_id).maybeSingle()).data;
+    if (o?.business_id) biz = (await db.from("businesses").select("id,name,status,timezone,composio_user_id,owner_email").eq("id", o.business_id).maybeSingle()).data;
   }
   const { data: man } = await db.from("agent_manifests").select("manifest").eq("spec_id", specId).maybeSingle();
   const board = s.spec?.board?.seats?.gate?.system_prompt;
@@ -365,6 +366,14 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
     if (meta.row.guard === "email") {
       const key = ["body", "message_body", "content"].find((k) => typeof args[k] === "string");
       if (key && !AI_RE.test(args[key])) args[key] = `${args[key]}\n\nSent by ${c!.teammate}, an AI assistant for ${c!.name}.`;
+      // Gmail's send-only permission cannot look up the mailbox's own address, and the tool refuses to send without one.
+      // Pip supplies it here; the model never sets it. Gmail swaps in the signed-in mailbox whenever the two differ,
+      // so this cannot make a teammate send as anyone else.
+      if (meta.row.slug === "GMAIL_SEND_EMAIL") {
+        const from = String(meta.conn.detail?.sender ?? c!.biz.owner_email ?? "").trim();
+        if (EMAIL_ONE.test(from)) args.from_email = from;
+        args.include_signature = false;
+      }
     }
     if (isSheet) {
       const sid = await ensureSheet();

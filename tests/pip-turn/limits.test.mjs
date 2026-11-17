@@ -72,6 +72,16 @@ test("an email a teammate sends always says it is from an AI", async () => {
   assert.match(t.executed()[0].body.arguments.body, /an AI assistant for TEST Fork/);
 });
 
+test("Pip sets the sender on an email itself; the model cannot choose who it is from", async () => {
+  const t = await boot({ model: [acts(use("GMAIL_SEND_EMAIL", { recipient_email: "sam@customer.example", body: "Your table is held.", from_email: "ceo@someone-else.example", include_signature: true })), says("I am an AI assistant. Sent.")], composio: () => ok() });
+  const r = await t.turn("I am sam@customer.example, email me");
+  assert.deepEqual(r.json.actions, [{ tool: "GMAIL_SEND_EMAIL", status: "done" }]);
+  const args = t.executed()[0].body.arguments;
+  assert.equal(args.from_email, "owner@testfork.example", "the sender is the business's own address, whatever the model asked for");
+  assert.equal(args.include_signature, false);
+  assert.ok(!JSON.stringify(t.world.model.calls).includes("owner@testfork.example"), "the owner's address must not be shown to the model");
+});
+
 // ---------- the calendar ----------
 test("the calendar comes back as busy times only: no titles, guests or notes reach the model", async () => {
   const events = { items: [
