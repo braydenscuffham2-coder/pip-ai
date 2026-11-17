@@ -1695,12 +1695,25 @@ function stepBody(s, i) {
   kids.push(h("p", { class: "can" }, icon("check"), h("span", {}, s.can)));
   if (s.cannot) kids.push(h("p", { class: "cannot" }, icon("x"), h("span", {}, s.cannot)));
   kids.push(h("p", { class: "meta" }, h("span", {}, "Usual wait: ", h("b", {}, s.lead_time)), h("span", { class: "who" }, "Used by: ", s.agents.map((k, j) => { const a = d.agents.find((x) => x.skill_id === k); const nm = a ? (a.teammate || a.name) : k; return h("span", { class: "who" }, a ? face(nm, (a.role || "") + " " + a.name, "xs") : null, nm + (j < s.agents.length - 1 ? "," : "")); }))));
-  if (s.status === "active") return kids;
+  if (s.status === "active") {
+    // A connected step can be signed in again (a different account, or after Pip changes what a sign-in asks for).
+    // The current sign-in keeps working until the new one is finished.
+    if (isOwner() && s.kind === "owner_oauth" && d.connect_on && !locked) {
+      const c = s.choices.find((x) => x.toolkit && x.toolkit === s.choice) || (s.choices.filter((x) => x.toolkit).length === 1 ? s.choices.find((x) => x.toolkit) : null);
+      const again = s.detail && s.detail.pending;
+      if (again) kids.push(h("p", { class: "note info" }, icon("info"), h("span", {}, "A new sign-in was started. The current one keeps working until you finish it.")));
+      if (c) kids.push(h("div", { class: "row wrap", style: { gap: "4px 18px" } },
+        h("button", { class: "btn link", type: "button", "data-k": "again-" + s.slot, onclick: () => run(async () => { const r = await api("/business/" + id + "/connect", { slot: s.slot, toolkit: c.toolkit }); location.href = r.url; }) }, again ? "Start the sign-in over" : "Sign in again or switch account"),
+        again ? h("button", { class: "btn link", type: "button", "data-k": "chk-" + s.slot, onclick: () => run(() => api("/business/" + id + "/refresh", {}), "Checked.") }, "I finished signing in. Check again.") : null));
+    }
+    return kids;
+  }
   if (!isOwner()) { kids.push(h("p", { class: "note info" }, icon("info"), h("span", {}, "An owner finishes this step."))); return kids; }
   if (locked) { kids.push(h("p", { class: "note info" }, icon("lock"), h("span", {}, "Unlocks when you accept your price."))); return kids; }
   const other = () => h("button", { class: "btn link", type: "button", "data-k": "other-" + s.slot, onclick: () => askSheet({ title: "What do you use for this?", label: "The tool you use", ok: "Tell Pip", onOk: (t) => run(() => api("/business/" + id + "/unsupported", { tool_name: t, slot: s.slot }), "Thanks. I'll add it and tell you. The rest of your team can still go live.") }) }, "I use something else");
   if (s.kind === "owner_oauth") {
     kids.push(h("p", { class: "fine" }, "You sign in on the tool's own screen. Pip never sees your password. That screen lists what the connection can reach; Pip limits your agents to what is written above."));
+    if (s.choices.some((c) => c.toolkit === "gmail")) kids.push(h("p", { class: "fine" }, "Using Gmail? Google's screen has a box to allow ongoing access. Tick it, or Google ends the connection after six months and asks you to sign in again."));
     if (!d.connect_on) kids.push(h("p", { class: "note info" }, icon("info"), h("span", {}, "Tool sign-ins are not switched on yet. Pip will let you know.")));
     let firstPri = true;
     kids.push(h("div", { class: "connects" }, s.choices.map((c) => {

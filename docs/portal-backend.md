@@ -87,3 +87,23 @@ Every signed-in call sends `Authorization: Bearer <Supabase session token>`. Err
 - Twilio balance and carrier registration before any text can send.
 - Template and camera-box teammates (wait forecast, table watch, floor pulse) have no runner yet.
 - The first three Portal migrations, portal_06 and the `pip-portal` function exist only in Supabase, not in this repo.
+
+## Google sign-ins through Composio: what consent is possible (November 17)
+
+Pip uses Composio's own Google app for owner sign-ins. That app only offers a fixed list of Google permissions, and Google blocks anything outside it ("This app is blocked").
+
+| Step | Permission Google shows the owner | Why |
+| --- | --- | --- |
+| Spreadsheet | Only the Drive files this app makes (`drive.file`) | Works. Matches the Portal's promise. |
+| Calendar | Full calendar (`calendar`) | `calendar.events` passes Google's screen and can read, but Composio's create-event tool fails on it with "insufficient authentication scopes". |
+| Email | Full mailbox (`https://mail.google.com/`) | The only Gmail permission Composio's app offers. `gmail.send` is blocked by Google for that app. Gmail access also ends after six months unless the owner ticks "ongoing access". |
+
+What limits a teammate in practice is therefore not Google's screen but two things on Pip's side:
+1. Each Composio sign-in config has an execution allowlist: Gmail send only; Calendar list and create only; Sheets create and append only.
+2. `pip-turn` only offers tools that have an enabled row in `tool_catalog`, with hidden and fixed fields.
+
+To get a consent screen that says "Pip" and asks only for send-mail and calendar events, Pip needs its own Google OAuth app (Google Cloud project, verified by Google for `gmail.send` and `calendar.events`), then Composio auth configs that use that app instead of Composio's. That is a founder decision and a Google review, not a code change.
+
+## Signing in again
+
+A connected step can be signed in again from the Portal ("Sign in again or switch account"). The working sign-in stays in use; the new one is stored in `business_connections.detail.pending` until Composio reports it active, then the step switches and the old account is deleted at Composio (`detail.replaces` holds any that could not be deleted yet, retried on each check). Unfinished sign-ins are removed after two hours (second sign-ins) or a day (first sign-ins for extra tools).
