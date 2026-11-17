@@ -286,6 +286,12 @@ RULES THAT ALWAYS HOLD:
         await db.rpc("portal_job_pause", { p_spec: id, p_job: meta.job, p_reason: "expired_access", p_detail: "The sign-in for this tool stopped working." });
         return { text: `${meta.job} is not available right now. Take the details and tell the customer a team member will follow up.`, error: true };
       }
+      if (r.status === 403 || /api key/i.test(err)) {
+        // Pip's own Composio key was refused. That is a platform problem, not the owner's: tell the founder, once a day.
+        const subject = "Composio refused a tool call";
+        const { count } = await db.from("portal_notices").select("id", { count: "exact", head: true }).eq("subject", subject).gte("created_at", new Date(Date.now() - 86400000).toISOString());
+        if (!count) await db.rpc("portal_notify", { p_business: c!.biz.id, p_to: "founder", p_subject: subject, p_title: subject, p_lines: [`Tool: ${meta.row.slug}`, `Composio said: ${err.slice(0, 200)}`, "Teammates cannot act in owners' tools until this is fixed. Check the Composio API key's permissions."] });
+      }
       if (write) await log(`${c!.teammate} tried: ${meta.row.label}. It did not go through.`, "failed", meta.job);
       return { text: `That did not work: ${err || "unknown error"}. Do not tell the customer it was done.`, error: true };
     }
