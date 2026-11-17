@@ -157,7 +157,7 @@ Blocked in code until agreements are on file. Please confirm the list of vendors
 
 ### 12. The preview's existing Terms and Privacy Policy
 
-The Pip preview (a Claude artifact) already shows Terms and a Privacy Policy dated November 8, 2026, version 1.0. This lane did not change them. Three things to review: the contact email is still a placeholder; the policy says "your own voice is not recorded", while the preview offers a live demo call that uses the visitor's microphone through ElevenLabs; and those Terms say AI teammates are covered "only under a separate written agreement that we both sign", which the new Terms must satisfy or replace.
+The Pip preview (a Claude artifact) already shows Terms and a Privacy Policy dated November 8, 2026, version 1.0. This lane did not change them. Four things to review: the policy says "We do not set tracking cookies", while the site loads Google Analytics; the contact email is still a placeholder; the policy says "your own voice is not recorded", while the preview offers a live demo call that uses the visitor's microphone through ElevenLabs; and those Terms say AI teammates are covered "only under a separate written agreement that we both sign", which the new Terms must satisfy or replace.
 
 ### 13. Smaller items
 

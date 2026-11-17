@@ -46,7 +46,7 @@ Paste-ready. One feature per permission, in Google's "My app will use … to …
 | --- | --- | --- |
 | Use the data only to provide or improve the features the user sees | Used only to run the business's teammate | `pip-turn` offers only catalogued tools per teammate |
 | Transfer only to provide those features, for security, to comply with law, or in a merger with consent | Busy times and email drafts go to Anthropic to write the reply; tool calls go through Composio | Privacy Policy sections 4 and 8 |
-| No advertising use | None | No ad code or ad vendors in the repository |
+| No advertising use | None. Google user data is never sent to an advertising or analytics service. | hirepip.com loads Google Analytics for page counts only; it receives no Google user data |
 | No person reads the data except with the user's agreement, for security, to comply with law, or when aggregated for internal operations | Calendar details and Google email content are not stored, so there is nothing to read. Conversations are stored and can contain a time or an email address a teammate used. | `busy_only` shape in `pip-turn`; **see open point below** |
 | No use to train generalized AI models | None. Anthropic's commercial terms bar training on customer content [S16] | Privacy Policy section 6 |
 

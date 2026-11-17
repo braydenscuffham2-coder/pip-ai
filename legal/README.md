@@ -40,7 +40,8 @@ Found while checking every factual statement against `main` (commit `edf9024`) a
 | 6 | Google access is send mail, calendar events, files Pip made | Sign-ins still use Composio's Google app with full mailbox and full calendar access. | 03 connections |
 | 7 | Conversations are kept for a stated time | No automatic deletion of conversations, leads or booking requests. | Brayden and lawyer to set; then 09 guard |
 | 8 | `jurisdiction_rules` has a source per row | Only the US and Idaho rows have any source. Six corrections are listed in `state-table.md`, not applied. | Brayden and lawyer |
-| 9 | Preview policy: "your own voice is not recorded" | The preview's demo call uses the visitor's microphone through ElevenLabs. Not changed by this lane (handbook rule 10). | Brayden |
+| 9 | Preview policy: "We do not set tracking cookies" | `app/layout.tsx` and `public/app.html` load Google Analytics 4. | Brayden |
+| 10 | Preview policy: "your own voice is not recorded" | The preview's demo call uses the visitor's microphone through ElevenLabs. Not changed by this lane (handbook rule 10). | Brayden |
 
 ## Rules for this folder
 

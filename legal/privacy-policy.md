@@ -44,6 +44,8 @@ Please do not send card numbers, passwords, government ID numbers or health deta
 
 To stop abuse, the website turns each visitor's internet address into a scrambled code and counts requests by hour. The address itself is not stored. These counts are deleted after two days.
 
+The hirepip.com website uses Google Analytics to count visits and see which pages are used. It sets cookies and receives your internet address and device details. The chat window a business puts on its own website does not load Google Analytics. [BRAYDEN AND LAWYER: confirm which pages load it, and whether to keep it on the Portal.]
+
 ### From business owners and staff
 
 - **Account:** your business name, website, industry, state, time zone and address; your email; a mobile number if you add one for alerts.
@@ -125,6 +127,7 @@ We use these companies to run Pip. Each may use the information only to provide 
 | Stripe | Payments | Business billing details and card |
 | Resend | Sends Pip's emails to owners | Owner email address and the notice |
 | Google | The business's own Gmail, Calendar and Sheets | What the teammate sends, adds or saves there |
+| Google Analytics | Counts visits to hirepip.com | Pages viewed, internet address, device details, cookies |
 
 We also share information with the business whose teammate you contacted, when the law requires it, to protect people or Pip, and if Pip is sold or reorganized (including moving Pip into a company formed to run it).
 
