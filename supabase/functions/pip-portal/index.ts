@@ -303,7 +303,7 @@ async function refresh(bid: string, actor: string) {
     if (st === "active") {
       await log(bid, "connection", `${x.toolkit} is connected. Pip will add it to your team.`, { actor, outcome: "ok" });
       await db.rpc("portal_notify", { p_business: bid, p_to: "founder", p_subject: `An owner connected ${x.toolkit}`, p_title: "A new tool was connected",
-        p_lines: [`Business: ${b.name}`, `Tool: ${x.toolkit}`, "Add what teammates may do in it to the tool catalog, then tell the owner."] });
+        p_lines: [`Business: ${b.name}`, `Tool: ${x.toolkit}`, "Teammates can already add new records there if the tool has a plain create action (see tool_catalog, block any_tool).", "Anything more (reading, changing, sending) needs its own reviewed rows."] });
     }
   }
   return { changed };
@@ -596,7 +596,9 @@ async function flushOutbox() {
 async function healthSweep() {
   if (!(Deno.env.get("COMPOSIO_API_KEY") ?? "").trim()) return json({ checked: 0, note: "connect_off" });
   const { data: rows } = await db.from("business_connections").select("business_id").not("connected_account_id", "is", null).in("status", ["active", "link_made"]);
-  const ids = [...new Set((rows || []).map((r: any) => r.business_id))].slice(0, 100);
+  // Tools connected outside the setup steps are watched too.
+  const { data: more } = await db.from("client_connections").select("business_id").not("connected_account_id", "is", null).not("business_id", "is", null).in("status", ["active", "link_made"]);
+  const ids = [...new Set([...(rows || []), ...(more || [])].map((r: any) => r.business_id))].slice(0, 100);
   let changed = 0;
   for (const id of ids) { try { changed += (await refresh(id, "pip")).changed; } catch { /* next */ } }
   return json({ checked: ids.length, changed });
