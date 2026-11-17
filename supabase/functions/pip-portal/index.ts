@@ -125,7 +125,7 @@ async function sendMail(to: string, template: string, data: any) {
   if (!key) throw new Error("RESEND_API_KEY is not set");
   const from = Deno.env.get("PORTAL_FROM") ?? Deno.env.get("LEAD_ALERT_FROM") ?? "Pip <onboarding@resend.dev>";
   const m = MAIL[template](data);
-  const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify({ from, to: [to], ...m }), signal: AbortSignal.timeout(15000) });
+  const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify({ from, to: [to], ...m, headers: { "X-Entity-Ref-ID": crypto.randomUUID() } }), signal: AbortSignal.timeout(15000) });
   if (!r.ok) throw new Error(`resend ${r.status} ${(await r.text()).slice(0, 200)}`);
 }
 async function oneTimeLink(email: string) {
@@ -183,6 +183,7 @@ async function business(u: User, bid: string) {
   return json({
     role: r.role, business: b, checklist: cl.data || [], agents: ag.data || [], people: (people as any).data || [], issues: issues.data || [],
     phone: phone.data, texting: text.data, rules: rules.data || [], health_missing: (hm as any).data || [], agreements: agr.data || [],
+    extra_tools: await extraTools(bid),
     setup_unlocked: !!b.price_accepted_at, terms_url: termsUrl, terms_version: await setting("portal_terms_version", null),
     vault_open: false, connect_on: !!(Deno.env.get("COMPOSIO_API_KEY") ?? "").trim(), fresh: u.fresh,
   });
@@ -271,11 +272,12 @@ const MAP: Record<string, string> = { ACTIVE: "active", INITIATED: "link_made", 
 async function refresh(bid: string, actor: string) {
   const { data: b } = await db.from("businesses").select("composio_user_id,name").eq("id", bid).single();
   const { data: rows } = await db.from("business_connections").select("id,slot,status,connected_account_id,agents").eq("business_id", bid).not("connected_account_id", "is", null);
-  if (!rows?.length || !b?.composio_user_id) return { changed: 0 };
+  const { data: extra } = await db.from("client_connections").select("id,toolkit,status,connected_account_id").eq("business_id", bid).not("connected_account_id", "is", null).in("status", ["link_made", "active"]);
+  if ((!rows?.length && !extra?.length) || !b?.composio_user_id) return { changed: 0 };
   const live = await composio(`/connected_accounts?user_ids=${encodeURIComponent(b.composio_user_id)}&limit=100`);
   const by = new Map<string, any>((live?.items ?? []).map((i: any) => [i.id, i]));
   let changed = 0;
-  for (const row of rows) {
+  for (const row of rows || []) {
     const st = MAP[String(by.get(row.connected_account_id!)?.status || "").toUpperCase()] ?? (by.has(row.connected_account_id!) ? row.status : "revoked");
     if (st === row.status || row.status === "revoked") { await db.from("business_connections").update({ checked_at: now() }).eq("id", row.id); continue; }
     changed++;
@@ -291,11 +293,78 @@ async function refresh(bid: string, actor: string) {
       for (const o of owners || []) await db.from("portal_outbox").insert({ business_id: bid, to_email: o.email, template: "paused", data: { agent: cat!.label, why: `${cat!.label} needs to be reconnected.` } });
     }
   }
+  const inSteps = new Set((rows || []).map((r: any) => r.connected_account_id));
+  for (const x of extra || []) {
+    if (inSteps.has(x.connected_account_id)) continue;
+    const st = MAP[String(by.get(x.connected_account_id!)?.status || "").toUpperCase()] ?? (by.has(x.connected_account_id!) ? x.status : "revoked");
+    if (st === x.status) continue;
+    changed++;
+    await db.from("client_connections").update({ status: st, updated_at: now() }).eq("id", x.id);
+    if (st === "active") {
+      await log(bid, "connection", `${x.toolkit} is connected. Pip will add it to your team.`, { actor, outcome: "ok" });
+      await db.rpc("portal_notify", { p_business: bid, p_to: "founder", p_subject: `An owner connected ${x.toolkit}`, p_title: "A new tool was connected",
+        p_lines: [`Business: ${b.name}`, `Tool: ${x.toolkit}`, "Add what teammates may do in it to the tool catalog, then tell the owner."] });
+    }
+  }
   return { changed };
 }
 async function refreshRoute(u: User, bid: string) {
   await access(u, bid);
   return json({ ok: true, ...(await refresh(bid, u.email)) });
+}
+
+// ---------------- any other tool ----------------
+// An owner can connect a tool that has no setup step. Connecting stores only Composio's ids and a status.
+// A teammate cannot use the tool until the founder adds what it may do there to the tool catalog.
+async function extraTools(bid: string) {
+  const [{ data: steps }, { data: all }] = await Promise.all([
+    db.from("business_connections").select("connected_account_id").eq("business_id", bid),
+    db.from("client_connections").select("toolkit,status,connected_account_id,created_at").eq("business_id", bid).neq("status", "revoked").order("created_at", { ascending: false }).limit(60),
+  ]);
+  const inSteps = new Set((steps || []).map((r: any) => r.connected_account_id).filter(Boolean));
+  const seen = new Set<string>(); const out: any[] = [];
+  for (const r of all || []) {
+    if (inSteps.has(r.connected_account_id) || seen.has(r.toolkit)) continue;
+    seen.add(r.toolkit); out.push({ toolkit: r.toolkit, status: r.status });
+  }
+  // A step's own tool (Google Calendar for the Calendar step) is not listed again here.
+  const { data: stepTools } = await db.from("business_connections").select("choice").eq("business_id", bid).not("choice", "is", null);
+  const used = new Set((stepTools || []).map((r: any) => r.choice));
+  return out.filter((t) => !used.has(t.toolkit)).slice(0, 20);
+}
+async function toolSearch(u: User, bid: string, url: URL) {
+  await access(u, bid);
+  const q = cut(url.searchParams.get("q"), 40);
+  if (q.length < 2) return json({ tools: [] });
+  const r = await composio(`/toolkits?search=${encodeURIComponent(q)}&limit=8`);
+  const tools = (r?.items ?? []).filter((t: any) => /^[a-z0-9_]{2,60}$/.test(String(t?.slug))).slice(0, 8)
+    .map((t: any) => ({ toolkit: t.slug, name: cut(t.name || t.slug, 60), about: cut(t.meta?.description, 140) }));
+  return json({ tools });
+}
+async function connectTool(u: User, bid: string, body: any) {
+  const r = await access(u, bid); need(r, "owner"); await unlocked(bid, r);
+  const toolkit = cut(body.toolkit, 60).toLowerCase(), name = cut(body.name, 60) || toolkit;
+  if (!/^[a-z0-9_]{2,60}$/.test(toolkit)) throw new Fail(400, "bad_choice");
+  const { data: b } = await db.from("businesses").select("composio_user_id").eq("id", bid).single();
+  const order = await firstOrder(bid);
+  if (!order || !b.composio_user_id) throw new Fail(409, "no_order");
+  let link: any = null;
+  try {
+    const auth = await composioAuthConfig(toolkit);
+    const back = `${await portalUrl()}?b=${bid}&connected=tool`;
+    try { link = await composio("/connected_accounts/link", { method: "POST", body: JSON.stringify({ auth_config_id: auth, user_id: b.composio_user_id, callback_url: back }) }); }
+    catch { link = await composio("/connected_accounts/link", { method: "POST", body: JSON.stringify({ auth_config_id: auth, user_id: b.composio_user_id }) }); }
+  } catch (e) { if ((e as Fail).code === "connect_off") throw e; }
+  if (!link?.redirect_url) {
+    // No one-step sign-in exists for this tool yet. Pip is told, and the owner is not left guessing.
+    await db.from("api_needs").insert({ provider: toolkit.replace(/_/g, "-").slice(0, 40), primitive: "client_tool", options: [], order_id: order.id, agent_id: "" }).then(() => {}, () => {});
+    await db.from("portal_issues").insert({ business_id: bid, opened_by: u.email, body: `Wants to connect ${name}, which has no one-step sign-in yet.` });
+    await log(bid, "owner", `${name}: Pip was asked to add this tool.`, { actor: u.email });
+    throw new Fail(409, "needs_pip", `${name} needs one setup step from Pip first. Pip has been told and will follow up.`);
+  }
+  await db.from("client_connections").insert({ order_id: order.id, business_id: bid, toolkit, composio_user_id: b.composio_user_id, connected_account_id: cut(link.connected_account_id, 80) || null, status: "link_made", link_expires_at: link.expires_at || null });
+  await log(bid, "connection", `${name}: sign-in started.`, { actor: u.email });
+  return json({ ok: true, url: link.redirect_url });
 }
 
 async function slotOf(bid: string, slot: string, kinds: string[]) {
@@ -441,12 +510,12 @@ async function disconnect(u: User, bid: string, body: any) {
   const { data: b } = await db.from("businesses").select("name,status").eq("id", bid).single();
   if (cut(body.confirm, 200).toLowerCase() !== b.name.trim().toLowerCase()) throw new Fail(400, "type_the_name", "Type the business name exactly to confirm.");
   const { data: rows } = await db.from("business_connections").select("id,connected_account_id").eq("business_id", bid);
+  const { data: others } = await db.from("client_connections").select("connected_account_id").eq("business_id", bid).not("connected_account_id", "is", null).neq("status", "revoked");
+  const accounts = [...new Set([...(rows || []), ...(others || [])].map((r: any) => r.connected_account_id).filter(Boolean))] as string[];
   let revoked = 0; const failed: string[] = [];
-  for (const row of rows || []) {
-    if (row.connected_account_id) {
-      try { await composio(`/connected_accounts/${encodeURIComponent(row.connected_account_id)}`, { method: "DELETE" }); revoked++; }
-      catch (e) { if ((e as Fail).code !== "connect_off") failed.push(row.connected_account_id); }
-    }
+  for (const acct of accounts) {
+    try { await composio(`/connected_accounts/${encodeURIComponent(acct)}`, { method: "DELETE" }); revoked++; }
+    catch (e) { if ((e as Fail).code !== "connect_off") failed.push(acct); }
   }
   await db.from("business_connections").update({ status: "revoked", updated_at: now() }).eq("business_id", bid);
   await db.from("client_connections").update({ status: "revoked", updated_at: now() }).eq("business_id", bid);
@@ -562,10 +631,12 @@ Deno.serve(async (req) => {
       const bid = p[1], a = p[2];
       if (!a && req.method === "GET") return await business(u, bid);
       if (a === "activity" && req.method === "GET") return await activity(u, bid, url);
+      if (a === "tools" && req.method === "GET") return await toolSearch(u, bid, url);
       if (req.method !== "POST") throw new Fail(405, "method");
       if (a === "profile") return await setProfile(u, bid, body);
       if (a === "accept") return await accept(u, bid, body);
       if (a === "connect") return await connect(u, bid, body);
+      if (a === "connect-tool") return await connectTool(u, bid, body);
       if (a === "refresh") return await refreshRoute(u, bid);
       if (a === "phone") return await phone(u, bid, body);
       if (a === "texting") return await texting(u, bid, body);
