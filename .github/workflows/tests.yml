@@ -19,6 +19,6 @@ jobs:
         with:
           node-version: 24
       - name: The hard limits in pip-turn hold, and every lane's own function tests pass
-        run: node --test "tests/**/*.test.mjs" "supabase/functions/**/*.test.ts"
+        run: node --test "tests/**/*.test.mjs" "supabase/functions/**/*.test.ts" "supabase/functions/**/*.test.mjs"
       - name: The tests would notice if a limit were removed
         run: node tests/pip-turn/prove.mjs
