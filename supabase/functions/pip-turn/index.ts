@@ -327,7 +327,9 @@ RULES THAT ALWAYS HOLD:
     if (write) await log(`${c!.teammate}: ${meta.row.label}`, "ok", meta.job);
     if (meta.row.shape === "busy_only") {
       const items = dig(r.j?.data, "items");
-      const busy = (Array.isArray(items) ? items : []).filter((e: J) => e?.status !== "cancelled" && e?.transparency !== "transparent")
+      // No list at all means the answer could not be read. Saying "nothing is booked" then would be a guess.
+      if (!Array.isArray(items)) { await log(`${c!.teammate} could not read the calendar's answer`, "failed", meta.job); return { text: "The calendar could not be read. Do not say whether the time is open. Tell the customer a team member will confirm.", error: true }; }
+      const busy = items.filter((e: J) => e?.status !== "cancelled" && e?.transparency !== "transparent")
         .map((e: J) => ({ start: e?.start?.dateTime ?? e?.start?.date, end: e?.end?.dateTime ?? e?.end?.date })).filter((e: J) => e.start).slice(0, 80);
       return { text: JSON.stringify({ busy, note: "These are busy times only. Anything not listed is open on the calendar. You cannot see what the events are." }) };
     }
@@ -399,6 +401,20 @@ async function diag(body: J) {
     const r = await composio(`/tools/${body.slug}`);
     out.status = r.status;
     out.tool = r.ok ? { slug: r.j?.slug, scopes: r.j?.scopes, required: r.j?.input_parameters?.required, props: Object.fromEntries(Object.entries(r.j?.input_parameters?.properties ?? {}).map(([k, v]: [string, J]) => [k, cut(v?.type ?? "", 12)])) } : cut(JSON.stringify(r.j), 200);
+  }
+  // Run one catalogued tool for a business on the test list and report only the shape of the answer.
+  const pr = body?.probe;
+  if (pr && typeof pr.business === "string" && typeof pr.slug === "string") {
+    const { data: sb } = await db.from("forge_settings").select("value").eq("key", "act_sandbox_businesses").maybeSingle();
+    if (!Array.isArray(sb?.value) || !sb.value.includes(pr.business)) return json({ error: "not_a_test_business" }, 403);
+    const { data: row } = await db.from("tool_catalog").select("slug,toolkit").eq("slug", pr.slug).maybeSingle();
+    const { data: biz } = await db.from("businesses").select("composio_user_id").eq("id", pr.business).maybeSingle();
+    const { data: conn } = row ? await db.from("business_connections").select("connected_account_id").eq("business_id", pr.business).eq("choice", row.toolkit).eq("status", "active").limit(1).maybeSingle() : { data: null };
+    if (!row || !biz?.composio_user_id || !conn?.connected_account_id) return json({ error: "no_tool_or_connection" }, 404);
+    const r = await execTool(row.slug, conn.connected_account_id, biz.composio_user_id, pr.args ?? {}, row.toolkit);
+    const shape = (o: J, d = 0): J => o === null ? "null" : Array.isArray(o) ? [o.length, d < 4 && o.length ? shape(o[0], d + 1) : "…"] : typeof o === "object" ? (d < 4 ? Object.fromEntries(Object.entries(o).slice(0, 25).map(([k, v]) => [k, shape(v, d + 1)])) : "{…}") : typeof o;
+    const items = dig(r.j?.data, "items");
+    out.probe = { status: r.status, direct, successful: r.j?.successful, error: cut(r.j?.error?.message ?? r.j?.error ?? "", 200), shape: shape(r.j), items: Array.isArray(items) ? items.length : null, sheet_id: dig(r.j?.data, "spreadsheetId") ?? dig(r.j?.data, "spreadsheet_id") ?? null };
   }
   return json(out);
 }
