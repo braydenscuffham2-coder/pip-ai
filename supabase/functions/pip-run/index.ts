@@ -168,8 +168,13 @@ async function answerText(line: any, r: any, from: string, to: string, text: str
     });
     const j = await res.json();
     reply = String(j?.reply ?? "").trim();
-  } catch { /* no reply is sent; pip-turn alerts the owner when the model cannot answer */ }
-  if (!reply) return;
+  } catch { /* handled just below */ }
+  if (!reply) {
+    // pip-turn could not be reached at all, so it alerted nobody. Never leave a texter with silence:
+    // tell the owner, and tell the texter a person will reply.
+    await db.from("notifications").insert({ spec_id: line.spec, kind: "notify_owner", body: { args: { summary: `A text message could not be answered by ${line.teammate ?? "the teammate"}: "${text.slice(0, 160)}"`, urgency: "urgent" }, approval: "none", conversation: r.conversation, business: line.name, channel: "sms" } });
+    reply = `This is an AI assistant for ${String(line.name ?? "the business").replace(/\s*[(\[][^)\]]*[)\]]/g, "").trim()}. We got your message and a team member will reply soon.`;
+  }
   if (r.first) reply += " Reply STOP to opt out.";
   reply = reply.slice(0, 1200);
   if (await sendText(to, from, reply)) {
@@ -184,7 +189,15 @@ async function sms(req: Request) {
   if (!from || !to) return twiml();
   const { data: line } = await db.rpc("portal_line_ctx", { p_to: to });
   if (!line?.ok || line.status === "disconnected" || line.status === "cancelled") return twiml();
+  if (!line.spec) {
+    // A TEST business has no live teammate. Its line names the teammate that answers (phone_lines.spec_id), and the
+    // database gives it back only for a business on the test list whose name starts with TEST.
+    const { data: t } = await db.rpc("voice_line_ctx", { p_to: to });
+    if (t?.ok && t.test === true && t.spec && t.business === line.business) { line.spec = t.spec; line.teammate = t.teammate; }
+  }
   const word = text.toUpperCase().replace(/[^A-Z]/g, "");
+  // Twilio answers HELP and INFO itself and normally does not pass them on. Replying here too would send two texts.
+  // The wording of Twilio's answer is set on the Messaging Service (Advanced Opt-Out), not in this code.
   if (word === "HELP" || word === "INFO") return twiml();
   const kind = STOP_WORDS.includes(word) || STOP_PHRASE.test(text) ? "stop" : (word === "START" || word === "UNSTOP") ? "start" : "message";
   const { data: r } = await db.rpc("portal_sms_in", { p_business: line.business, p_spec: line.spec ?? null, p_from: from, p_kind: kind });
