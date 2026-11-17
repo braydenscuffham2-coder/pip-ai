@@ -67,8 +67,36 @@ async function composio(path: string, init: RequestInit = {}): Promise<{ ok: boo
     return { ok: r.ok, status: r.status, j };
   } catch (e) { return { ok: false, status: 0, j: { error: String((e as Error).message).slice(0, 120) } }; }
 }
-const execTool = (slug: string, account: string, user: string, args: J) =>
-  composio(`/tools/execute/${slug}`, { method: "POST", body: JSON.stringify({ connected_account_id: account, user_id: user, arguments: args }) });
+// Two ways to run a tool. Direct execution needs a key with the "Tool execution" permission. A key without it can
+// still run tools inside a session pinned to the owner's connected account, so that is the fallback. The way that
+// works is remembered while this instance lives.
+let direct = true;
+const sessions = new Map<string, { id: string; at: number }>();
+async function sessionFor(user: string, toolkit: string, account: string): Promise<string | null> {
+  const key = `${user}|${toolkit}|${account}`, hit = sessions.get(key);
+  if (hit && Date.now() - hit.at < 20 * 60000) return hit.id;
+  let r = await composio("/tool_router/session", { method: "POST", body: JSON.stringify({ user_id: user, toolkits: { enable: [toolkit] }, connected_accounts: { [toolkit]: [account] }, manage_connections: { enable: false } }) });
+  if (!r.ok) r = await composio("/tool_router/session", { method: "POST", body: JSON.stringify({ user_id: user, connected_accounts: { [toolkit]: [account] } }) });
+  if (!r.ok) r = await composio("/tool_router/session", { method: "POST", body: JSON.stringify({ user_id: user }) });
+  const id = r.j?.session_id ?? r.j?.id;
+  if (!r.ok || typeof id !== "string") { console.error("[turn] session", r.status, JSON.stringify(r.j).slice(0, 200)); return null; }
+  sessions.set(key, { id, at: Date.now() });
+  return id;
+}
+async function execTool(slug: string, account: string, user: string, args: J, toolkit: string) {
+  if (direct) {
+    const r = await composio(`/tools/execute/${slug}`, { method: "POST", body: JSON.stringify({ connected_account_id: account, user_id: user, arguments: args }) });
+    if (!(r.status === 403 && /permission/i.test(JSON.stringify(r.j)))) return r;
+    direct = false;
+  }
+  const sid = await sessionFor(user, toolkit, account);
+  if (!sid) return { ok: false, status: 403, j: { error: "This API key can neither run tools directly nor open a session." } };
+  const r = await composio(`/tool_router/session/${sid}/execute`, { method: "POST", body: JSON.stringify({ tool_slug: slug, arguments: args }) });
+  if (r.status === 404 || r.status === 410) sessions.delete(`${user}|${toolkit}|${account}`);
+  // A session answer reports a tool failure in "error" even when the HTTP call itself worked.
+  if (r.ok && r.j && r.j.successful === undefined && typeof r.j.error === "string" && r.j.error) r.j.successful = false;
+  return r;
+}
 
 async function toolSchema(row: J): Promise<{ description: string; input: J } | null> {
   const fresh = row.schema && row.schema_at && Date.now() - new Date(row.schema_at).getTime() < 86400000;
@@ -235,7 +263,7 @@ RULES THAT ALWAYS HOLD:
 
   async function ensureSheet(): Promise<string | null> {
     if (sheet.conn.detail?.spreadsheet_id) return sheet.conn.detail.spreadsheet_id;
-    const r = await execTool(sheet.rows.create.slug, sheet.conn.connected_account_id, c!.biz.composio_user_id, { title: `Pip: ${c!.name}` });
+    const r = await execTool(sheet.rows.create.slug, sheet.conn.connected_account_id, c!.biz.composio_user_id, { title: `Pip: ${c!.name}` }, sheet.rows.create.toolkit);
     const sid = dig(r.j?.data, "spreadsheetId") ?? dig(r.j?.data, "spreadsheet_id");
     if (!r.ok || r.j?.successful === false || typeof sid !== "string") return null;
     sheet.conn.detail = { ...(sheet.conn.detail ?? {}), spreadsheet_id: sid };
@@ -277,7 +305,7 @@ RULES THAT ALWAYS HOLD:
       const want = Object.keys(meta.row.schema?.input?.properties ?? {});
       if (want.length) args = Object.fromEntries(Object.entries(args).filter(([k]) => want.includes(k)));
     }
-    const r = await execTool(meta.row.slug, meta.conn.connected_account_id, c!.biz.composio_user_id, args);
+    const r = await execTool(meta.row.slug, meta.conn.connected_account_id, c!.biz.composio_user_id, args, meta.row.toolkit);
     const failed = !r.ok || r.j?.successful === false;
     const err = cut(r.j?.error?.message ?? r.j?.error ?? r.j?.message ?? "", 300);
     if (failed) {
