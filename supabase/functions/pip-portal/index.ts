@@ -238,9 +238,11 @@ async function composio(path: string, init: RequestInit = {}) {
 // Which Composio sign-in config a tool uses, in this order:
 // 1. One the founder chose in forge_settings.sign_in_configs, for example Pip's own Google app: { "gmail": "ac_..." }.
 // 2. Composio's own one-step sign-in, when the tool has one.
-// 3. For tools that work with an API key instead: a config that makes Composio's own page ask the owner for the key.
-//    The key goes from the owner straight to Composio. Pip, and every model, never see it.
-const KEY_SCHEMES = ["API_KEY", "BEARER_TOKEN"];
+// 3. For tools that work with an API key, a bearer token or an API username and password instead: a config that makes
+//    Composio's own page ask the owner for it. It goes from the owner straight to Composio. Pip, and every model,
+//    never see it. (Decided November 17: Composio's page is acceptable custody, the same as a sign-in. Website logins
+//    with no API are a different route and never come through here.)
+const KEY_SCHEMES = ["API_KEY", "BEARER_TOKEN", "BASIC"];
 async function composioAuthConfig(slug: string): Promise<string> {
   const { data: pick } = await db.from("forge_settings").select("value").eq("key", "sign_in_configs").maybeSingle();
   const chosen = (pick?.value as any)?.[slug];
