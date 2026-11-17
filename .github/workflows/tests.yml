@@ -1,0 +1,24 @@
+name: Tests
+
+# Lane 09 (guard). Runs on every pull request and on main. No keys, no network calls to vendors, no cost.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: The hard limits in pip-turn hold, and every lane's own function tests pass
+        run: node --test "tests/**/*.test.mjs" "supabase/functions/**/*.test.ts"
+      - name: The tests would notice if a limit were removed
+        run: node tests/pip-turn/prove.mjs
