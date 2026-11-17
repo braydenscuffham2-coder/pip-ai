@@ -1,5 +1,7 @@
 // pip-turn: runs one turn of a teammate and lets it act in the owner's connected tools.
-//   POST /turn  { skill, conversation?, message, visitor?, channel? } -> { conversation, reply, actions, live }
+//   POST /turn  { skill, conversation?, message, visitor?, channel?, limited? } -> { conversation, reply, actions, live }
+//               limited: the site's spend guard said no, so the model is not called; the message is still saved,
+//               the owner is alerted and the visitor is told a person will reply.
 //   POST /diag  founder testing only: which keys are present, and what a Composio toolkit offers. Never returns a key.
 // It runs both kinds of teammate: ones built on the Forge Board (their finished system prompt) and the older
 // Skill Spec kind. The model is given only the tools this teammate was designed with, and only for connections
@@ -86,7 +88,7 @@ async function claude(system: string, messages: J[], tools: J[]): Promise<J | nu
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: MODEL, max_tokens: 700, system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }], messages, ...(tools.length ? { tools } : {}) }),
+      body: JSON.stringify({ model: MODEL, max_tokens: 1600, system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }], messages, ...(tools.length ? { tools } : {}) }),
       signal: AbortSignal.timeout(22000),
     });
     if (!r.ok) { console.error("[turn] model", r.status, (await r.text()).slice(0, 200)); return null; }
@@ -299,14 +301,17 @@ RULES THAT ALWAYS HOLD:
     return { text: JSON.stringify(r.j?.data ?? {}).slice(0, 4000) };
   }
 
-  for (let round = 0; round < 5 && Date.now() < deadline; round++) {
+  for (let round = 0; round < 5 && Date.now() < deadline && body?.limited !== true; round++) {
     const r = await claude(system, msgs, tools);
     if (!r) break;
     usedModel = true; cost += costOf(r.usage);
     const uses = (r.content ?? []).filter((x: J) => x.type === "tool_use");
     const text = (r.content ?? []).filter((x: J) => x.type === "text").map((x: J) => x.text).join(" ").trim();
     steps.push({ stop: r.stop_reason, text: text.length, tools: uses.map((u: J) => u.name), kinds: (r.content ?? []).map((x: J) => x.type) });
-    if (!uses.length || r.stop_reason !== "tool_use") { reply = text; break; }
+    if (!uses.length || r.stop_reason !== "tool_use") {
+      if (!text && round < 2) continue; // the model spent its whole answer thinking: ask again
+      reply = text; break;
+    }
     msgs.push({ role: "assistant", content: r.content });
     const results: J[] = [];
     for (const u of uses) {
