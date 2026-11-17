@@ -1794,7 +1794,7 @@ function anyToolCard() {
   });
   const mine = d.extra_tools || [], word = { active: "connected", link_made: "sign-in not finished", expired: "needs to be reconnected", failed: "did not connect" };
   return h("section", { class: "card rise", style: { "--i": 3 }, "aria-label": "Connect another tool" }, kick("Anything else"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "Use a tool that is not listed?"),
-    h("p", { class: "small", style: { marginTop: "6px" } }, "Search for it and connect it here. You sign in on the tool's own screen. If the tool uses a key instead, you paste it on a secure page run by our connection partner. Either way Pip never sees your password or key. Pip then adds it to your team and tells you when it is in use."),
+    h("p", { class: "small", style: { marginTop: "6px" } }, "Search for it and connect it here. You sign in on the tool's own screen. If the tool uses a key or its own username and password instead, you enter it on a secure page run by our connection partner. Make a separate login for Pip in that tool first, not your own. Either way Pip never sees your password or key. Pip then adds it to your team and tells you when it is in use."),
     h("label", { class: "field", for: "tool-q", style: { marginTop: "14px" } }, h("span", { class: "lab" }, "Tool name"), q), out,
     mine.length ? h("ul", { class: "rules", style: { marginTop: "14px" } }, mine.map((t) => h("li", {}, icon(t.status === "active" ? "check" : "info"), h("span", {}, t.toolkit + ": " + (word[t.status] || t.status))))) : null);
 }
