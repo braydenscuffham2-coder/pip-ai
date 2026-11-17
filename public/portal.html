@@ -1391,6 +1391,7 @@ const WORDS = {
   type_the_name: "Type the business name exactly to confirm.", last_owner: "A business needs at least one owner.", no_price_yet: "Your price has not been sent yet.",
   not_ready: "This is not switched on yet. Pip is finishing it.", disconnect_first: "Disconnect Pip first. Then you can delete everything.", name_mismatch: "Type the business name exactly to confirm.",
   vault_not_empty: "Saved logins must be removed first. Pip has been told.", attest_required: "Tick the box to confirm these people asked to hear from you.", too_many: "Add up to 500 at a time.", not_a_pip_step: "That step is checked automatically.",
+  card_off: "Card setup is not switched on yet. Pip will let you know.", card_not_saved: "That card was not saved. Try again.", card_failed: "The card page could not be opened. Try again in a minute.", disconnected: "This business is disconnected.",
 };
 // Every Portal action goes through here: send it, show what happened, then reload and redraw (as before).
 async function run(fn, okText, react) {
@@ -1491,6 +1492,7 @@ function paintSignIn() {
 // ---------- data ----------
 async function load() {
   if (!S.me) return;
+  S.bill = undefined; S.usage = undefined;
   if (S.bid) { try { S.data = await api("/business/" + S.bid); } catch (e) { S.data = null; S.bid = null; say(e.message, "err"); } }
   if (S.me.founder && !S.bid) { try { S.founder = await api("/founder/businesses", {}); } catch (e) { S.founder = null; } }
   if (S.data) celebrateChanges();
@@ -1650,6 +1652,7 @@ function priceLetter() {
     q.monthly_usd != null ? h("p", { class: "amt" }, h("b", {}, money(q.monthly_usd)), h("span", {}, "a month")) : null,
     q.monthly_usd != null && q.setup_usd ? h("p", { class: "setup" }, "plus ", h("b", {}, money(q.setup_usd)), " one-time setup") : null,
     q.summary ? h("p", { class: "sum pre" }, q.summary) : null,
+    Number(q.included_usd) > 0 ? h("p", { class: "small", style: { marginTop: "10px" } }, "Includes " + money(q.included_usd) + " of usage each month." + (rateLine(q.rates) ? " Beyond that: " + rateLine(q.rates) + "." : "") + " A busy month never pauses your team.") : null,
     h("div", { class: "cut" },
       box ? h("label", { class: "check", for: "tc" }, box, h("span", {}, "I agree to the ", h("a", { href: d.terms_url, target: "_blank", rel: "noopener" }, "terms"), ".")) : null,
       isOwner() ? h("button", { class: "btn pri", "data-k": "accept", "data-pip": "next", onclick: () => run(() => api("/business/" + S.bid + "/accept", { terms: box ? box.checked : undefined }), "Accepted. Setup is unlocked.", () => { Pip.party(LINE.accepted); }) }, "Accept and start setup", icon("arrow", "arr"))
@@ -1816,12 +1819,48 @@ function settingsTab() {
       h("p", { class: "fine", style: { marginTop: "10px" } }, "These defaults are being reviewed by a lawyer. They are not legal advice.")),
     isOwner() ? h("section", { class: "card rise", style: { "--i": 2 }, "aria-label": "Alerts" }, kick("Alerts"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "When a teammate has to pause"), h("p", { class: "small", style: { marginTop: "6px" } }, "Pip emails you when a teammate has to pause. Text alerts start once Pip's texting is approved."),
       h("label", { class: "field", for: "mob", style: { marginTop: "14px" } }, h("span", { class: "lab" }, "Mobile for alerts"), mob), h("div", { class: "btns" }, h("button", { class: "btn ghost", "data-k": "save-mob", onclick: () => run(() => api("/business/" + id + "/alerts", { mobile: mob.value }), "Saved.") }, "Save"))) : null,
+    isOwner() && b.status !== "disconnected" ? cardCard() : null,
+    b.status !== "disconnected" ? usageCard() : null,
     b.status !== "disconnected" ? consentCard() : null,
     isOwner() && b.status !== "disconnected" ? h("section", { class: "card warm danger-zone rise", style: { "--i": 4 }, "aria-label": "Disconnect everything" }, kick("Stop everything"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "Disconnect everything"), h("p", { class: "small", style: { marginTop: "6px" } }, "Revokes every tool sign-in and stops every agent right away. One thing only you can undo: call forwarding at your phone company."),
       h("label", { class: "field", for: "conf", style: { marginTop: "14px" } }, h("span", { class: "lab" }, "Type the business name to confirm"), conf),
       h("div", { class: "btns" }, h("button", { class: "btn danger", "data-k": "disconnect", onclick: () => run(() => api("/business/" + id + "/disconnect", { confirm: conf.value }), "Everything is disconnected.") }, icon("pause"), "Disconnect everything")), h("p", { class: "fine", style: { marginTop: "10px" } }, "Needs a sign-in from the last 15 minutes.")) : null,
     isOwner() && b.status === "disconnected" ? deleteCard() : null,
     h("div", { class: "row rise", style: { "--i": 6, justifyContent: "center", marginTop: "6px" } }, h("button", { class: "btn ghost", "data-k": "sign-out", onclick: signOut }, icon("out"), "Sign out"))];
+}
+// ---------- billing: card on file and this month's usage ----------
+const UNIT = { conversation: ["chat", "chats"], sms: ["text", "texts"], voice_minute: ["call minute", "call minutes"] };
+const cents = (n) => "$" + Number(n).toFixed(2);
+const unitWord = (k, n) => { const w = UNIT[k] || [k.replace(/_/g, " "), k.replace(/_/g, " ")]; return Number(n) === 1 ? w[0] : w[1]; };
+const rateLine = (rates) => Object.keys(rates || {}).filter((k) => Number(rates[k]) > 0).map((k) => cents(rates[k]) + " per " + unitWord(k, 1)).join(", ");
+const lazy = (key, name) => { if (S[key] === undefined) { S[key] = null; rpc(name).then((r) => { S[key] = r; if (S.tab === "settings") render(); }).catch(() => { S[key] = { off: true }; if (S.tab === "settings") render(); }); } return S[key]; };
+function cardCard() {
+  const got = lazy("bill", "billing_status"), bill = got || {}, locked = !S.data.setup_unlocked && S.data.role !== "founder", out = h("div", { "aria-live": "polite" });
+  const late = bill.billing_status === "past_due" || bill.billing_status === "paused";
+  const go = async (ev) => {
+    const btn = ev.currentTarget; btn.classList.add("busy");
+    try { const r = await api("/billing/start", { business: S.bid }, OPS); location.href = r.url; }
+    catch (e) { btn.classList.remove("busy"); out.replaceChildren(h("p", { class: "note err", style: { marginTop: "14px" }, role: "alert" }, icon("alert"), h("span", {}, e.message))); Pip.trouble(LINE.oops); }
+  };
+  return h("section", { class: "card rise" + (late ? " warm" : ""), style: { "--i": 3 }, "aria-label": "Card on file" }, kick("Billing"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "Card on file"),
+    h("p", { class: "small", style: { marginTop: "6px" } }, "Pip charges this card for your monthly price, starting the day your team goes live. You type the card on a secure page run by Stripe. Pip never sees or stores the card number."),
+    late ? h("p", { class: "note err", style: { marginTop: "12px" }, role: "alert" }, icon("alert"), h("span", {}, bill.billing_status === "paused" ? "Your team is paused because a payment is overdue. Replace the card and your team starts again on its own." : "Your last payment did not go through. Replace the card to keep your team running.")) : null,
+    h("p", { class: "small", style: { marginTop: "10px" } }, bill.card_on_file_at ? [h("b", {}, bill.card_hint || "Card"), ", saved " + new Date(bill.card_on_file_at).toLocaleDateString() + "."] : (got ? (got.off ? "Card setup is not switched on yet." : "No card saved yet.") : "Checking…")),
+    locked ? h("p", { class: "fine", style: { marginTop: "10px" } }, "Unlocks when you accept your price.")
+      : h("div", { class: "btns" }, h("button", { class: "btn " + (bill.card_on_file_at ? "ghost" : "pri"), "data-k": "card", onclick: go }, bill.card_on_file_at ? "Replace the card" : "Add a card")), out);
+}
+function usageCard() {
+  const u = lazy("usage", "usage");
+  if (!u || u.off || !(Number(u.included_usd) > 0)) return null;
+  const day = (t) => new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const used = Number(u.value_usd || 0), over = Number(u.beyond_plan_usd || 0), rates = rateLine(u.rates);
+  return h("section", { class: "card rise", style: { "--i": 3 }, "aria-label": "Usage" }, kick("Usage"),
+    h("h2", { class: "h-s", style: { marginTop: "10px" } }, u.started ? "This month so far" : "What your plan includes"),
+    u.started ? h("p", { class: "small", style: { marginTop: "6px" } }, h("b", {}, cents(used)), " used of " + money(u.included_usd) + " included, " + day(u.period_start) + " to " + day(u.period_end) + ".")
+      : h("p", { class: "small", style: { marginTop: "6px" } }, money(u.included_usd) + " of usage each month. Counting starts the day your team goes live."),
+    u.started && (u.lines || []).length ? h("ul", { class: "rules", style: { marginTop: "10px" } }, u.lines.map((l) => h("li", {}, icon("check"), h("span", {}, Number(l.qty).toLocaleString() + " " + unitWord(l.unit, l.qty) + (Number(l.value_usd) > 0 ? ", " + cents(l.value_usd) : ""))))) : null,
+    over > 0 ? h("p", { class: "note info", style: { marginTop: "12px" } }, icon("info"), h("span", {}, cents(over) + " beyond your plan so far. It goes on your next invoice. Your team keeps running.")) : null,
+    rates ? h("p", { class: "fine", style: { marginTop: "10px" } }, "Beyond your plan: " + rates + ". A busy month never pauses your team.") : null);
 }
 function consentCard() {
   const list = h("textarea", { class: "area", id: "c-list", placeholder: "One per line. Phone numbers or emails." });
@@ -2102,8 +2141,10 @@ async function boot() {
   const want = q.get("b"), mine = S.me.businesses || [];
   S.bid = want || (!S.me.founder && mine.length === 1 ? mine[0].id : null);
   if (q.get("connected") && S.bid) { S.tab = "setup"; try { await api("/business/" + S.bid + "/refresh", {}); } catch (e) { /* shown on load */ } history.replaceState(null, "", "?b=" + S.bid); }
+  let cardNote = null;
+  if (q.get("card") && S.bid) { S.tab = "settings"; try { await api("/billing/confirm", { business: S.bid, session: q.get("card") }, OPS); cardNote = ["Card saved.", "ok"]; } catch (e) { cardNote = [e.message, "err"]; } history.replaceState(null, "", "?b=" + S.bid); }
   loadingView();
-  await load(); render();
+  await load(); if (cardNote) say(cardNote[0], cardNote[1]); render();
   if (th) Pip.wave("Welcome back. Good to see you.");
 }
 function installArt(art) {
