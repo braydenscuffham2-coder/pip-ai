@@ -1,4 +1,4 @@
--- NOT YET APPLIED (waiting for Brayden's approval in Supabase). Apply as migration "portal_07_billing_and_texting".
+-- Applied November 16, 2026 as migration "portal_07_billing_and_texting". Verified by rolled-back tests (42 checks).
 -- Portal phase 7: monthly billing from go-live day, usage beyond the plan billed in arrears (never a cut-off for usage),
 -- and the database side of inbound texting. Stripe and Twilio calls happen in the pip-run function; the rules live here.
 
