@@ -763,6 +763,8 @@ html.office-live .fl-pipslot{display:none}
 
 /* name tags over each desk (mouse targets; the roster is the keyboard path) */
 .fl-tags .tag{position:fixed;left:0;top:0;z-index:8;transform-origin:50% 100%;padding:9px 13px 10px;border-radius:18px;font:400 14.5px/1.25 var(--f-body);color:var(--ink);text-align:left;white-space:nowrap;will-change:transform,opacity;pointer-events:auto;cursor:pointer;opacity:0;transition:box-shadow .3s var(--ease);appearance:none;border:0;text-decoration:none;display:block}
+.fl-tags .tag.glass{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgba(255,255,255,.88)}
+.fl-pov-top .glass,.fl-keys.glass{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgba(255,255,255,.86)}
 .fl-tags .tag::after{content:"";position:absolute;left:50%;bottom:-6px;width:12px;height:12px;margin-left:-6px;transform:rotate(45deg);background:rgba(255,255,255,.82);border-radius:0 0 3px 0}
 .fl-tags .tag:hover{box-shadow:0 0 0 1px #fff,0 0 0 4px rgba(var(--violet-rgb),.22),0 18px 40px -18px rgba(38,34,90,.45)}
 .tag .row{display:flex;align-items:center;gap:8px}
@@ -809,6 +811,8 @@ html.fl-desk-open .fl-say,html.fl-pov-on .fl-say{opacity:0;pointer-events:none;v
 .fl-empty{padding:0 14px;font-size:14px;color:var(--ink-3)}
 html.fl-pov-on .fl-roster{opacity:0;pointer-events:none;transform:translate(-50%,20px)}
 html.fl-pov-on .fl-head{opacity:0;pointer-events:none;transform:translateY(-16px)}
+.fl-pov-top,.fl-folders,.fl-keys{transition:opacity .3s var(--ease)}
+html.fl-paper-on :is(.fl-pov-top,.fl-folders,.fl-keys){opacity:0;pointer-events:none}
 
 /* over the shoulder */
 .fl-pov{position:fixed;inset:0;z-index:12;pointer-events:none;animation:fade .6s var(--ease) both}
@@ -844,8 +848,24 @@ html.fl-pov-on .fl-head{opacity:0;pointer-events:none;transform:translateY(-16px
 
 /* the screen: real HTML on the monitor glass */
 .scr{width:1000px;max-width:none;min-height:600px;overflow:hidden;border-radius:30px;background:linear-gradient(180deg,#fbfaff,#f3f1fb);color:var(--ink);font:400 18px/1.38 var(--f-body);position:relative;text-align:left}
-.fl-css .scr{height:600px;overflow:visible;opacity:0;filter:brightness(1.6) blur(6px);transform-origin:50% 50%;transition:opacity .5s var(--ease),filter .7s var(--ease)}
-.fl-css .scr.on{opacity:1;filter:none}
+.fl-css .scr{height:600px;overflow:visible;transform-origin:50% 50%}
+@media (prefers-reduced-motion:no-preference){
+  .fl-css .scr:not(.on) :is(.os,.grid>*,.ctl){opacity:0}
+  .fl-css .scr.on:not(.settled) :is(.os,.eyebrow,.title,.sub,.feed>*,.quiet,.side>*,.ctl){animation:scr-in .5s var(--ease) both}
+  .fl-css .scr.on:not(.settled) .title{animation-delay:.05s}
+  .fl-css .scr.on:not(.settled) .sub{animation-delay:.1s}
+  .fl-css .scr.on:not(.settled) .feed>:nth-child(1),.fl-css .scr.on:not(.settled) .quiet{animation-delay:.14s}
+  .fl-css .scr.on:not(.settled) .feed>:nth-child(2){animation-delay:.19s}
+  .fl-css .scr.on:not(.settled) .feed>:nth-child(3){animation-delay:.24s}
+  .fl-css .scr.on:not(.settled) .feed>:nth-child(4){animation-delay:.29s}
+  .fl-css .scr.on:not(.settled) .side>:nth-child(1){animation-delay:.1s}
+  .fl-css .scr.on:not(.settled) .side>:nth-child(2){animation-delay:.17s}
+  .fl-css .scr.on:not(.settled) .side>:nth-child(3){animation-delay:.24s}
+  .fl-css .scr.on:not(.settled) .ctl{animation-delay:.3s}
+  .fl-css .scr.on:not(.settled)::before{content:"";position:absolute;inset:0;z-index:3;pointer-events:none;border-radius:inherit;background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.75) 50%,rgba(255,255,255,0)) no-repeat;background-size:100% 34%;animation:scr-sweep .75s var(--ease) both}
+}
+@keyframes scr-in{from{opacity:0;transform:translateY(10px)}}
+@keyframes scr-sweep{from{background-position:0 -60%}to{background-position:0 160%;opacity:0}}
 .scr::after{content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;background:linear-gradient(115deg,rgba(255,255,255,0) 40%,rgba(255,255,255,.2) 52%,rgba(255,255,255,0) 64%)}
 .scr .os{border-radius:30px 30px 0 0;height:46px;display:flex;align-items:center;gap:14px;padding:0 24px;border-bottom:1px solid #e9e6f4;background:rgba(255,255,255,.72);font-size:15px;color:var(--ink-3)}
 .scr .os .lights{display:flex;gap:7px}.scr .os .lights i{width:11px;height:11px;border-radius:50%;background:#e4e1ef}
@@ -908,17 +928,29 @@ html.fl-desk-open .fl-tags .tag{visibility:hidden}
 #paper{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;background:transparent;overflow:auto;color:var(--ink)}
 #paper[open]{display:flex;flex-direction:column}
 #paper::backdrop{background:rgba(236,234,244,.5);-webkit-backdrop-filter:blur(12px) saturate(.9);backdrop-filter:blur(12px) saturate(.9)}
+#paper.pp-arrive::backdrop{background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}
+#paper.pp-arrive .pp-folder{opacity:0}
+#paper.pp-arrive .pp-bar{animation:fade .45s var(--ease) both}
+#paper.pp-on::backdrop{animation:pp-bd .55s var(--ease) both}
+#paper.pp-leave::backdrop{animation:pp-bd-out .38s var(--ease) both}
+@keyframes pp-bd{from{background:rgba(236,234,244,0);-webkit-backdrop-filter:blur(0) saturate(1);backdrop-filter:blur(0) saturate(1)}}
+@keyframes pp-bd-out{to{background:rgba(236,234,244,0);-webkit-backdrop-filter:blur(0) saturate(1);backdrop-filter:blur(0) saturate(1)}}
 .pp-bar{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:10px;padding:calc(16px + env(safe-area-inset-top,0px)) 16px 10px}
 .pp-bar .btn.ghost{background:rgba(255,255,255,.82)}
 .pp-bar .pp-next,.pp-bar .btn:last-child{margin-left:auto}
 .pp-crumbs{display:flex;align-items:center;gap:6px;min-height:46px;padding:0 16px;border-radius:999px;background:rgba(255,255,255,.7);font-size:14.5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pp-crumbs b{color:var(--ink);font-weight:600}
-.pp-folder{position:relative;width:min(640px,calc(100vw - 24px));margin:auto;padding:0 0 70px;flex:none}
+.pp-folder{position:relative;width:min(640px,calc(100vw - 24px));margin:auto;padding:0 0 70px;flex:none;perspective:1400px}
 .pp-folder{margin-top:max(10px,auto)}
-.pp-back{position:absolute;left:0;right:0;top:120px;bottom:0;border-radius:10px 22px 14px 14px;background:linear-gradient(180deg,#f0e1bf,#e7d3a7);box-shadow:0 40px 80px -30px rgba(80,60,20,.45),inset 0 1px 0 rgba(255,255,255,.6)}
-.pp-tab{position:absolute;left:26px;top:-34px;height:36px;padding:0 18px;border-radius:12px 12px 0 0;background:linear-gradient(180deg,#f3e6c8,#f0e1bf);display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;color:#6b5320}
-.pp-tab i{width:9px;height:9px;border-radius:50%;background:var(--c,#e9a534)}
-.pp-paper{position:relative;z-index:1;margin:0 28px;border-radius:6px;background:var(--paper);box-shadow:0 1px 0 rgba(0,0,0,.03),0 24px 50px -24px rgba(38,34,60,.45);padding:40px 46px 64px;transform:rotate(-.5deg);min-height:420px}
+.pp-back{position:absolute;left:0;right:0;top:120px;bottom:0;border-radius:14px;background:linear-gradient(180deg,#faf0d9,#f1e2bf);box-shadow:0 40px 80px -30px rgba(80,60,20,.4),inset 0 1px 0 rgba(255,255,255,.7)} /* the same kraft as the folder in the room */
+.pp-tab{position:absolute;top:-36px;width:52%;height:40px;padding:0 20px;border-radius:14px 14px 0 0;background:color-mix(in srgb,var(--c,#e9a534) 55%,#fff);display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px;color:#4a3a10}
+.pp-folder.even .pp-tab{right:0}.pp-folder.odd .pp-tab{left:0} /* where the tab sits on the folder you picked up */
+.pp-tab i{display:none}
+.pp-paper{position:relative;z-index:1;margin:0 28px;border-radius:6px;background:var(--paper);box-shadow:0 1px 0 rgba(0,0,0,.03),0 24px 50px -24px rgba(38,34,60,.45);padding:40px 46px 96px;min-height:440px;
+  transform:translateY(170px) rotate(-.5deg);opacity:0;clip-path:inset(0 0 180px 0);transition:transform .38s var(--ease),opacity .2s var(--ease),clip-path .38s var(--ease)} /* inside the folder until it opens */
+#paper.pp-open .pp-paper{transform:rotate(-.5deg);opacity:1;clip-path:inset(-60px -60px -60px -60px);transition:transform .7s var(--ease) .16s,opacity .25s var(--ease) .16s,clip-path .7s var(--ease) .16s}
+#paper.pp-swap .pp-paper{transform:translateY(170px) rotate(-.5deg);opacity:0;clip-path:inset(0 0 180px 0);transition:transform .23s var(--ease),opacity .2s var(--ease) .03s,clip-path .23s var(--ease)}
+#paper.pp-next .pp-paper{animation:pp-rise .55s var(--ease) both}
 .pp-paper::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(180deg,transparent 0 31px,rgba(91,63,224,.045) 31px 32px);pointer-events:none;border-radius:inherit}
 .pp-paper .ph{display:flex;justify-content:space-between;gap:12px;font:400 12px/1.3 var(--f-mono);letter-spacing:.08em;color:var(--ink-3);text-transform:uppercase}
 .pp-paper h2{font:400 48px/1 var(--f-display);margin:22px 0 8px;letter-spacing:-.01em}
@@ -935,13 +967,12 @@ html.fl-desk-open .fl-tags .tag{visibility:hidden}
 .pp-paper .tl span{font-size:13.5px;color:var(--ink-3)}
 .pp-paper .wl li{display:grid;grid-template-columns:70px minmax(0,1fr) auto;gap:10px;align-items:baseline;padding:8px 0;border-top:1px solid rgba(11,13,31,.06)}
 .pp-paper .wl time{font:400 13px/1.3 var(--f-mono);color:var(--ink-3)}
-.pp-paper .stamp{position:absolute;right:40px;bottom:30px;transform:rotate(-9deg);padding:10px 16px 9px;border:2.5px solid rgba(91,63,224,.62);border-radius:12px;color:rgba(91,63,224,.78);font:500 12px/1.4 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;text-align:center;mix-blend-mode:multiply}
+.pp-paper .stamp{position:absolute;right:40px;bottom:62px;transform:rotate(-9deg);padding:10px 16px 9px;border:2.5px solid rgba(91,63,224,.62);border-radius:12px;color:rgba(91,63,224,.78);font:500 12px/1.4 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;text-align:center;mix-blend-mode:multiply}
 .pp-paper .stamp b{display:block;font:400 24px/1.1 var(--f-display);letter-spacing:0;text-transform:none}
-.pp-front{position:absolute;z-index:2;left:-6px;right:-6px;bottom:-4px;height:110px;border-radius:8px 8px 16px 16px;background:linear-gradient(180deg,#f2e4c4,#e5cf9f);box-shadow:0 -12px 24px -16px rgba(80,60,20,.35),inset 0 1px 0 rgba(255,255,255,.7);transform-origin:50% 100%;transform:perspective(1400px) rotateX(58deg)}
-.pp-front span{position:absolute;left:50%;top:26px;transform:translateX(-50%);padding:6px 14px;border-radius:8px;background:rgba(255,255,255,.55);font:400 12.5px/1.2 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:#6b5320;white-space:nowrap}
-#paper.pp-on .pp-paper{animation:pp-rise .7s var(--ease) both}
-#paper.pp-on .pp-back,#paper.pp-on .pp-front{animation:fade .45s var(--ease) both}
-@keyframes pp-rise{from{opacity:0;transform:translateY(80px) rotate(-.5deg)}}
+.pp-front{position:absolute;z-index:2;left:-6px;right:-6px;top:118px;bottom:-4px;border-radius:12px 12px 16px 16px;background:linear-gradient(180deg,#fbf2de,#efdfba);box-shadow:0 -12px 24px -16px rgba(80,60,20,.3),inset 0 1px 0 rgba(255,255,255,.75);transform-origin:50% 100%;transform:rotateX(0);transition:transform .38s var(--ease) .1s;backface-visibility:hidden} /* the front cover, closed */
+#paper.pp-open .pp-front{transform:rotateX(77deg);transition:transform .6s cubic-bezier(.3,1.25,.5,1)}
+.pp-front span{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);padding:6px 14px;border-radius:8px;background:rgba(255,255,255,.55);font:400 12.5px/1.2 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:#6b5320;white-space:nowrap}
+@keyframes pp-rise{from{opacity:0;transform:translateY(170px) rotate(-.5deg);clip-path:inset(0 0 180px 0)}to{opacity:1;transform:rotate(-.5deg);clip-path:inset(-60px)}}
 
 /* the list view's way back to the floor */
 .biz-head .to-floor{grid-column:1/-1;justify-self:start;margin-top:-2px}
@@ -993,14 +1024,14 @@ html:not(.office-live) .fl-say{left:12px;transform:none!important}
   .fl-desk .rail{margin:0 12px}
   .fl-desk .tabpanel{padding:14px 12px 28px}
   .pp-bar .pp-crumbs{display:none}
-  .pp-paper{margin:0 14px;padding:30px 24px 60px}
+  .pp-paper{margin:0 14px;padding:30px 24px 116px}
   .pp-paper h2{font-size:38px}
-  .pp-paper .stamp{right:22px;bottom:18px}
+  .pp-paper .stamp{right:22px;bottom:78px}
 }
 @media (max-width:1180px) and (min-width:720px) and (min-height:560px){.fl-keys{display:none}}
 @media (max-width:1023px) and (min-width:720px) and (min-height:560px){.fl-counts li:nth-child(n+3){display:none}.fl-view span{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.fl-view{padding:0}}
 @media (max-width:1100px) and (min-width:720px) and (min-height:560px){.fl-counts li:nth-child(n+4){display:none}.fl-mate small{max-width:130px}}
-@media (prefers-reduced-motion:reduce){.fl-pipslot,.tag .bar2 i,.scr .rec{animation:none!important}.fl-css .scr{transition:none}#paper.pp-on .pp-paper{animation:none}}
+@media (prefers-reduced-motion:reduce){.fl-pipslot,.tag .bar2 i,.scr .rec{animation:none!important}#paper .pp-paper,#paper .pp-front,#paper.pp-on::backdrop{transition:none!important;animation:none!important}}
 @media (prefers-reduced-transparency:reduce){.glass,.fl-desk{background:#fbfbfd;-webkit-backdrop-filter:none;backdrop-filter:none}}
 
 .boot{grid-template-columns:minmax(0,1fr)!important;justify-items:center}
@@ -1660,6 +1691,11 @@ function createOffice(THREE, X, opts) {
   const key = new THREE.DirectionalLight("#fff6ea", 3.6); key.position.set(5, 10, 8); scene.add(key);
   const fill = new THREE.DirectionalLight("#dfe3ff", 0.55); fill.position.set(-7, 4, -5); scene.add(fill);
   const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.05, 220);
+  // Layers: 0 is seen by you and by the floor's mirror; 1 only by you (small desk things, things lying on the floor);
+  // 2 only by the mirror (lighter stand-ins for clouds and topiaries). The reflection looks the same and costs far less.
+  const MAIN = 1, MIRROR = 2; camera.layers.enable(MAIN);
+  const onlyMain = (...os) => { for (const o of os) if (o) o.traverse((c) => c.layers.set(MAIN)); };
+  const onlyMirror = (o) => o.traverse((c) => c.layers.set(MIRROR));
 
   // ---------------- helpers ----------------
   function canvasTex(w, h, draw) { const cv = document.createElement("canvas"); cv.width = w; cv.height = h; draw(cv.getContext("2d"), w, h); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; }
@@ -1713,7 +1749,7 @@ function createOffice(THREE, X, opts) {
     slate: new THREE.MeshPhysicalMaterial({ color: "#3d3f5f", roughness: 0.34, clearcoat: 0.85, clearcoatRoughness: 0.18, envMapIntensity: 1.0 }),
     cushion: new THREE.MeshStandardMaterial({ color: "#2c2d45", roughness: 0.85 }),
     lilacGlow: new THREE.MeshBasicMaterial({ color: new THREE.Color("#d4c6ff").multiplyScalar(1.4) }),
-    kraft: pearlStuff({ color: "#fff3d8", flank: "#f3dcaa", belly: "#efd39c", fk: 0.4, bk: 0.3, rough: 0.5, cc: 0.45, irid: 0, rim: 0.25, emissive: "#fff0cc", emissiveK: 0.22 }),
+    kraft: pearlStuff({ color: "#fcefcf", flank: "#f0d7a2", belly: "#ecd096", fk: 0.4, bk: 0.3, rough: 0.5, cc: 0.45, irid: 0, rim: 0.22, emissive: "#fbe8bf", emissiveK: 0.16 }),
     paper: pearlStuff({ color: "#fdfcf8", flank: "#ece6f5", fk: 0.3, bk: 0.2, rough: 0.6, cc: 0.1, irid: 0, rim: 0.15 }),
     mint: pearlStuff({ color: "#d3f2e3", flank: "#8fd8bb", belly: "#5eead9", fk: 0.55, bk: 0.6, rough: 0.4, cc: 0.7, sheen: 0.6, sheenColor: "#eafff6", rim: 0.4 }),
     cloud: pearlStuff({ flank: "#e7e1ff", belly: "#d7f4f0", fk: 0.35, bk: 0.5, rough: 0.85, cc: 0, sheen: 0.9, irid: 0, rim: 0.55, emissive: "#ffffff", emissiveK: 0.18 }),
@@ -1816,7 +1852,7 @@ function createOffice(THREE, X, opts) {
       halo.quaternion.copy(camera.quaternion).premultiply(q.copy(ant.getWorldQuaternion(q2)).invert());
       hands.forEach((h, i) => { h.position.copy(Y.hands[i]); h.scale.setScalar(Y.handS[i]); h.visible = Y.handS[i] > 0.02; });
     }
-    return { root, head, body, apply, hands, skin, mic, bulb };
+    return { root, head, body, apply, hands, skin, mic, bulb, ant };
   }
   const baseY = () => ({ pos: V(), sx: 1, sy: 1, pitch: 0, yaw: 0, roll: 0, eyeL: "open", eyeR: "open", blink: 0, mouth: 0, mouthW: 0, coreK: 0.22, bulb: C.aqua, bulbK: 0.7, antX: 0, antZ: 0, hands: [V(-1.25, -0.5, 0.2), V(1.25, -0.5, 0.2)], handS: [1, 1], micOn: false });
   function blendY(cur, tgt, k) { // smooth everything continuous; switch eyes at once
@@ -1828,36 +1864,37 @@ function createOffice(THREE, X, opts) {
   const cloneY = (Y) => Object.assign(baseY(), Y, { pos: Y.pos.clone(), hands: Y.hands.map((h) => h.clone()), handS: Y.handS.slice() });
 
   // ---------------- the room: endless, white, lit like the inside of a cloud ----------------
-  let reflector = null, floorMat = null;
-  const rings = [];
+  const ringX = () => (PHONE() ? 2.05 : 2.6);
+  let reflector = null, floorMat = null, ringMesh = null, glowMesh = null;
+  const rings = [], rm4 = new THREE.Matrix4(), rc = new THREE.Color();
+  function placeRings() { for (const r of rings) { const x = Math.sign(r.x) * ringX(); rm4.makeTranslation(x, 3.0, r.z); ringMesh.setMatrixAt(r.i, rm4); rm4.makeTranslation(x, 2.999, r.z); glowMesh.setMatrixAt(r.i, rm4); } ringMesh.instanceMatrix.needsUpdate = glowMesh.instanceMatrix.needsUpdate = true; ringMesh.computeBoundingSphere(); glowMesh.computeBoundingSphere(); }
   {
     floorMat = new THREE.MeshStandardMaterial({ color: "#f3f1f2", roughness: 0.55, envMapIntensity: 0.3, transparent: true, opacity: 0.91 });
     // the mirror shows only near the desks; further out the floor turns solid so a far reflection never shimmers
     floorMat.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace("#include <dithering_fragment>", "#include <dithering_fragment>\n#ifdef USE_FOG\ngl_FragColor.a = mix(gl_FragColor.a, 1.0, smoothstep(11.0, 26.0, vFogDepth));\n#endif"); };
     floorMat.customProgramCacheKey = () => "pip-floor";
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), floorMat); floor.rotation.x = -Math.PI / 2; floor.renderOrder = -10; scene.add(floor);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), floorMat); floor.rotation.x = -Math.PI / 2; floor.renderOrder = -10; scene.add(floor); onlyMain(floor);
     const runner = new THREE.Mesh(new THREE.PlaneGeometry(2.5, 300), new THREE.MeshStandardMaterial({ color: "#f1eff8", roughness: 0.42, envMapIntensity: 0.5, transparent: true, opacity: 0.6 }));
-    runner.rotation.x = -Math.PI / 2; runner.position.set(0, 0.001, -140); runner.renderOrder = -9; scene.add(runner);
+    runner.rotation.x = -Math.PI / 2; runner.position.set(0, 0.001, -140); runner.renderOrder = -9; scene.add(runner); onlyMain(runner);
     const seamTex = canvasTex(4, 256, (g) => { const gr = g.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, "#c9b8ff"); gr.addColorStop(0.7, "#d9d0ff"); gr.addColorStop(1, "#9cf2e6"); g.fillStyle = gr; g.fillRect(0, 0, 4, 256); });
     var seamMat = new THREE.MeshBasicMaterial({ map: seamTex, color: new THREE.Color("#ffffff").multiplyScalar(5) });
-    for (const s of [-1, 1]) { const seam = new THREE.Mesh(new THREE.PlaneGeometry(0.028, 160), seamMat); seam.rotation.x = -Math.PI / 2; seam.position.set(s * 1.25, 0.003, -70); scene.add(seam); }
+    for (const s of [-1, 1]) { const seam = new THREE.Mesh(new THREE.PlaneGeometry(0.028, 160), seamMat); seam.rotation.x = -Math.PI / 2; seam.position.set(s * 1.25, 0.003, -70); scene.add(seam); onlyMain(seam); }
     // halo lights: a ring of light over every desk and on down the room
-    const ringGeo = new THREE.TorusGeometry(0.52, 0.036, 16, 120), ringGlow = radial([[0, "rgba(255,255,255,0)"], [0.62, "rgba(255,255,255,0)"], [0.78, "rgba(255,255,255,.55)"], [0.86, "rgba(255,255,255,.18)"], [1, "rgba(255,255,255,0)"]], 256);
-    const glowGeo = new THREE.PlaneGeometry(1.6, 1.6);
-    for (let z = 7.5, row = 0; z > -80; z -= 2.8, row++) for (const x of [-2.6, 2.6]) {
-      const m = new THREE.MeshBasicMaterial({ color: new THREE.Color("#ffffff").multiplyScalar(4.8) });
-      const r = new THREE.Mesh(ringGeo, m); r.rotation.x = Math.PI / 2; r.position.set(x, 3.0, z); scene.add(r);
-      const gm = new THREE.MeshBasicMaterial({ map: ringGlow, transparent: true, depthWrite: false, opacity: 0.3, blending: THREE.AdditiveBlending });
-      const gl = new THREE.Mesh(glowGeo, gm); gl.rotation.x = Math.PI / 2; gl.position.set(x, 2.999, z); scene.add(gl);
-      rings.push({ m, gm, row, z, x, on: 1, r, gl });
-    }
+    // drawn as two instanced meshes (one for the rings, one for their glow), so the whole ceiling costs two draw calls
+    const ringGeo = new THREE.TorusGeometry(0.52, 0.036, 12, 96), ringGlow = radial([[0, "rgba(255,255,255,0)"], [0.62, "rgba(255,255,255,0)"], [0.78, "rgba(255,255,255,.55)"], [0.86, "rgba(255,255,255,.18)"], [1, "rgba(255,255,255,0)"]], 256);
+    const glowGeo = new THREE.PlaneGeometry(1.6, 1.6); glowGeo.rotateX(Math.PI / 2); ringGeo.rotateX(Math.PI / 2);
+    const slots = []; for (let z = 7.5, row = 0; z > -80; z -= 2.8, row++) for (const x of [-2.6, 2.6]) slots.push({ row, z, x });
+    ringMesh = new THREE.InstancedMesh(ringGeo, new THREE.MeshBasicMaterial({ color: "#ffffff" }), slots.length);
+    glowMesh = new THREE.InstancedMesh(glowGeo, new THREE.MeshBasicMaterial({ map: ringGlow, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: "#ffffff" }), slots.length);
+    slots.forEach((r, i) => { rings.push(Object.assign(r, { i })); ringMesh.setColorAt(i, new THREE.Color(1, 1, 1)); glowMesh.setColorAt(i, new THREE.Color(0, 0, 0)); });
+    placeRings(); scene.add(ringMesh, glowMesh); onlyMain(ringMesh, glowMesh);
     const end = new THREE.Mesh(new THREE.PlaneGeometry(80, 40), new THREE.MeshBasicMaterial({ map: radial([[0, "rgba(255,255,255,1)"], [0.3, "rgba(255,252,246,.6)"], [1, "rgba(255,255,255,0)"]], 256), transparent: true, depthWrite: false, fog: false, color: new THREE.Color("#ffffff").multiplyScalar(2.4) }));
     end.position.set(0, 4, -78); scene.add(end); var endMat = end.material;
     const shaftTex = canvasTex(64, 256, (g, w, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, "rgba(255,255,255,.6)"); gr.addColorStop(0.6, "rgba(255,255,255,.16)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, w, h); const gx = g.createLinearGradient(0, 0, w, 0); gx.addColorStop(0, "rgba(0,0,0,1)"); gx.addColorStop(0.5, "rgba(0,0,0,0)"); gx.addColorStop(1, "rgba(0,0,0,1)"); g.globalCompositeOperation = "destination-out"; g.fillStyle = gx; g.fillRect(0, 0, w, h); });
     var shafts = [];
     for (const [x, z, r, w] of [[-5.5, -16, 0.22, 2.6], [4.8, -22, -0.2, 3.2], [-1.5, -30, 0.16, 2.2], [7.5, -36, -0.25, 3.6], [-8, -9, 0.3, 2.4]]) {
       const s = new THREE.Mesh(new THREE.PlaneGeometry(w, 15), new THREE.MeshBasicMaterial({ map: shaftTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.2, fog: false }));
-      s.position.set(x, 7.5, z); s.rotation.z = r; scene.add(s); shafts.push(s);
+      s.position.set(x, 7.5, z); s.rotation.z = r; scene.add(s); shafts.push(s); onlyMain(s);
     }
     // clouds resting at the edges of the room, drawn in one go
     const puffs = [];
@@ -1867,24 +1904,26 @@ function createOffice(THREE, X, opts) {
         puffs.push([x + (lx * c + lz * sn) * s, -0.15 + ly * s, z + (-lx * sn + lz * c) * s, r * s]); }
     }
     const cl = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 40, 28), M.cloud, puffs.length), mm = new THREE.Matrix4();
-    puffs.forEach(([x, y, z, r], i) => { mm.compose(V(x, y, z), new THREE.Quaternion(), V(r, r * 0.86, r)); cl.setMatrixAt(i, mm); }); scene.add(cl);
+    puffs.forEach(([x, y, z, r], i) => { mm.compose(V(x, y, z), new THREE.Quaternion(), V(r, r * 0.86, r)); cl.setMatrixAt(i, mm); }); scene.add(cl); onlyMain(cl);
+    const clLo = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 20, 14), M.cloud, puffs.length); clLo.instanceMatrix.copy(cl.instanceMatrix); scene.add(clLo); onlyMirror(clLo);
     const N = 520, pos = new Float32Array(N * 3);
     for (let i = 0; i < N; i++) { const h = (k) => { const e = Math.sin((i * 7 + k) * 127.1 + 311.7) * 43758.5453; return e - Math.floor(e); }; pos[i * 3] = (h(1) - 0.5) * 13; pos[i * 3 + 1] = 0.4 + h(2) * 4.2; pos[i * 3 + 2] = 8 - h(3) * 40; }
     const pg = new THREE.BufferGeometry(); pg.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     var dust = new THREE.Points(pg, new THREE.PointsMaterial({ size: 0.03, map: radial([[0, "rgba(255,244,214,1)"], [1, "rgba(255,244,214,0)"]], 32), transparent: true, depthWrite: false, opacity: 0.85, color: new THREE.Color("#fff1cf").multiplyScalar(1.6) }));
-    scene.add(dust);
+    scene.add(dust); onlyMain(dust);
     // mint topiaries between the desks
     const pot = lathe([[0, 0.002], [0.17, 0], [0.22, 0.05], [0.24, 0.44], [0.225, 0.47], [0.2, 0.46], [0, 0.44]], 48), stemM = pearlStuff({ color: "#e9dcc8", flank: "#cdb48f", fk: 0.5, rough: 0.6, cc: 0.2 });
     const balls = [], spots = [[-4.0, 1.7, 1], [4.0, 3.9, 2], [4.0, -0.2, 3], [-4.0, -1.6, 4], [-4.0, -5.2, 5], [4.0, -3.4, 6], [-4.0, -8.6, 7], [4.0, -7.0, 8], [-4.0, -12, 9], [4.0, -10.4, 10]];
     for (const [x, z, k] of spots) {
       const p = new THREE.Mesh(pot, M.shell); p.position.set(x, 0, z); scene.add(p);
       const st = new THREE.Mesh(new THREE.CapsuleGeometry(0.018, 0.5, 4, 10), stemM); st.position.set(x, 0.72, z); scene.add(st);
-      const sh = blob(0.9, 0.9, shadowTex, 0.9); sh.position.set(x, 0.003, z); scene.add(sh);
+      const sh = blob(0.9, 0.9, shadowTex, 0.9); sh.position.set(x, 0.003, z); scene.add(sh); onlyMain(sh);
       const h = (j) => { const e = Math.sin((k * 13 + j) * 77.7) * 43758.5; return e - Math.floor(e); };
       [[0, 1.08, 0, 0.3], [0.16, 1.32, 0.05, 0.22], [-0.14, 1.26, -0.06, 0.2], [0.02, 1.5, -0.02, 0.17], [-0.05, 0.86, 0.12, 0.16]].forEach(([bx, by, bz, r], i) => balls.push([x + bx + (h(i) - 0.5) * 0.05, by, z + bz, r * (0.92 + h(i + 3) * 0.16)]));
     }
     const tb = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 40, 28), M.mint, balls.length);
-    balls.forEach(([x, y, z, r], i) => { mm.compose(V(x, y, z), new THREE.Quaternion(), V(r, r, r)); tb.setMatrixAt(i, mm); }); scene.add(tb);
+    balls.forEach(([x, y, z, r], i) => { mm.compose(V(x, y, z), new THREE.Quaternion(), V(r, r, r)); tb.setMatrixAt(i, mm); }); scene.add(tb); onlyMain(tb);
+    const tbLo = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 20, 14), M.mint, balls.length); tbLo.instanceMatrix.copy(tb.instanceMatrix); scene.add(tbLo); onlyMirror(tbLo);
   }
 
   // ---------------- furniture and desk things ----------------
@@ -2008,30 +2047,30 @@ function createOffice(THREE, X, opts) {
   }
 
   // ---------------- desks, one per teammate, kept in step with the Portal ----------------
-  const PHI = 0.96, desks = new Map(); let order = [];
-  const sideX = () => (PHONE() ? 1.85 : 2.42), ringX = () => (PHONE() ? 2.05 : 2.6);
+  const PHI = 0.96, desks = new Map(), deskBits = []; let order = [];
+  const sideX = () => (PHONE() ? 1.85 : 2.42);
   const slotOf = (i) => { const side = i % 2 ? 1 : -1; return { side, z: 3.3 - i * 1.64 }; };
   function makeDesk(a, i) {
     const { side, z } = slotOf(i), grp = new THREE.Group(); grp.position.set(side * sideX(), 0, z); grp.userData.side = side; grp.rotation.y = side < 0 ? PHI : -PHI; scene.add(grp);
     const d = { id: a.id, i, grp, a: null, Y: null, react: null, hoverUntil: 0, pop: { t0: -1 }, wasLook: null };
     const top = new THREE.Mesh(DESKTOP, M.desk); top.position.set(0, TOP - 0.0325, 0.7); grp.add(top);
     for (const s of [-1, 1]) { const leg = new THREE.Mesh(LEG, M.leg); leg.position.set(s * 0.64, 0, 0.7); grp.add(leg); }
-    const sh = blob(2.4, 1.5, deskShadowTex); sh.position.set(0, 0.004, 0.7); grp.add(sh);
+    const sh = blob(2.4, 1.5, deskShadowTex); sh.position.set(0, 0.004, 0.7); grp.add(sh); onlyMain(sh);
     d.strip = new THREE.Mesh(GEO.strip, new THREE.MeshBasicMaterial({ color: "#ffffff" })); d.strip.rotation.z = Math.PI / 2; d.strip.position.set(0, TOP - 0.075, 1.07); grp.add(d.strip);
-    d.pool = blob(2.2, 1.4, glowTex, 0.42, true); d.pool.position.set(0, 0.006, 0.95); grp.add(d.pool);
+    d.pool = blob(2.2, 1.4, glowTex, 0.42, true); d.pool.position.set(0, 0.006, 0.95); grp.add(d.pool); onlyMain(d.pool);
     d.mon = monitor(darkScreen); d.mon.g.position.set(0, TOP, 0.99); d.mon.g.rotation.y = Math.PI; grp.add(d.mon.g);
-    { const b = blob(0.34, 0.26, shadowTex, 0.8); b.position.set(0, TOP + 0.001, 1.06); grp.add(b); }
+    { const b = blob(0.34, 0.26, shadowTex, 0.8); b.position.set(0, TOP + 0.001, 1.06); grp.add(b); onlyMain(b); }
     const hit = new THREE.Mesh(GEO.hitBox, M.hit); hit.position.set(0, 0.9, 0.35); hit.userData.desk = a.id; grp.add(hit); d.hit = hit;
     if (a.look === "open") { d.open = true; return d; }
     d.kb = keyboard(a.hex); d.kb.g.position.set(0, TOP, 0.48); grp.add(d.kb.g);
-    for (const [x, zz, w, dd, o] of [[0, 0.49, 0.6, 0.26, 0.5], [0.5, 0.44, 0.16, 0.16, 0.6], [-0.58, 0.74, 0.42, 0.38, 0.45], [-0.34, 0.5, 0.1, 0.13, 0.5]]) { const b = blob(w, dd, contactTex, o); b.position.set(x, TOP + 0.001, zz); grp.add(b); }
+    for (const [x, zz, w, dd, o] of [[0, 0.49, 0.6, 0.26, 0.5], [0.5, 0.44, 0.16, 0.16, 0.6], [-0.6, 0.62, 0.42, 0.38, 0.45], [-0.34, 0.5, 0.1, 0.13, 0.5]]) { const b = blob(w, dd, contactTex, o); b.position.set(x, TOP + 0.001, zz); grp.add(b); deskBits.push(b); }
     const mouse = new THREE.Mesh(GEO.mouse, M.shell); mouse.scale.set(0.034, 0.017, 0.054); mouse.position.set(-0.34, TOP + 0.008, 0.5); grp.add(mouse);
-    d.folders = folderTray(a.hex); d.folders.g.position.set(-0.58, TOP, 0.74); d.folders.g.rotation.y = 0.25; grp.add(d.folders.g);
+    d.folders = folderTray(a.hex); d.folders.g.position.set(-0.6, TOP, 0.62); d.folders.g.rotation.y = 0.5; grp.add(d.folders.g); // angled toward you when you sit at their shoulder
     d.mug = mug(a.hex); d.mug.position.set(0.5, TOP, 0.44); d.mug.rotation.y = 2.2; grp.add(d.mug);
     d.steam = [0, 1, 2].map(() => { const s = new THREE.Mesh(GEO.steam, steamMat.clone()); d.mug.add(s); return s; });
     const pr = prop(a.prop); pr.position.set(0.58, TOP, 0.88); pr.rotation.y = -0.3; grp.add(pr);
-    if (i % 3 === 0) { const p = succulent(); p.position.set(-0.64, TOP, 1.0); grp.add(p); }
-    const ch = chair(a.hex); ch.position.set(0, 0, -0.06); grp.add(ch);
+    if (i % 3 === 0) { const p = succulent(); p.position.set(-0.64, TOP, 1.0); grp.add(p); deskBits.push(p); }
+    const ch = chair(a.hex); ch.position.set(0, 0, -0.06); grp.add(ch); deskBits.push(ch.children[ch.children.length - 1]); // its floor shadow
     d.light = new THREE.PointLight("#eef0ff", 1.3, 1.6, 2); d.light.position.set(0, 1.08, 0.82); grp.add(d.light);
     // the teammate, and the version of them Pip is still building
     d.mate = buildMate({ team: a.hex }); d.mate.root.scale.setScalar(0.3); grp.add(d.mate.root);
@@ -2051,6 +2090,7 @@ function createOffice(THREE, X, opts) {
     const sg = new THREE.BufferGeometry(); sg.setAttribute("position", new THREE.BufferAttribute(sp, 3));
     d.sparks = new THREE.Points(sg, new THREE.PointsMaterial({ size: 0.12, map: radial([[0, "rgba(255,255,255,1)"], [0.4, "rgba(94,234,217,.8)"], [1, "rgba(94,234,217,0)"]], 32), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: new THREE.Color("#ffffff").multiplyScalar(2) })); holo.add(d.sparks);
     d.popRing = new THREE.Mesh(GEO.pop, new THREE.MeshBasicMaterial({ color: new THREE.Color(C.aqua).multiplyScalar(5), transparent: true, depthWrite: false, opacity: 0 })); d.popRing.rotation.x = Math.PI / 2; d.popRing.position.set(0, 0.6, 0); grp.add(d.popRing);
+    onlyMain(d.kb.g, mouse, d.folders.g, d.mug, pr, d.note, d.qm, d.card, d.popRing, d.seatGlow, ...d.rings, ...d.zs, ...deskBits); deskBits.length = 0;
     return d;
   }
   function dropDesk(d) { scene.remove(d.grp); }
@@ -2069,7 +2109,7 @@ function createOffice(THREE, X, opts) {
   }
 
   // ---------------- what each teammate is doing ----------------
-  const tmpV = V(), tmpV2 = V(), tmpQ = new THREE.Quaternion();
+  const tmpV = V(), tmpV2 = V(), tmpV3 = V(), tmpV4 = V(), tmpQ = new THREE.Quaternion();
   function lookAtCam(d) { // yaw and pitch that turn the head toward you, in the desk's frame
     tmpV.copy(camera.position); d.grp.worldToLocal(tmpV); tmpV.sub(tmpV2.set(0, 1.18, 0));
     return { yaw: clamp(Math.atan2(tmpV.x, tmpV.z), -1.25, 1.25), pitch: clamp(-Math.atan2(tmpV.y, Math.hypot(tmpV.x, tmpV.z)), -0.5, 0.5) };
@@ -2116,6 +2156,7 @@ function createOffice(THREE, X, opts) {
       if (d.react.kind === "wake" && e < 2.2) { const s = bump(e / 1.4); Y.pos.y += bump(clamp((e - 1.2) / 0.6)) * 0.08; Y.hands = [V(-0.9, 0.9 * s - 0.5 * (1 - s), 0.3), V(0.9, 0.9 * s - 0.5 * (1 - s), 0.3)]; Y.eyeL = Y.eyeR = e < 0.9 ? "sleep" : "wide"; Y.pitch = lerp(0.5, -0.15, clamp(e / 0.9)); Y.mouth = e < 1 ? 0.45 * bump(e / 1) : 0.15; }
       else if (d.react.kind === "cheer" && e < 1.6) { Y.pos.y += bump(clamp(e / 0.55)) * 0.12 + bump(clamp((e - 0.6) / 0.45)) * 0.05; Y.eyeL = Y.eyeR = "happy"; Y.mouth = 0.5; Y.hands = [V(-1.1, 0.75, 0.3), V(1.1, 0.75, 0.3)]; }
       else if (d.react.kind === "drowse" && e < 1.6) { Y.mouth = 0.55 * bump(e / 1.2); Y.eyeL = Y.eyeR = "squint"; }
+      else if (d.react.kind === "glance" && e < 1.2) { const g = bump(e / 1.2); Y.yaw = lerp(Y.yaw, -0.55, g); Y.pitch = lerp(Y.pitch, 0.3, g); }
       else if (e > 2.4) d.react = null;
     }
     return Y;
@@ -2129,7 +2170,7 @@ function createOffice(THREE, X, opts) {
     const p = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.8), new THREE.MeshStandardMaterial({ map: canvasTex(310, 400, (g) => { g.fillStyle = "#fdfcf8"; g.fillRect(0, 0, 310, 400); g.strokeStyle = "#d6d0ea"; g.lineWidth = 6; for (let i = 0; i < 6; i++) { g.beginPath(); g.moveTo(40, 90 + i * 50); g.lineTo(i % 2 ? 230 : 270, 90 + i * 50); g.stroke(); } g.fillStyle = "#5eead9"; for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(24, 90 + i * 50, 9, 0, 7); g.fill(); } }), roughness: 0.7 })); p.position.z = 0.032; clip.add(p);
     const c = new THREE.Mesh(slab(0.3, 0.1, 0.05, 0.03, 0.012, 3), M.silver); c.rotation.x = Math.PI / 2; c.position.set(0, 0.48, 0.05); clip.add(c); }
   pip.root.add(clip); clip.scale.setScalar(0.7);
-  const pipShadow = blob(1.2, 1.2, shadowTex, 0.55); scene.add(pipShadow);
+  const pipShadow = blob(1.2, 1.2, shadowTex, 0.55); scene.add(pipShadow); onlyMain(pipShadow);
   const P = { mood: "calm", talkUntil: 0, happyUntil: 0, hopAt: -9, nodAt: -9, waveAt: -9, troubleAt: -9, point: null, pointAt: 0, Y: null, pos: V() };
   const pipHome = () => (PHONE() ? V(0.12, 1.6, 1.7) : V(0.3, 1.5, 2.9));
   function pipPose(t) {
@@ -2153,7 +2194,7 @@ function createOffice(THREE, X, opts) {
 
   // ---------------- confetti for good news ----------------
   const CONF_N = 140, confGeo = new X.RoundedBoxGeometry(0.03, 0.016, 0.005, 1, 0.003);
-  const conf = new THREE.InstancedMesh(confGeo, new THREE.MeshPhysicalMaterial({ roughness: 0.3, clearcoat: 1, envMapIntensity: 0.9 }), CONF_N); conf.visible = false; conf.frustumCulled = false; scene.add(conf);
+  const conf = new THREE.InstancedMesh(confGeo, new THREE.MeshPhysicalMaterial({ roughness: 0.3, clearcoat: 1, envMapIntensity: 0.9 }), CONF_N); conf.visible = false; conf.frustumCulled = false; scene.add(conf); onlyMain(conf);
   const confState = { t0: -9, parts: [] }, confCols = ["#5eead9", "#9b86ff", "#ffb3d4", "#ffd36a", "#cfc3ff", "#ffffff"];
   for (let i = 0; i < CONF_N; i++) conf.setColorAt(i, new THREE.Color(confCols[i % confCols.length]));
   function burst(at) {
@@ -2170,18 +2211,23 @@ function createOffice(THREE, X, opts) {
   }
 
   // ---------------- post: glow, floor reflections, focus over the shoulder ----------------
-  let composer = null, bokeh = null;
+  let composer = null, bokeh = null, prScale = 1;
+  const pr = () => Math.max(0.75, prFor() * prScale); // the resolution actually drawn: the tier's, scaled down if frames run long
   function buildFX() {
     if (composer) { composer.dispose && composer.dispose(); composer = null; bokeh = null; }
     if (reflector) { scene.remove(reflector); reflector.dispose(); reflector = null; }
-    renderer.setPixelRatio(prFor());
+    renderer.setPixelRatio(pr());
     floorMat.opacity = tier === "high" ? 0.91 : 1; floorMat.transparent = tier === "high"; floorMat.needsUpdate = true;
-    if (tier === "high") { const pr = prFor(); reflector = new X.Reflector(new THREE.PlaneGeometry(220, 220), { textureWidth: Math.round(innerWidth * pr * 0.5), textureHeight: Math.round(innerHeight * pr * 0.5), color: 0xbdbcc6, clipBias: 0.003 }); reflector.rotation.x = -Math.PI / 2; reflector.position.y = -0.002; scene.add(reflector); }
+    if (tier === "high") {
+      reflector = new X.Reflector(new THREE.PlaneGeometry(220, 220), { textureWidth: Math.round(innerWidth * pr() * 0.5), textureHeight: Math.round(innerHeight * pr() * 0.5), color: 0xbdbcc6, clipBias: 0.003, multisample: 0 }); reflector.camera.layers.set(0); reflector.camera.layers.enable(MIRROR); reflector.rotation.x = -Math.PI / 2; reflector.position.y = -0.002; scene.add(reflector);
+      // the floor turns solid past 26 m, so nothing further away can show in the mirror: cull it from the mirror's pass
+      const mirror = reflector.onBeforeRender; reflector.onBeforeRender = function (r, sc, cam) { if (sc.overrideMaterial) return; const far = cam.far; cam.far = 34; cam.updateProjectionMatrix(); try { mirror.apply(this, arguments); } finally { cam.far = far; cam.updateProjectionMatrix(); } };
+    }
     if (tier === "low") return;
-    const w = innerWidth, h = innerHeight, pr = prFor();
-    composer = new X.EffectComposer(renderer, new THREE.WebGLRenderTarget(w * pr, h * pr, { type: THREE.HalfFloatType, samples: 4 })); composer.setPixelRatio(pr); composer.setSize(w, h);
+    const w = innerWidth, h = innerHeight, p = pr();
+    composer = new X.EffectComposer(renderer, new THREE.WebGLRenderTarget(w * p, h * p, { type: THREE.HalfFloatType, samples: p >= 1.75 ? 2 : 4 })); composer.setPixelRatio(p); composer.setSize(w, h);
     composer.addPass(new X.RenderPass(scene, camera));
-    if (tier === "high") { bokeh = new X.BokehPass(scene, camera, { focus: 2.2, aperture: 0.0055, maxblur: 0.009 }); bokeh.enabled = false; composer.addPass(bokeh); }
+    if (tier === "high") { bokeh = new X.BokehPass(scene, camera, { focus: 2.2, aperture: 0.009, maxblur: 0.014 }); bokeh.enabled = false; composer.addPass(bokeh); }
     composer.addPass(new X.UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.55, 4.2));
     composer.addPass(new X.OutputPass());
   }
@@ -2190,29 +2236,34 @@ function createOffice(THREE, X, opts) {
   const shotFloor = () => (PHONE() ? { pos: V(0, 4.4, 9.2), look: V(0, 0.55, -2.4), fov: 60, tilt: 0 } : { pos: V(0, 1.98, 7.9), look: V(0, 0.82, -4), fov: 41, tilt: 0 });
   function shotDesk(d) {
     d.grp.updateMatrixWorld(true); const m = d.grp.matrixWorld;
-    const pos = PHONE() ? V(-0.62, 2.5, -1.95) : V(-0.44, 2.16, -0.7), look = PHONE() ? V(-0.02, 1.08, 0.8) : V(-0.04, 0.95, 0.98);
+    // Over the shoulder: high enough that their round head never hides what is on the screen, close enough that the
+    // crown of their head, the headset and the antenna sit in the corner of the shot, softly out of focus.
+    const pos = PHONE() ? V(-0.62, 2.5, -1.95) : V(-0.5, 2.06, -0.8), look = PHONE() ? V(-0.02, 1.08, 0.8) : V(-0.04, 0.95, 0.98);
     if (PHONE()) return { pos: pos.applyMatrix4(m), look: look.applyMatrix4(m), fov: 50, tilt: 0.17 };
     // Over the shoulder on a computer: frame the monitor so its text reads near full size. The screen is 1000 CSS px wide,
     // so aim for one CSS px per screen px, less when the window is small, and keep the header and folder bar clear.
+    const O = (window.PIP_TEST && window.PIP_TEST.deskCam) || null; if (O && O.pos) pos.set(...O.pos); // tests only: try a composition
     pos.applyMatrix4(m); d.mon.scr.getWorldPosition(tmpV2); const at = tmpV2.clone(), dist = pos.distanceTo(at);
-    const want = Math.max(0.5, Math.min(0.88, ((innerHeight - 200) / 600) * 0.94, ((innerWidth - 160) / 1000) * 0.9));
+    const want = O && O.want ? O.want : Math.max(0.5, Math.min(0.84, ((innerHeight - 200) / 600) * 0.94, ((innerWidth - 160) / 1000) * 0.88));
     const half = Math.atan(((d.mon.W / 1000) * innerHeight) / (2 * dist * want)), fov = clamp((2 * half * 180) / Math.PI, 14, 34);
     // nudge the screen right of centre so their head and headset stay in the corner of your eye
     const right = at.clone().sub(pos).cross(V(0, 1, 0)).normalize(), perPx = (2 * dist * Math.tan((fov * Math.PI) / 360)) / innerHeight;
-    return { pos, look: at.sub(right.multiplyScalar(innerWidth * 0.045 * perPx)).add(V(0, -0.012, 0)), fov, tilt: 0 };
+    const sx = O && O.sx != null ? O.sx : 0.07, sy = O && O.sy != null ? O.sy : 0.04;
+    return { pos, look: at.sub(right.multiplyScalar(innerWidth * sx * perPx)).add(V(0, -0.012 + innerHeight * sy * perPx, 0)), fov, tilt: 0 };
   }
   const shotEnter = () => ({ pos: V(0, 7.4, 16), look: V(0, 1.6, -12), fov: 48, tilt: 0 });
   const cam = { pos: V(), look: V(), fov: 40, tilt: 0 }; let flight = null, mode = "floor", focusId = null, parallax = { x: 0, y: 0, tx: 0, ty: 0 };
   function setCam(s) { cam.pos.copy(s.pos); cam.look.copy(s.look); cam.fov = s.fov; cam.tilt = s.tilt || 0; }
-  function fly(to, dur = 1.5, lift = 0.6) {
+  function fly(to, dur = 1.5, lift = 0.6, aisle = false) {
     if (RM()) { setCam(to); flight = null; invalidate(); return Promise.resolve(); }
-    return new Promise((res) => { flight = { from: { pos: cam.pos.clone(), look: cam.look.clone(), fov: cam.fov, tilt: cam.tilt }, to, t0: T(), dur, lift, res }; kick(); });
+    return new Promise((res) => { flight = { from: { pos: cam.pos.clone(), look: cam.look.clone(), fov: cam.fov, tilt: cam.tilt }, to, t0: T(), dur, lift, aisle, res }; kick(); });
   }
   function stepFlight(t) {
     if (!flight) return;
     const k = clamp((t - flight.t0) / flight.dur), e = ease(k), f = flight.from, to = flight.to;
     cam.pos.lerpVectors(f.pos, to.pos, e); cam.pos.y += Math.sin(e * Math.PI) * flight.lift;
     cam.look.lerpVectors(f.look, to.look, ease(clamp(k * 1.15))); cam.fov = lerp(f.fov, to.fov, e); cam.tilt = lerp(f.tilt, to.tilt || 0, e);
+    if (flight.aisle) { const b = bump(clamp(k / 0.68)); cam.look.lerp(tmpV3.set(cam.pos.x * 0.3, 1.1, cam.pos.z - 6), b * 0.8); cam.fov = lerp(cam.fov, 46, b * 0.7); } // walking desk to desk: look up the room on the way (not down at the floor), then settle on their screen
     if (k >= 1) { const r = flight.res; flight = null; r(); }
   }
   function placeCamera() {
@@ -2220,13 +2271,13 @@ function createOffice(THREE, X, opts) {
     camera.position.copy(cam.pos).add(tmpV.set(p.x * 0.25, p.y * 0.12, 0)); camera.lookAt(cam.look); if (cam.tilt) camera.rotateX(-cam.tilt);
     camera.fov = cam.fov; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); camera.updateMatrixWorld(true);
   }
-  let skyHy = -1;
+  let skyHy = -1; const skyCv = document.createElement("canvas"); skyCv.width = 8; skyCv.height = 512; const skyTex = new THREE.CanvasTexture(skyCv); skyTex.colorSpace = THREE.SRGBColorSpace;
   function sky() { // the floor melts into the light at the horizon
     const h = V(camera.position.x, 0, camera.position.z - 300).project(camera), hy = clamp(0.5 - h.y * 0.5, 0.08, 0.98);
     if (Math.abs(hy - skyHy) < 0.01) return; skyHy = hy;
-    const cv = document.createElement("canvas"); cv.width = 8; cv.height = 512; const g = cv.getContext("2d"), gr = g.createLinearGradient(0, 0, 0, 512), fc = "#" + scene.fog.color.getHexString();
+    const g = skyCv.getContext("2d"), gr = g.createLinearGradient(0, 0, 0, 512), fc = "#" + scene.fog.color.getHexString();
     gr.addColorStop(0, dim ? "#dedbe8" : "#e9e7f3"); gr.addColorStop(Math.max(0.01, hy - 0.3), dim ? "#e2dfeb" : "#efedf6"); gr.addColorStop(hy, fc); gr.addColorStop(1, fc); g.fillStyle = gr; g.fillRect(0, 0, 8, 512);
-    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; if (scene.background) scene.background.dispose(); scene.background = t;
+    skyTex.needsUpdate = true; scene.background = skyTex;
   }
 
   // ---------------- the lights come on: the entrance ----------------
@@ -2238,49 +2289,102 @@ function createOffice(THREE, X, opts) {
     fly(shotFloor(), 2.6, 0).then(() => opts.onEntered && opts.onEntered());
   }
   function stepRings(t) {
-    const e = enterT0 < 0 ? 99 : t - enterT0, lvl = dim ? 0.28 : 1;
+    const e = enterT0 < 0 ? 99 : t - enterT0, lvl = dim ? 0.28 : 1; let changed = false;
     for (const r of rings) {
       const on = clamp((e - 0.35 - r.row * 0.09) / 0.35); const flick = on > 0 && on < 1 ? (Math.sin(e * 60 + r.row) > 0 ? 1 : 0.4) : 1;
-      const k = on * flick; r.m.color.setRGB(0.84 + (3.4 * lvl - 0.84) * k, 0.83 + (3.4 * lvl - 0.83) * k, 0.9 + (3.4 * lvl - 0.9) * k); r.gm.opacity = 0.42 * on * lvl; // unlit rings are frosted glass, never black
+      const k = on * flick, key = Math.round(k * 200) + Math.round(lvl * 100) * 1000; if (r.key === key) continue; r.key = key; changed = true;
+      ringMesh.setColorAt(r.i, rc.setRGB(0.84 + (3.4 * lvl - 0.84) * k, 0.83 + (3.4 * lvl - 0.83) * k, 0.9 + (3.4 * lvl - 0.9) * k)); // unlit rings are frosted glass, never black
+      glowMesh.setColorAt(r.i, rc.setScalar(0.42 * on * lvl)); // additive glow: colour is brightness
     }
+    if (changed) ringMesh.instanceColor.needsUpdate = glowMesh.instanceColor.needsUpdate = true;
   }
 
   // ---------------- tags, the floor's labels ----------------
-  const tagEls = new Map();
-  let bubbleEl = null;
+  const tagEls = new Map(), tagSz = new Map(), lastStyle = new WeakMap();
+  let bubbleEl = null, bubSz = { w: 320, h: 150 }, safe = { top: 0, bottom: 0 }, hudDirty = true;
+  const bubRO = typeof ResizeObserver === "function" ? new ResizeObserver((es) => { for (const e of es) if (e.target === bubbleEl) bubSz = { w: e.target.offsetWidth, h: e.target.offsetHeight }; }) : null;
+  function measureHud() { // reads first, all at once; placeHud then only writes
+    tagSz.clear(); for (const [id, el] of tagEls) tagSz.set(id, { w: el.offsetWidth, h: el.offsetHeight });
+    safe = { top: opts.safeTop ? opts.safeTop() : 0, bottom: opts.safeBottom ? opts.safeBottom() : 0 };
+    if (bubbleEl) bubSz = { w: bubbleEl.offsetWidth, h: bubbleEl.offsetHeight }; hudDirty = false;
+  }
+  function put(el, k, v) { let m = lastStyle.get(el); if (!m) lastStyle.set(el, (m = {})); if (m[k] !== v) { m[k] = v; el.style[k] = v; } }
   function project(v) { tmpV.copy(v).project(camera); return { x: (tmpV.x * 0.5 + 0.5) * innerWidth, y: (-tmpV.y * 0.5 + 0.5) * innerHeight, z: tmpV.z }; }
   function placeHud(t) {
+    if (hudDirty) measureHud();
     const show = mode === "floor" && !flight;
+    if (!show && hudHidden) return placeBubble(t); // nothing to move while the tags are away
+    hudHidden = !show;
     const placed = [], list = [];
     for (const id of order) {
       const d = desks.get(id), el = tagEls.get(id); if (!d || !el) continue;
       const w = V(0, d.a && d.a.look === "sleep" ? 1.62 : 1.8, d.open ? 0.6 : 0.05).applyMatrix4(d.grp.matrixWorld);
       const p = project(w), dist = camera.position.distanceTo(w), popK = d.open || d.pop.t0 < 0 ? 1 : clamp((t - d.pop.t0 - 0.2) / 0.4);
-      list.push({ el, x: p.x, y: p.y, z: p.z, s: clamp(5.6 / dist, 0.66, 1) * (PHONE() ? 0.92 : 1), dist, popK });
+      list.push({ el, sz: tagSz.get(id) || { w: 200, h: 56 }, x: p.x, y: p.y, z: p.z, s: clamp(5.6 / dist, 0.66, 1) * (PHONE() ? 0.92 : 1), dist, popK });
     }
     list.sort((m, n) => m.dist - n.dist);
     for (const L of list) {
-      const w = L.el.offsetWidth * L.s, h = L.el.offsetHeight * L.s, cx = clamp(L.x, w / 2 + 8, innerWidth - w / 2 - 8); let y = L.y;
+      const w = L.sz.w * L.s, h = L.sz.h * L.s, cx = clamp(L.x, w / 2 + 8, innerWidth - w / 2 - 8); let y = L.y;
       for (let k = 0; k < 8; k++) { const hit = placed.find((r) => cx - w / 2 < r.r + 6 && cx + w / 2 > r.l - 6 && y - h < r.b + 6 && y > r.t - 6); if (!hit) break; y = hit.t - 8; }
-      const room = y - h > (opts.safeTop ? opts.safeTop() : 0) + 6; // a far tag with nowhere to go below the header steps aside instead of covering it
+      const room = y - h > safe.top + 6; // a far tag with nowhere to go below the header steps aside instead of covering it
       if (room) placed.push({ l: cx - w / 2, r: cx + w / 2, t: y - h, b: y });
-      L.el.style.transform = `translate(${cx.toFixed(1)}px,${(y + (1 - L.popK) * 10).toFixed(1)}px) translate(-50%,-100%) scale(${L.s.toFixed(3)})`;
-      L.el.style.opacity = !show || !room || L.z > 1 ? 0 : (clamp(1.25 - (L.dist - 9) / 14, 0.5, 1) * L.popK).toFixed(3);
-      L.el.style.zIndex = String(100 - Math.round(L.dist)); L.el.style.pointerEvents = show && room && L.popK > 0.5 ? "" : "none";
+      const op = !show || !room || L.z > 1 ? 0 : clamp(1.25 - (L.dist - 9) / 14, 0.5, 1) * L.popK;
+      if (op > 0) put(L.el, "transform", `translate(${cx.toFixed(1)}px,${(y + (1 - L.popK) * 10).toFixed(1)}px) translate(-50%,-100%) scale(${L.s.toFixed(3)})`);
+      put(L.el, "opacity", op.toFixed(2)); put(L.el, "zIndex", String(100 - Math.round(L.dist))); put(L.el, "pointerEvents", show && room && L.popK > 0.5 ? "" : "none");
     }
-    if (bubbleEl && !PHONE()) {
-      // Pip speaks once the room has settled, and his bubble never slides under the header or the roster
-      const p = project(pip.root.position.clone().add(V(0, -0.34, 0))), bh = bubbleEl.offsetHeight, low = innerHeight - (opts.safeBottom ? opts.safeBottom() : 0) - bh - 14;
-      const x = clamp(p.x - 155, 14, innerWidth - bubbleEl.offsetWidth - 14), y = clamp(p.y + 16, 96, Math.max(96, low));
-      bubbleEl.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;
-      bubbleEl.classList.toggle("pre", !!flight || (!RM() && enterT0 >= 0 && t - enterT0 < 2.5)); // quiet while the camera moves
-    }
+    placeBubble(t);
+  }
+  let hudHidden = false;
+  function placeBubble(t) {
+    if (!bubbleEl || PHONE()) return;
+    // Pip speaks once the room has settled, and his bubble never slides under the header or the roster
+    const p = project(tmpV3.copy(pip.root.position).add(tmpV4.set(0, -0.34, 0))), low = innerHeight - safe.bottom - bubSz.h - 14;
+    const x = clamp(p.x - 155, 14, innerWidth - bubSz.w - 14), y = clamp(p.y + 16, 96, Math.max(96, low));
+    put(bubbleEl, "transform", `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`);
+    const pre = !!flight || (!RM() && enterT0 >= 0 && t - enterT0 < 2.5); // quiet while the camera moves
+    if (bubbleEl.classList.contains("pre") !== pre) bubbleEl.classList.toggle("pre", pre);
   }
 
   // ---------------- the screen you read over a shoulder: real HTML on the monitor glass ----------------
-  let cssObj = null;
+  // The HTML sits above the canvas, so where their head is nearer than the monitor we cut it out of the HTML layer
+  // (their head and antenna are round, so a few circles are exact enough), and the screen fades in as you arrive.
+  let cssObj = null, scrK = 0, revealed = false, maskKey = "", focusMounted = null;
+  const mk = [V(), V(), V(), V()];
+  function circleOf(w, r) { const c = project(w); tmpV3.set(1, 0, 0).applyQuaternion(camera.quaternion).multiplyScalar(r).add(w); const e = project(tmpV3); return { x: c.x, y: c.y, r: Math.hypot(e.x - c.x, e.y - c.y), z: c.z }; }
+  function placeMask() {
+    const el = css.domElement; let key = "", img = "";
+    const d = mode === "desk" && focusId && desks.get(focusId);
+    if (d && d.mate && d.mate.root.visible && scrK > 0.01 && !PHONE()) {
+      const R = d.mate.root.scale.x * d.mate.head.parent.scale.x, cs = [];
+      d.mate.head.getWorldPosition(mk[0]); cs.push(circleOf(mk[0], R * 1.17)); // head with its headset
+      d.mate.bulb.getWorldPosition(mk[1]); cs.push(circleOf(mk[1], R * 0.16)); // antenna bulb
+      d.mate.ant.localToWorld(mk[2].set(-0.01, 0.16, -0.03)); cs.push(circleOf(mk[2], R * 0.05)); d.mate.ant.localToWorld(mk[3].set(0.03, 0.36, -0.035)); cs.push(circleOf(mk[3], R * 0.05)); // stalk
+      const vis = cs.filter((c) => c.z < 1 && c.x + c.r > 0 && c.y + c.r > 0 && c.x - c.r < innerWidth && c.y - c.r < innerHeight);
+      key = vis.map((c) => [c.x, c.y, c.r].map((v) => Math.round(v)).join(",")).join(";");
+      if (key !== maskKey) img = vis.map((c, i) => { const f = i ? 1.5 : Math.max(3, c.r * 0.035); return `radial-gradient(circle ${Math.round(c.r + f)}px at ${Math.round(c.x)}px ${Math.round(c.y)}px, transparent ${Math.max(0, c.r - f).toFixed(1)}px, #000 ${(c.r + f).toFixed(1)}px)`; }).join(",");
+    }
+    if (key === maskKey) return; maskKey = key;
+    for (const k of ["maskImage", "webkitMaskImage"]) el.style[k] = img || "";
+    el.style.maskComposite = img ? "intersect" : ""; el.style.webkitMaskComposite = img ? "source-in" : "";
+  }
+  function placeScreen(t, dt) {
+    // how much of the HTML screen to show: it comes up over the last part of the flight in, and steps aside while a folder is out
+    let want = 0;
+    if (mode === "desk" && cssObj) {
+      const k = flight ? clamp((t - flight.t0) / flight.dur) : 1, arrive = clamp((k - 0.62) / 0.33);
+      const away = lifted ? (lifted.dir > 0 ? clamp(lifted.k * 3) : clamp(lifted.k * 1.6)) : 0;
+      want = arrive * arrive * (3 - 2 * arrive) * (1 - away);
+    }
+    scrK = want >= scrK || RM() ? want : Math.max(want, scrK - dt * 6);
+    const el = css.domElement, show = scrK > 0.005;
+    put(el, "visibility", show ? "visible" : "hidden"); put(el, "opacity", scrK.toFixed(3));
+    if (show && !revealed && cssObj) { revealed = true; if (opts.onReveal) opts.onReveal(cssObj.element); }
+    if (!show && !cssObj) revealed = false;
+    if (show) placeMask();
+  }
   function mountScreen(id, el) {
     if (cssObj) { cssScene.remove(cssObj); if (cssObj.element.parentNode) cssObj.element.remove(); cssObj = null; }
+    if (!el || id !== focusMounted) { revealed = false; scrK = 0; } focusMounted = id;
     const d = desks.get(id); if (!d || !el || d.open) return;
     cssObj = new X.CSS3DObject(el); cssScene.add(cssObj);
     d.grp.updateMatrixWorld(true); d.mon.scr.getWorldPosition(tmpV); d.mon.scr.getWorldQuaternion(tmpQ);
@@ -2288,37 +2392,65 @@ function createOffice(THREE, X, opts) {
     placeCamera(); syncCssCam(); css.render(cssScene, cssCam); invalidate();
   }
 
-  // ---------------- folders: lift one out, bring it to you, open it ----------------
+  // ---------------- folders: lift one out and bring it to exactly where its paper will open ----------------
+  // The Portal opens the paper as HTML. The 3D folder flies to the same rectangle on screen, so when the HTML takes over
+  // nothing jumps: same place, same size, then the HTML cover swings open and the paper slides out.
   let lifted = null;
-  const folderHome = new THREE.Matrix4();
-  function folderOut(id, idx) {
+  const FOLDER_D = 0.36; // metres in front of your eyes: nearer than their head, so it never passes behind it
+  function poseForRect(rect) {
+    placeCamera();
+    const tanH = Math.tan((camera.fov * Math.PI) / 360), aspect = innerWidth / innerHeight, perPx = (2 * FOLDER_D * tanH) / innerHeight;
+    const bx = rect.left + rect.width / 2, by = rect.top + rect.height; // the folder's own origin is the middle of its bottom edge
+    const p = V(((bx / innerWidth) * 2 - 1) * FOLDER_D * tanH * aspect, (-(by / innerHeight) * 2 + 1) * FOLDER_D * tanH, -FOLDER_D).applyMatrix4(camera.matrixWorld);
+    const q = camera.quaternion.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0)));
+    return { p, q, s: V((rect.width * perPx) / 0.24, (rect.height * perPx) / 0.17, (rect.width * perPx) / 0.24) };
+  }
+  function homeOf(f) { const from = { p: V(), q: new THREE.Quaternion(), s: V() }; f.updateMatrixWorld(true); f.matrixWorld.decompose(from.p, from.q, from.s); return from; }
+  function folderOut(id, idx, rect) {
     const d = desks.get(id); if (!d || !d.folders) return Promise.resolve();
     const f = d.folders.folders[idx]; if (!f) return Promise.resolve();
+    if (lifted && lifted.f !== f) settleFolder();
     if (RM()) return Promise.resolve();
-    f.updateMatrixWorld(true); const from = { p: V(), q: new THREE.Quaternion(), s: V() }; f.matrixWorld.decompose(from.p, from.q, from.s);
-    folderHome.copy(f.matrix); scene.attach(f);
-    const fwd = V(0, 0, -1).applyQuaternion(camera.quaternion), down = V(0, -1, 0).applyQuaternion(camera.quaternion);
-    const to = { p: camera.position.clone().addScaledVector(fwd, 0.62).addScaledVector(down, 0.06), q: camera.quaternion.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0.12, Math.PI, 0))), s: V(2.3, 2.3, 2.3) };
-    lifted = { f, d, from, to, t0: T(), dur: 0.85, dir: 1 };
+    const from = lifted && lifted.f === f ? lifted.from : homeOf(f);
+    if (!(lifted && lifted.f === f)) { f.userData.home = f.matrix.clone(); scene.attach(f); }
+    const to = rect ? poseForRect(rect) : { p: camera.position.clone().addScaledVector(V(0, 0, -1).applyQuaternion(camera.quaternion), 0.62), q: camera.quaternion.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0.12, Math.PI, 0))), s: V(2.3, 2.3, 2.3) };
+    const k0 = lifted && lifted.f === f ? lifted.k : 0; // picked up again on its way back: carry on from where it is
+    lifted = { f, d, from, to, t0: T(), dur: 0.9 * (1 - k0 * 0.6), dir: 1, moving: true, k: k0, k0 };
     kick(); return new Promise((res) => (lifted.res = res));
   }
   function folderIn() {
     if (!lifted) return Promise.resolve();
-    lifted.t0 = T(); lifted.dir = -1; lifted.dur = 0.7; kick();
+    lifted.t0 = T(); lifted.dir = -1; lifted.k0 = lifted.k; lifted.dur = Math.max(0.3, 0.75 * lifted.k); lifted.moving = true; kick(); // from wherever it is now
     return new Promise((res) => (lifted.res = res));
   }
+  // switching papers happens in the HTML; the 3D folder behind it is swapped without a flight
+  function swapFolder(id, idx) {
+    if (!lifted || RM()) return; const d = desks.get(id); if (!d || !d.folders) return;
+    const f = d.folders.folders[idx]; if (!f || f === lifted.f) return;
+    const at = lifted.to; settleFolder();
+    f.userData.home = f.matrix.clone(); const from = homeOf(f); scene.attach(f);
+    f.position.copy(at.p); f.quaternion.copy(at.q); f.scale.copy(at.s);
+    lifted = { f, d, from, to: at, t0: T() - 9, dur: 0.9, dir: 1, moving: false, k: 1, k0: 0 }; invalidate();
+  }
+  function settleFolder() { // straight back into the tray
+    if (!lifted) return; const L = lifted; L.d.folders.g.add(L.f); L.f.matrix.copy(L.f.userData.home); L.f.matrix.decompose(L.f.position, L.f.quaternion, L.f.scale); L.f.userData.hinge.rotation.x = 0; lifted = null;
+  }
   function stepFolder(t) {
-    if (!lifted) return;
-    const L = lifted, k = clamp((t - L.t0) / L.dur), e = L.dir > 0 ? ease(k) : 1 - ease(k);
-    L.f.position.lerpVectors(L.from.p, L.to.p, e); L.f.position.y += Math.sin(e * Math.PI) * 0.06; L.f.quaternion.slerpQuaternions(L.from.q, L.to.q, e); L.f.scale.lerpVectors(L.from.s, L.to.s, e);
-    L.f.userData.hinge.rotation.x = -1.75 * clamp((e - 0.6) / 0.4);
+    if (!lifted || !lifted.moving) return;
+    const L = lifted, k = clamp((t - L.t0) / L.dur), k0 = L.k0 || 0, e = L.dir > 0 ? k0 + (1 - k0) * ease(k) : k0 * (1 - ease(k));
+    L.k = e;
+    // out of the tray, up in an arc, turning to face you; it settles flat and square at the end so the paper can take over
+    L.f.position.lerpVectors(L.from.p, L.to.p, e); L.f.position.y += Math.sin(e * Math.PI) * 0.05 * (L.dir > 0 ? 1 : 0.6);
+    L.f.quaternion.slerpQuaternions(L.from.q, L.to.q, easeOut(clamp(e * 1.25)));
+    L.f.scale.lerpVectors(L.from.s, L.to.s, e * e * (3 - 2 * e));
+    L.f.userData.hinge.rotation.x = 0;
     if (k >= 1) {
-      const r = L.res; L.res = null;
-      if (L.dir < 0) { L.d.folders.g.add(L.f); L.f.matrix.copy(folderHome); L.f.matrix.decompose(L.f.position, L.f.quaternion, L.f.scale); L.f.userData.hinge.rotation.x = 0; lifted = null; }
+      L.moving = false; const r = L.res; L.res = null;
+      if (L.dir < 0) settleFolder();
       if (r) r();
     }
   }
-  function hoverFolder(id, idx) { const d = desks.get(id); if (!d || !d.folders) return; d.folders.folders.forEach((f, i) => (f.userData.hover = i === idx)); kick(); }
+  function hoverFolder(id, idx) { const d = desks.get(id); if (!d || !d.folders) return; d.folders.folders.forEach((f, i) => (f.userData.hover = i === idx)); if (idx >= 0 && d.a && d.a.look !== "sleep" && T() > d.hoverUntil) d.react = { kind: "glance", t0: T() }; kick(); }
 
   // ---------------- pointing at desks with the mouse ----------------
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(); let hoverId = null;
@@ -2333,11 +2465,12 @@ function createOffice(THREE, X, opts) {
   function hover(id) { const d = desks.get(id); if (!d || d.open || !d.a) return; const t = T(); if (d.hoverUntil < t) d.react = { kind: "wave", t0: t }; d.hoverUntil = t + 1.6; kick(); }
 
   // ---------------- frame ----------------
-  let raf = 0, active = true, need = true, lastT = T(), frames = [], downgraded = 0; const bornT = T();
+  let raf = 0, active = true, need = true, lastT = T(), held = false, ready = false; const bornT = T();
   const tStill = 3.2;
   function invalidate() { need = true; kick(); }
   function kick() { if (!raf && active) raf = requestAnimationFrame(loop); }
   function frame(t, dt) {
+    if (window.PIP_TEST && window.PIP_TEST.prof) { window.PIP_TEST.prof.f0 = performance.now(); renderer.info.autoReset = false; renderer.info.reset(); }
     stepFlight(t); stepRings(t); stepFolder(t); stepConfetti(t, dt);
     parallax.x = lerp(parallax.x, parallax.tx, 0.04); parallax.y = lerp(parallax.y, parallax.ty, 0.04);
     placeCamera(); sky();
@@ -2363,7 +2496,7 @@ function createOffice(THREE, X, opts) {
         const h = -0.05 + Math.sin(t * 0.9) * 0.08; d.scan.position.y = h; const r = Math.sqrt(1 - h * h); d.scan.scale.set(r * 1.01, r * 1.01, 1); d.disc.position.y = h; d.disc.scale.set(r * 1.04, r * 1.04, 1);
         d.holo.rotation.y = t * 0.25; d.holo.position.y = 1.18 + Math.sin(t * 1.4) * 0.02; d.sparks.rotation.y = -t * 0.6; d.grp.updateMatrixWorld(true); d.cut.constant = V(0, h, 0).applyMatrix4(d.holo.matrixWorld).y;
       }
-      if (d.folders) d.folders.folders.forEach((f) => { if (f === (lifted && lifted.f)) return; const want = f.userData.hover ? 0.03 : 0; f.position.y = lerp(f.position.y, 0.022 + want, kk); });
+      if (d.folders) d.folders.folders.forEach((f, i) => { if (f === (lifted && lifted.f)) return; const up = f.userData.hover ? 1 : 0; f.userData.up = lerp(f.userData.up || 0, up, kk); f.position.y = 0.022 + f.userData.up * 0.05; f.rotation.x = -0.2 + i * 0.035 + f.userData.up * 0.22; });
     }
     // Pip
     const pt = pipPose(t); if (!P.Y) P.Y = cloneY(pt); else blendY(P.Y, pt, RM() ? 1 : kk);
@@ -2373,35 +2506,70 @@ function createOffice(THREE, X, opts) {
     pipShadow.position.set(P.Y.pos.x, 0.005, P.Y.pos.z); pipShadow.scale.setScalar(0.85);
     dust.rotation.y = Math.sin(t * 0.03) * 0.05;
     scene.updateMatrixWorld(true); placeHud(t);
-    if (bokeh) { bokeh.enabled = mode === "desk" && !flight; if (bokeh.enabled && focusId && desks.has(focusId)) { desks.get(focusId).mon.scr.getWorldPosition(tmpV); bokeh.uniforms.focus.value = camera.position.distanceTo(tmpV); } }
+    if (bokeh) {
+      bokeh.enabled = mode === "desk" && !flight;
+      if (bokeh.enabled && focusId && desks.has(focusId)) { // focus on the monitor, pulled to the folder as it comes to you
+        desks.get(focusId).mon.scr.getWorldPosition(tmpV); const toScreen = camera.position.distanceTo(tmpV);
+        bokeh.uniforms.focus.value = lifted ? lerp(toScreen, FOLDER_D, lifted.k) : toScreen;
+      }
+    }
+    if (reflector) reflector.visible = !(mode === "desk" && !flight); // over the shoulder the floor is out of shot
+    const prof = window.PIP_TEST && window.PIP_TEST.prof, p0 = prof ? performance.now() : 0;
     if (composer) composer.render(); else renderer.render(scene, camera);
-    css.domElement.style.visibility = mode === "desk" && !flight && cssObj ? "visible" : "hidden";
-    syncCssCam(); css.render(cssScene, cssCam);
+    if (prof) { renderer.getContext().finish(); prof.push({ js: p0 - prof.f0, gpu: performance.now() - p0, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, progs: renderer.info.programs.length, mode, tier, pr: renderer.getPixelRatio() }); }
+    placeScreen(t, dt);
+    if (scrK > 0.005) { syncCssCam(); css.render(cssScene, cssCam); }
   }
   const km = new THREE.Matrix4();
   function loop() {
-    raf = 0; if (!active || document.hidden) return;
+    raf = 0; if (!active || document.hidden || !ready) return;
     const now = T(), dt = Math.min(0.05, now - lastT); lastT = now;
     const test = window.PIP_TEST, frozen = !!(test && test.freezeAfter != null && now - bornT > test.freezeAfter), manual = !!(test && test.now != null); // screenshots only
-    const animate = !RM() && !frozen && !manual, live = animate || (manual && !RM());
-    if (!live && !need && !flight && !lifted) return;
-    const f0 = performance.now(); frame(RM() ? tStill : now, live || flight || lifted ? dt : 1); need = false;
-    // too slow here? step down to a lighter look
-    if (animate && enterT0 > 0 && now - enterT0 > 3.5 && frames.length < 120) { frames.push(performance.now() - f0 + 0); if (frames.length === 90) { const s = frames.slice(10).sort((a, b) => a - b), med = s[s.length >> 1]; if (med > 26 && tier !== "low") { tier = tier === "high" ? "mid" : "low"; downgraded++; buildFX(); frames = downgraded < 2 ? [] : frames; } } }
-    if (animate || ((flight || lifted || need) && !manual)) raf = requestAnimationFrame(loop);
+    const moving = !!flight || !!(lifted && lifted.moving);
+    if (held && !moving && !need) { pc.last = 0; return; } // a paper covers the room: keep the last frame, draw nothing
+    const animate = !RM() && !frozen && !manual && !held, live = animate || (manual && !RM() && !held);
+    if (!live && !need && !moving) return;
+    frame(RM() ? tStill : now, live || moving ? dt : 1); need = false;
+    if (animate && !(test && !test.pace)) pace(); // test pages keep a fixed look unless they are testing the pacing
+    if (animate || ((moving || need) && !manual)) raf = requestAnimationFrame(loop);
     if (manual) window.__officeFrame = (window.__officeFrame || 0) + 1;
+  }
+  // Keep it smooth: watch the real time between frames (what you actually see, GPU and page included). If frames run
+  // long, draw fewer pixels first (the look stays the same, slightly softer), and only then drop an effect. Climb back
+  // up when there is room, a few times at most, so it never see-saws.
+  const pc = { last: 0, d: [], best: 1e9, ups: 0, climbs: 0, prev: 0, undo: null, locked: false };
+  function pace() {
+    const n = performance.now(), gap = pc.last ? n - pc.last : 0; pc.last = n;
+    if (pc.locked || !gap || gap > 10000 || (enterT0 > 0 && T() - enterT0 < 1.2)) return; // a hidden tab resets the clock, so long gaps here are slow frames
+    if (!pc.d.length) pc.t0 = n;
+    pc.d.push(gap); if (pc.d.length < 48 && !(pc.d.length >= 8 && n - pc.t0 > 2000) && !(pc.d.length >= 3 && n - pc.t0 > 1500)) return; // 48 frames, or less time when frames are very slow
+    const s = pc.d.sort((a, b) => a - b), med = s[s.length >> 1]; pc.d = [];
+    if (med > 19) { // under about 52 frames a second
+      const helped = !pc.undo || med < pc.prev * 0.94;
+      if (!helped && Math.abs(med - 33.3) < 1.8) { pc.undo(); pc.locked = true; return; } // steady 30 a second whatever we do: a battery-saver cap, not a slow machine, so put the look back
+      pc.ups = 0; pc.prev = med;
+      if (prScale > 0.62 && helped) { const was = prScale; prScale = Math.max(0.6, +(prScale - 0.14).toFixed(2)); pc.undo = () => { prScale = was; buildFX(); resize(); }; buildFX(); resize(); }
+      else if (tier !== "low") { // fewer pixels didn't help (or are already at the floor): drop an effect, at full sharpness
+        const was = tier, wasPr = prScale; if (!helped && pc.undo) pc.undo(); tier = tier === "high" ? "mid" : "low"; prScale = helped ? prScale : Math.max(prScale, 1);
+        pc.undo = () => { tier = was; prScale = wasPr; buildFX(); resize(); }; buildFX(); resize();
+      }
+      return;
+    }
+    pc.undo = null; pc.prev = 0; pc.best = Math.min(pc.best, Math.max(med, 6.5)); // about one refresh of this screen
+    if (med <= pc.best * 1.08 && prScale < 1 && pc.climbs < 3 && ++pc.ups >= 5) { pc.ups = 0; pc.climbs++; prScale = Math.min(1, +(prScale + 0.14).toFixed(2)); buildFX(); resize(); }
   }
   let wasPhone = null;
   function resize() {
-    if (wasPhone !== PHONE()) { wasPhone = PHONE(); for (const d of desks.values()) d.grp.position.x = d.grp.userData.side * sideX(); for (const r of rings) { const x = Math.sign(r.x) * ringX(); r.r.position.x = x; r.gl.position.x = x; } }
+    if (wasPhone !== PHONE()) { wasPhone = PHONE(); for (const d of desks.values()) d.grp.position.x = d.grp.userData.side * sideX(); placeRings(); }
     renderer.setSize(innerWidth, innerHeight, false); css.setSize(innerWidth, innerHeight);
     if (composer) composer.setSize(innerWidth, innerHeight);
-    if (reflector) reflector.getRenderTarget().setSize(Math.round(innerWidth * prFor() * 0.5), Math.round(innerHeight * prFor() * 0.5));
+    if (reflector) reflector.getRenderTarget().setSize(Math.round(innerWidth * pr() * 0.5), Math.round(innerHeight * pr() * 0.5));
+    hudDirty = true;
     if (!flight) setCam(mode === "desk" && focusId && desks.has(focusId) ? shotDesk(desks.get(focusId)) : shotFloor());
     skyHy = -1; if (cssObj && focusId) { const el = cssObj.element; mountScreen(focusId, el); } invalidate();
   }
   addEventListener("resize", resize);
-  document.addEventListener("visibilitychange", () => { lastT = T(); kick(); });
+  document.addEventListener("visibilitychange", () => { lastT = T(); pc.last = 0; pc.d = []; kick(); });
 
   // ---------------- keeping in step with the Portal ----------------
   function sync(model) {
@@ -2421,18 +2589,36 @@ function createOffice(THREE, X, opts) {
     });
     order = ids;
     tagEls.clear(); for (const [id, el] of model.tags || []) tagEls.set(id, el);
-    bubbleEl = model.bubble || null;
+    if (bubRO && bubbleEl !== (model.bubble || null)) { if (bubbleEl) bubRO.unobserve(bubbleEl); if (model.bubble) bubRO.observe(model.bubble); }
+    bubbleEl = model.bubble || null; hudDirty = true; hudHidden = false;
     const was = P.point; P.point = model.pipPoint || null; if (P.point !== was) P.pointAt = T();
     invalidate();
   }
 
   buildFX(); resize();
+  const readyP = (async () => {
+    await new Promise((r) => setTimeout(r, 0));
+    setCam(shotEnter()); placeCamera();
+    const hidden = []; scene.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+    try { if (renderer.compileAsync) await renderer.compileAsync(scene, camera); else renderer.compile(scene, camera); } catch (e) { /* compiled on first use instead */ }
+    for (const o of hidden) o.visible = false;
+    if (composer) { // the post passes, depth of field included, rendered once off screen
+      const was = bokeh ? bokeh.enabled : false; if (bokeh) bokeh.enabled = true; composer.renderToScreen = false;
+      try { composer.render(); } catch (e) { /* ignore */ }
+      composer.renderToScreen = true; if (bokeh) bokeh.enabled = was;
+    }
+    ready = true; invalidate();
+  })();
   return {
+    ready: readyP,
+    hold(on) { held = !!on; if (!held) { lastT = T(); invalidate(); } },
+    swapFolder,
     sync, enter, invalidate, mountScreen, folderOut, folderIn, hoverFolder, hover,
     step() { if (window.PIP_TEST && window.PIP_TEST.now != null) { need = true; cancelAnimationFrame(raf); loop(); } }, // tests only: render one frame at PIP_TEST.now
     get mode() { return mode; }, get tier() { return tier; }, layer: css.domElement,
-    floor() { mode = "floor"; focusId = null; if (lifted) { lifted.d.folders.g.add(lifted.f); lifted.f.matrix.copy(folderHome); lifted.f.matrix.decompose(lifted.f.position, lifted.f.quaternion, lifted.f.scale); lifted.f.userData.hinge.rotation.x = 0; lifted = null; } return fly(shotFloor(), 1.35, 0.5); },
-    desk(id) { const d = desks.get(id); if (!d || d.open) return Promise.resolve(); const was = mode; mode = "desk"; focusId = id; d.react = { kind: "wave", t0: T() + (was === "floor" ? 0.2 : 0) }; d.hoverUntil = 0; return fly(shotDesk(d), was === "floor" ? 1.6 : 1.2, was === "floor" ? 0.55 : 0.35); },
+    get debug() { return window.PIP_TEST ? { scene, renderer, camera, THREE, get held() { return held; }, get prScale() { return prScale; }, get pace() { return JSON.parse(JSON.stringify({ ...pc, d: pc.d.length })); }, get lifted() { return lifted ? { k: lifted.k, moving: lifted.moving, dir: lifted.dir } : null; }, reshoot() { if (focusId) { setCam(shotDesk(desks.get(focusId))); if (cssObj) mountScreen(focusId, cssObj.element); } } } : null; }, // tests only
+    floor() { mode = "floor"; focusId = null; settleFolder(); return fly(shotFloor(), 1.35, 0.5); },
+    desk(id) { const d = desks.get(id); if (!d || d.open) return Promise.resolve(); const was = mode; mode = "desk"; focusId = id; d.react = { kind: "wave", t0: T() + (was === "floor" ? 0.2 : 0) }; d.hoverUntil = 0; return fly(shotDesk(d), was === "floor" ? 1.6 : 1.5, was === "floor" ? 0.55 : 0.75, was === "desk"); },
     setActive(on) { active = !!on; canvas.style.display = on ? "" : "none"; css.domElement.style.display = on ? "" : "none"; if (on) { lastT = T(); invalidate(); } },
     pip: {
       mood(m) { P.mood = m || "calm"; kick(); }, talk(sec) { P.talkUntil = T() + sec; kick(); }, happy(s = 1.4) { P.happyUntil = T() + s; kick(); }, nod() { P.nodAt = T(); kick(); },
@@ -3285,7 +3471,9 @@ async function startOffice() {
     const THREE = await loadThree();
     await Promise.all([document.fonts.load("600 44px Geist"), document.fonts.load("italic 400 120px 'Instrument Serif'")]).catch(() => null);
     if (!FLOOR.X) FLOOR.X = threeAddons(THREE);
-    FLOOR.office = createOffice(THREE, FLOOR.X, { host: document.getElementById("office"), cssHost: document.getElementById("office"), reduce: reduced, onPick: (id) => openMate(id), onEntered: () => { FLOOR.entered = true; }, safeTop: () => { const r = document.querySelector(".fl-head"); return r ? r.getBoundingClientRect().bottom : 0; }, safeBottom: () => { const r = document.querySelector(".fl-roster"); return r ? innerHeight - r.getBoundingClientRect().top : 0; } });
+    FLOOR.office = createOffice(THREE, FLOOR.X, { host: document.getElementById("office"), cssHost: document.getElementById("office"), reduce: reduced, onPick: (id) => openMate(id), onEntered: () => { FLOOR.entered = true; }, safeTop: () => { const r = document.querySelector(".fl-head"); return r ? r.getBoundingClientRect().bottom : 0; }, safeBottom: () => { const r = document.querySelector(".fl-roster"); return r ? innerHeight - r.getBoundingClientRect().top : 0; },
+      onReveal: (el) => { el.classList.add("on"); fitTargets(); setTimeout(fitTargets, 700); } });
+    await FLOOR.office.ready; // every shader is compiled before the first frame, so the walk-in is smooth from the start
     document.documentElement.classList.add("office-live");
     if (window.PIP_TEST) window.__office = FLOOR.office;
     if (floorOn()) { Pip.office(FLOOR.office.pip); FLOOR.shown = null; render(); FLOOR.office.enter(); } else FLOOR.office.setActive(false);
@@ -3367,7 +3555,7 @@ function paperFor(a, i) {
   } else if (i === 1) {
     body = [head("Tools " + name + " uses", steps.length ? "Each one connects on the tool's own screen. Pip never sees your password." : null),
       steps.length ? h("ul", { class: "tl" }, steps.map((s) => h("li", {}, h("div", {}, h("b", {}, s.label), h("span", {}, "Usual wait: " + s.lead_time)), pill((STEP[s.status] || [s.status])[0], (STEP[s.status] || ["", ""])[1]),
-        s.status !== "active" && isOwner() ? h("button", { class: "btn link", type: "button", "data-k": "pp-step-" + s.slot, onclick: () => { document.getElementById("paper").close(); openDesk("setup", s.slot); } }, "Open this step") : null)))
+        s.status !== "active" && isOwner() ? h("button", { class: "btn link", type: "button", "data-k": "pp-step-" + s.slot, onclick: () => { S.paper = null; document.documentElement.classList.remove("fl-paper-on"); if (FLOOR.office) { FLOOR.office.hold(false); FLOOR.office.folderIn(); } const p = document.getElementById("paper"); p.close(); p.className = ""; openDesk("setup", s.slot); } }, "Open this step") : null)))
         : h("p", {}, name + " doesn't need any tools connected.")];
   } else if (i === 2) {
     body = [head("House rules", "Every teammate follows these" + (d.business.state ? " in " + d.business.state : "") + "."), h("ul", {}, rulesList().map((x) => h("li", {}, x))), h("p", { class: "fine" }, "These defaults are being reviewed by a lawyer. They are not legal advice.")];
@@ -3380,27 +3568,66 @@ function paperFor(a, i) {
   }
   return body;
 }
-async function openPaper(id, i) {
-  const a = S.data.agents.find((x) => x.spec_id === id); if (!a) return;
-  const dlg = document.getElementById("paper"), name = mateName(a), next = (i + 1) % FOLDERS.length, opener = document.activeElement;
-  dlg.replaceChildren(h("div", { class: "pp-bar" },
-      h("button", { class: "btn ghost", type: "button", "data-k": "pp-close", onclick: () => dlg.close() }, icon("back"), "Put it back"),
+// The paper is a real dialog. It opens invisibly first so the 3D folder can fly to exactly where its HTML folder sits;
+// then the HTML takes over in place, the cover swings open and the paper slides out. Closing runs it backwards.
+const motion = () => !reduced() && FLOOR.office && FLOOR.office.mode === "desk";
+function paperParts(a, i, id) {
+  const dlg = document.getElementById("paper"), name = mateName(a), next = (i + 1) % FOLDERS.length;
+  return [h("div", { class: "pp-bar" },
+      h("button", { class: "btn ghost", type: "button", "data-k": "pp-close", onclick: () => closePaper() }, icon("back"), "Put it back"),
       h("p", { class: "pp-crumbs" }, h("span", {}, name + "'s desk"), h("span", { "aria-hidden": "true" }, " / "), h("b", {}, FOLDERS[i])),
       h("button", { class: "btn ghost", type: "button", "data-k": "pp-next", onclick: () => openPaper(id, next) }, FOLDERS[next], icon("arrow", "arr"))),
-    h("div", { class: "pp-folder", style: { "--c": hexOf(a) } }, h("div", { class: "pp-back" }, h("span", { class: "pp-tab" }, h("i"), FOLDERS[i])), h("article", { class: "pp-paper" }, paperFor(a, i)), h("div", { class: "pp-front", "aria-hidden": "true" }, h("span", {}, name + " · " + FOLDERS[i]))));
-  dlg.setAttribute("aria-labelledby", "paper-t");
-  const swap = dlg.open; S.paper = { id, i };
-  if (FLOOR.office && FLOOR.office.mode === "desk" && !reduced()) { if (swap) await FLOOR.office.folderIn(); await FLOOR.office.folderOut(id, i); }
-  if (!S.paper || S.paper.id !== id || S.paper.i !== i || S.focus !== id) { // you moved on while it was flying
-    if (S.paper && S.paper.id === id && S.paper.i === i) { S.paper = null; if (FLOOR.office) FLOOR.office.folderIn(); }
+    h("div", { class: "pp-folder " + (i % 2 ? "odd" : "even"), style: { "--c": hexOf(a) } }, h("div", { class: "pp-back" }, h("span", { class: "pp-tab" }, h("i"), FOLDERS[i])), h("article", { class: "pp-paper" }, paperFor(a, i)), h("div", { class: "pp-front", "aria-hidden": "true" }, h("span", {}, name + " · " + FOLDERS[i])))];
+}
+async function openPaper(id, i) {
+  const a = S.data.agents.find((x) => x.spec_id === id); if (!a) return;
+  const dlg = document.getElementById("paper"), o = FLOOR.office, swap = dlg.open && S.paper && S.paper.id === id;
+  if (swap) { // switching folders: the paper drops back in, the label changes, the next paper comes up
+    if (S.paper.i === i) return;
+    S.paper = { id, i }; dlg._i = i;
+    const old = dlg.querySelector(".pp-paper");
+    if (old && !reduced()) { dlg.classList.add("pp-swap"); await new Promise((r) => setTimeout(r, 230)); }
+    if (!S.paper || S.paper.i !== i) return;
+    dlg.replaceChildren(...paperParts(a, i, id)); dlg.classList.remove("pp-swap"); dlg.classList.add("pp-on", "pp-open", "pp-next");
+    if (o) o.swapFolder(id, i);
+    const f = dlg.querySelector('[data-k="pp-next"]'); if (f) f.focus();
     return;
   }
+  S.paper = { id, i }; dlg._i = i; FLOOR.paperOpener = document.activeElement;
+  document.documentElement.classList.add("fl-paper-on");
+  dlg.replaceChildren(...paperParts(a, i, id)); dlg.setAttribute("aria-labelledby", "paper-t");
+  dlg.className = motion() ? "pp-arrive" : "";
   if (!dlg.open) dlg.showModal();
-  dlg.classList.remove("pp-on"); void dlg.offsetWidth; dlg.classList.add("pp-on");
-  const f = dlg.querySelector('[data-k="pp-close"]'); if (f) f.focus();
-  dlg.onclose = () => { S.paper = null; if (FLOOR.office) FLOOR.office.folderIn(); const k = S.paper ? S.paper.i : i, back = document.querySelector('[data-k="fl-f-' + (dlg._i != null ? dlg._i : k) + '"]'); if (back) back.focus(); else if (opener && opener.isConnected) opener.focus(); };
-  dlg._i = i;
+  const f = dlg.querySelector('[data-k="pp-close"]'); if (f) f.focus({ preventScroll: true });
+  if (motion()) {
+    const r = dlg.querySelector(".pp-back").getBoundingClientRect();
+    await o.folderOut(id, i, { left: r.left, top: r.top, width: r.width, height: r.height });
+    if (!S.paper || S.paper.id !== id || S.paper.i !== i || !dlg.open) return; // closed while it was flying
+    o.hold(true); // the room is behind the paper now: stop drawing it
+  }
+  dlg.className = "pp-on" + (reduced() ? " pp-open" : "");
+  if (!reduced()) requestAnimationFrame(() => requestAnimationFrame(() => dlg.classList.add("pp-open")));
 }
+let closing = false;
+async function closePaper() {
+  const dlg = document.getElementById("paper"); if (!dlg.open || closing) return;
+  closing = true;
+  const back = '[data-k="fl-f-' + (dlg._i != null ? dlg._i : 0) + '"]';
+  if (!reduced() && dlg.classList.contains("pp-on")) { dlg.classList.remove("pp-open"); dlg.classList.add("pp-leave"); await new Promise((r) => setTimeout(r, 380)); }
+  S.paper = null; document.documentElement.classList.remove("fl-paper-on");
+  if (FLOOR.office) { FLOOR.office.hold(false); FLOOR.office.folderIn(); }
+  dlg.close(); dlg.className = ""; closing = false;
+  const el = document.querySelector(back); if (el) el.focus(); else if (FLOOR.paperOpener && FLOOR.paperOpener.isConnected) FLOOR.paperOpener.focus();
+}
+(function wirePaper() {
+  const dlg = document.getElementById("paper"); if (!dlg) return void setTimeout(wirePaper, 50);
+  dlg.addEventListener("cancel", (e) => { e.preventDefault(); closePaper(); }); // Esc puts it back the same way the button does
+  dlg.addEventListener("close", () => { // closed some other way (the browser's own Esc, a second Esc): tidy up the same
+    if (!S.paper) return; S.paper = null; dlg.className = ""; closing = false; document.documentElement.classList.remove("fl-paper-on");
+    if (FLOOR.office) { FLOOR.office.hold(false); FLOOR.office.folderIn(); }
+    const el = document.querySelector('[data-k="fl-f-' + (dlg._i != null ? dlg._i : 0) + '"]'); if (el) el.focus();
+  });
+})();
 
 // ---------- moving around ----------
 // The screen sits in 3D, so its buttons shrink with the camera. Grow them until each one is at least 48px where you click.
@@ -3425,8 +3652,7 @@ document.addEventListener("keydown", (e) => {
   if (!floorOn() || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
   const ae = document.activeElement, typing = ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);
   if (typing || document.querySelector("dialog[open]")) return;
-  // Esc while a folder is still flying up cancels the paper, not the desk
-  if (e.key === "Escape" && S.paper) { e.preventDefault(); S.paper = null; if (FLOOR.office) FLOOR.office.folderIn(); return; }
+  if (e.key === "Escape" && S.paper) { e.preventDefault(); closePaper(); return; } // a paper is on its way: Esc sends it back
   if (e.key === "Escape") { if (S.desk) { e.preventDefault(); closeDesk(); } else if (S.focus) { e.preventDefault(); closeMate(); } }
   else if (/^[1-9]$/.test(e.key) && !S.desk) { const a = S.data.agents[+e.key - 1]; if (a) { e.preventDefault(); openMate(a.spec_id); } }
   else if (S.focus && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !(ae && ae.closest && ae.closest("[role=tablist]"))) { e.preventDefault(); walk(e.key === "ArrowRight" ? 1 : -1); }
@@ -3533,8 +3759,8 @@ function renderFloor(opts = {}) {
       FLOOR.focusShown = S.focus;
       if (FLOOR.tgt) screenEl.style.setProperty("--tgt", FLOOR.tgt);
       if (!narrow()) o.mountScreen(S.focus, screenEl); else o.mountScreen(S.focus, decorEl);
-      if (go) o.desk(S.focus).then(() => { const s = document.querySelector(".fl-css .scr"); if (s) { s.classList.remove("on"); void s.offsetWidth; s.classList.add("on"); } fitTargets(); setTimeout(fitTargets, 800); });
-      else { const s = document.querySelector(".fl-css .scr"); if (s) s.classList.add("on"); }
+      if (go) o.desk(S.focus).then(() => fitTargets());
+      else screenEl.classList.add("on", "settled"); // a refresh while you read: no second entrance
       // the monitor's HTML lives in the panel's tab order on a computer, and back with the room on a phone
       const host = document.getElementById("fl-scr-host"), home = document.getElementById("office"), layer = o.layer;
       if (!narrow() && host && layer.parentElement !== host) host.append(layer);
