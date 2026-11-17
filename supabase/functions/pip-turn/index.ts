@@ -118,14 +118,19 @@ async function toolSchema(row: J): Promise<{ description: string; input: J } | n
 }
 
 // ---------- any other connected tool: add-only actions, found automatically ----------
-const ADD = /(^|_)(CREATE|ADD|INSERT|NEW)(_|$)/;
-const THING = /(^|_)(LEADS?|CONTACTS?|CUSTOMERS?|CLIENTS?|PERSONS?|PEOPLE|COMPANY|COMPANIES|ORGANIZATIONS?|DEALS?|OPPORTUNIT(Y|IES)|PROSPECTS?|TASKS?|TODOS?|TICKETS?|ISSUES?|NOTES?|ROWS?|RECORDS?|ENTRY|ENTRIES|ITEMS?|CARDS?|JOBS?|REQUESTS?)(_|$)/;
-const NEVER = /(DELETE|REMOVE|UPDATE|PATCH|EDIT|MODIFY|SEND|POST|PUBLISH|PAY|CHARGE|REFUND|TRANSFER|PAYOUT|INVOICE|ORDER|SUBSCRI|PRICE|PRODUCT|COUPON|INVITE|SHARE|USER|ADMIN|PERMISSION|ROLE|TOKEN|SECRET|APIKEY|API_KEY|WEBHOOK|BULK|BATCH|IMPORT|EXPORT|MERGE|ARCHIVE|CANCEL|WORKFLOW|AUTOMATION|TEMPLATE|CAMPAIGN|BROADCAST|MESSAGE|EMAIL|SMS|CALL|FILE|UPLOAD|ATTACH|FOLDER|BOARD|PROJECT|WORKSPACE|TEAM|CHANNEL|ASSOCIAT|PROPERTY|SCHEMA|FIELD|PIPELINE|STAGE|LIST|TABLE|DATABASE|BASE|VIEW|FORM|REPORT|DASHBOARD|MEMBER|SUBSCRIBER|PAYMENT|BANK|TAX|PAYROLL|EMPLOYEE)/;
+// The action's name must be exactly "create one <record>", nothing broader. Checked against the real tool lists of
+// HubSpot, Salesforce, Jobber, Airtable, Notion, QuickBooks, Stripe, Square, Shopify, Mailchimp, Trello and Slack:
+// a looser match let through journal entries, balance transactions, gift cards and mailing-list sign-ups.
+const ADD_ONE = /^(CREATE|ADD|INSERT)_(LEAD|CONTACT|CUSTOMER|CLIENT|PERSON|COMPANY|DEAL|OPPORTUNITY|TASK|TICKET|NOTE|JOB|REQUEST|RECORD|ROW)(_FROM_NL|_FROM_NATURAL_LANGUAGE)?$/;
+// Money and payroll systems are never opened automatically, even for adding a customer.
+const MONEY = /(stripe|square|paypal|quickbooks|xero|shopify|braintree|freshbooks|wave|plaid|brex|ramp|gusto|chargebee|recurly|paddle|venmo|coinbase|wise|adp|payroll|bank|billing|invoice|pay)/;
 function addOnly(toolkit: string, t: J): boolean {
-  const slug = String(t?.slug ?? ""), rest = slug.replace(new RegExp("^" + toolkit.toUpperCase().replace(/[^A-Z0-9]/g, "") + "_?", "i"), "").toUpperCase();
-  if (!/^[A-Z0-9_]{3,80}$/.test(slug) || !ADD.test(rest) || !THING.test(rest) || NEVER.test(rest)) return false;
+  if (MONEY.test(toolkit)) return false;
+  const slug = String(t?.slug ?? ""), rest = slug.replace(new RegExp("^" + toolkit.replace(/[^a-z0-9]/gi, "") + "_", "i"), "").toUpperCase();
+  if (!/^[A-Z0-9_]{3,80}$/.test(slug) || !ADD_ONE.test(rest)) return false;
   const tags = (Array.isArray(t?.tags) ? t.tags : []).map((x: J) => String(x).toLowerCase());
-  if (tags.some((x: string) => /readonly|destructive|update|idempotent/.test(x))) return false;
+  if (tags.some((x: string) => /readonly|destructive|update|deprecated/.test(x))) return false;
+  if (tags.some((x: string) => /hint$/.test(x)) && !tags.includes("createhint")) return false;
   return !!t?.input_parameters && JSON.stringify(t.input_parameters).length < 12000;
 }
 /** Finds a toolkit's add-only actions once, saves them as catalog rows, and returns what the policy allowed. */
