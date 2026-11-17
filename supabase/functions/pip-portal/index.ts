@@ -266,6 +266,9 @@ async function connect(u: User, bid: string, body: any) {
   const detail = { ...((bc.detail as any) || {}) };
   if (bc.status === "active" && bc.connected_account_id && acct) {
     // Signing in again on a step that works: the current sign-in stays in use until the new one is finished.
+    // A second attempt replaces the first one, which is removed so no half-made sign-in is left behind.
+    const before = detail.pending?.account;
+    if (before && before !== acct && before !== bc.connected_account_id) await retire(before);
     detail.pending = { account: acct, toolkit, at: now() };
     await db.from("business_connections").update({ detail, updated_at: now() }).eq("id", bc.id);
     await log(bid, "connection", `${cat.label}: signing in again started. The current sign-in keeps working until the new one is finished.`, { actor: u.email });
@@ -291,7 +294,7 @@ async function retire(account: string): Promise<boolean> {
 async function refresh(bid: string, actor: string) {
   const { data: b } = await db.from("businesses").select("composio_user_id,name").eq("id", bid).single();
   const { data: rows } = await db.from("business_connections").select("id,slot,status,connected_account_id,agents,detail,choice").eq("business_id", bid).not("connected_account_id", "is", null);
-  const { data: extra } = await db.from("client_connections").select("id,toolkit,status,connected_account_id").eq("business_id", bid).not("connected_account_id", "is", null).in("status", ["link_made", "active"]);
+  const { data: extra } = await db.from("client_connections").select("id,toolkit,status,connected_account_id,created_at").eq("business_id", bid).not("connected_account_id", "is", null).in("status", ["link_made", "active"]);
   if ((!rows?.length && !extra?.length) || !b?.composio_user_id) return { changed: 0 };
   const live = await composio(`/connected_accounts?user_ids=${encodeURIComponent(b.composio_user_id)}&limit=100`);
   const by = new Map<string, any>((live?.items ?? []).map((i: any) => [i.id, i]));
@@ -347,8 +350,11 @@ async function refresh(bid: string, actor: string) {
     }
   }
   const inSteps = new Set((rows || []).map((r: any) => r.connected_account_id));
+  const waiting = new Set((rows || []).map((r: any) => (r.detail as any)?.pending?.account).filter(Boolean));
   for (const x of extra || []) {
-    if (inSteps.has(x.connected_account_id)) continue;
+    if (inSteps.has(x.connected_account_id) || waiting.has(x.connected_account_id)) continue;
+    // A sign-in that was started and never finished is removed after a day, so it does not sit around half-made.
+    if (x.status === "link_made" && stateOf(x.connected_account_id!, "link_made") === "link_made" && Date.now() - Date.parse(x.created_at) > 24 * 3600 * 1000) { if (await retire(x.connected_account_id!)) changed++; continue; }
     const st = MAP[String(by.get(x.connected_account_id!)?.status || "").toUpperCase()] ?? (by.has(x.connected_account_id!) ? x.status : "revoked");
     if (st === x.status) continue;
     changed++;
