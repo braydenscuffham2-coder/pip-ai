@@ -67,8 +67,36 @@ async function composio(path: string, init: RequestInit = {}): Promise<{ ok: boo
     return { ok: r.ok, status: r.status, j };
   } catch (e) { return { ok: false, status: 0, j: { error: String((e as Error).message).slice(0, 120) } }; }
 }
-const execTool = (slug: string, account: string, user: string, args: J) =>
-  composio(`/tools/execute/${slug}`, { method: "POST", body: JSON.stringify({ connected_account_id: account, user_id: user, arguments: args }) });
+// Two ways to run a tool. Direct execution needs a key with the "Tool execution" permission. A key without it can
+// still run tools inside a session pinned to the owner's connected account, so that is the fallback. The way that
+// works is remembered while this instance lives.
+let direct = true;
+const sessions = new Map<string, { id: string; at: number }>();
+async function sessionFor(user: string, toolkit: string, account: string): Promise<string | null> {
+  const key = `${user}|${toolkit}|${account}`, hit = sessions.get(key);
+  if (hit && Date.now() - hit.at < 20 * 60000) return hit.id;
+  let r = await composio("/tool_router/session", { method: "POST", body: JSON.stringify({ user_id: user, toolkits: { enable: [toolkit] }, connected_accounts: { [toolkit]: [account] }, manage_connections: { enable: false } }) });
+  if (!r.ok) r = await composio("/tool_router/session", { method: "POST", body: JSON.stringify({ user_id: user, connected_accounts: { [toolkit]: [account] } }) });
+  if (!r.ok) r = await composio("/tool_router/session", { method: "POST", body: JSON.stringify({ user_id: user }) });
+  const id = r.j?.session_id ?? r.j?.id;
+  if (!r.ok || typeof id !== "string") { console.error("[turn] session", r.status, JSON.stringify(r.j).slice(0, 200)); return null; }
+  sessions.set(key, { id, at: Date.now() });
+  return id;
+}
+async function execTool(slug: string, account: string, user: string, args: J, toolkit: string) {
+  if (direct) {
+    const r = await composio(`/tools/execute/${slug}`, { method: "POST", body: JSON.stringify({ connected_account_id: account, user_id: user, arguments: args }) });
+    if (!(r.status === 403 && /permission/i.test(JSON.stringify(r.j)))) return r;
+    direct = false;
+  }
+  const sid = await sessionFor(user, toolkit, account);
+  if (!sid) return { ok: false, status: 403, j: { error: "This API key can neither run tools directly nor open a session." } };
+  const r = await composio(`/tool_router/session/${sid}/execute`, { method: "POST", body: JSON.stringify({ tool_slug: slug, arguments: args }) });
+  if (r.status === 404 || r.status === 410) sessions.delete(`${user}|${toolkit}|${account}`);
+  // A session answer reports a tool failure in "error" even when the HTTP call itself worked.
+  if (r.ok && r.j && r.j.successful === undefined && typeof r.j.error === "string" && r.j.error) r.j.successful = false;
+  return r;
+}
 
 async function toolSchema(row: J): Promise<{ description: string; input: J } | null> {
   const fresh = row.schema && row.schema_at && Date.now() - new Date(row.schema_at).getTime() < 86400000;
@@ -235,7 +263,7 @@ RULES THAT ALWAYS HOLD:
 
   async function ensureSheet(): Promise<string | null> {
     if (sheet.conn.detail?.spreadsheet_id) return sheet.conn.detail.spreadsheet_id;
-    const r = await execTool(sheet.rows.create.slug, sheet.conn.connected_account_id, c!.biz.composio_user_id, { title: `Pip: ${c!.name}` });
+    const r = await execTool(sheet.rows.create.slug, sheet.conn.connected_account_id, c!.biz.composio_user_id, { title: `Pip: ${c!.name}` }, sheet.rows.create.toolkit);
     const sid = dig(r.j?.data, "spreadsheetId") ?? dig(r.j?.data, "spreadsheet_id");
     if (!r.ok || r.j?.successful === false || typeof sid !== "string") return null;
     sheet.conn.detail = { ...(sheet.conn.detail ?? {}), spreadsheet_id: sid };
@@ -277,7 +305,7 @@ RULES THAT ALWAYS HOLD:
       const want = Object.keys(meta.row.schema?.input?.properties ?? {});
       if (want.length) args = Object.fromEntries(Object.entries(args).filter(([k]) => want.includes(k)));
     }
-    const r = await execTool(meta.row.slug, meta.conn.connected_account_id, c!.biz.composio_user_id, args);
+    const r = await execTool(meta.row.slug, meta.conn.connected_account_id, c!.biz.composio_user_id, args, meta.row.toolkit);
     const failed = !r.ok || r.j?.successful === false;
     const err = cut(r.j?.error?.message ?? r.j?.error ?? r.j?.message ?? "", 300);
     if (failed) {
@@ -286,6 +314,12 @@ RULES THAT ALWAYS HOLD:
         await db.rpc("portal_job_pause", { p_spec: id, p_job: meta.job, p_reason: "expired_access", p_detail: "The sign-in for this tool stopped working." });
         return { text: `${meta.job} is not available right now. Take the details and tell the customer a team member will follow up.`, error: true };
       }
+      if (r.status === 403 || /api key/i.test(err)) {
+        // Pip's own Composio key was refused. That is a platform problem, not the owner's: tell the founder, once a day.
+        const subject = "Composio refused a tool call";
+        const { count } = await db.from("portal_notices").select("id", { count: "exact", head: true }).eq("subject", subject).gte("created_at", new Date(Date.now() - 86400000).toISOString());
+        if (!count) await db.rpc("portal_notify", { p_business: c!.biz.id, p_to: "founder", p_subject: subject, p_title: subject, p_lines: [`Tool: ${meta.row.slug}`, `Composio said: ${err.slice(0, 200)}`, "Teammates cannot act in owners' tools until this is fixed. Check the Composio API key's permissions."] });
+      }
       if (write) await log(`${c!.teammate} tried: ${meta.row.label}. It did not go through.`, "failed", meta.job);
       return { text: `That did not work: ${err || "unknown error"}. Do not tell the customer it was done.`, error: true };
     }
@@ -293,7 +327,9 @@ RULES THAT ALWAYS HOLD:
     if (write) await log(`${c!.teammate}: ${meta.row.label}`, "ok", meta.job);
     if (meta.row.shape === "busy_only") {
       const items = dig(r.j?.data, "items");
-      const busy = (Array.isArray(items) ? items : []).filter((e: J) => e?.status !== "cancelled" && e?.transparency !== "transparent")
+      // No list at all means the answer could not be read. Saying "nothing is booked" then would be a guess.
+      if (!Array.isArray(items)) { await log(`${c!.teammate} could not read the calendar's answer`, "failed", meta.job); return { text: "The calendar could not be read. Do not say whether the time is open. Tell the customer a team member will confirm.", error: true }; }
+      const busy = items.filter((e: J) => e?.status !== "cancelled" && e?.transparency !== "transparent")
         .map((e: J) => ({ start: e?.start?.dateTime ?? e?.start?.date, end: e?.end?.dateTime ?? e?.end?.date })).filter((e: J) => e.start).slice(0, 80);
       return { text: JSON.stringify({ busy, note: "These are busy times only. Anything not listed is open on the calendar. You cannot see what the events are." }) };
     }
@@ -365,6 +401,20 @@ async function diag(body: J) {
     const r = await composio(`/tools/${body.slug}`);
     out.status = r.status;
     out.tool = r.ok ? { slug: r.j?.slug, scopes: r.j?.scopes, required: r.j?.input_parameters?.required, props: Object.fromEntries(Object.entries(r.j?.input_parameters?.properties ?? {}).map(([k, v]: [string, J]) => [k, cut(v?.type ?? "", 12)])) } : cut(JSON.stringify(r.j), 200);
+  }
+  // Run one catalogued tool for a business on the test list and report only the shape of the answer.
+  const pr = body?.probe;
+  if (pr && typeof pr.business === "string" && typeof pr.slug === "string") {
+    const { data: sb } = await db.from("forge_settings").select("value").eq("key", "act_sandbox_businesses").maybeSingle();
+    if (!Array.isArray(sb?.value) || !sb.value.includes(pr.business)) return json({ error: "not_a_test_business" }, 403);
+    const { data: row } = await db.from("tool_catalog").select("slug,toolkit").eq("slug", pr.slug).maybeSingle();
+    const { data: biz } = await db.from("businesses").select("composio_user_id").eq("id", pr.business).maybeSingle();
+    const { data: conn } = row ? await db.from("business_connections").select("connected_account_id").eq("business_id", pr.business).eq("choice", row.toolkit).eq("status", "active").limit(1).maybeSingle() : { data: null };
+    if (!row || !biz?.composio_user_id || !conn?.connected_account_id) return json({ error: "no_tool_or_connection" }, 404);
+    const r = await execTool(row.slug, conn.connected_account_id, biz.composio_user_id, pr.args ?? {}, row.toolkit);
+    const shape = (o: J, d = 0): J => o === null ? "null" : Array.isArray(o) ? [o.length, d < 4 && o.length ? shape(o[0], d + 1) : "…"] : typeof o === "object" ? (d < 4 ? Object.fromEntries(Object.entries(o).slice(0, 25).map(([k, v]) => [k, shape(v, d + 1)])) : "{…}") : typeof o;
+    const items = dig(r.j?.data, "items");
+    out.probe = { status: r.status, direct, successful: r.j?.successful, error: cut(r.j?.error?.message ?? r.j?.error ?? "", 200), shape: shape(r.j), items: Array.isArray(items) ? items.length : null, sheet_id: dig(r.j?.data, "spreadsheetId") ?? dig(r.j?.data, "spreadsheet_id") ?? null };
   }
   return json(out);
 }
