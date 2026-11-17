@@ -141,7 +141,7 @@ async function load(specId: string) {
 }
 
 // ---------- one turn ----------
-async function turn(body: J) {
+async function turn(body: J, trace: boolean) {
   const id = typeof body?.skill === "string" ? body.skill : "";
   const message = typeof body?.message === "string" ? body.message.trim().slice(0, 1000) : "";
   const channel = ["web_chat", "sms", "voice", "email"].includes(body?.channel) ? body.channel : "web_chat";
@@ -225,6 +225,7 @@ RULES THAT ALWAYS HOLD:
   const msgs: J[] = [...history, { role: "user", content: message }];
   const actions: { tool: string; status: string }[] = [];
   let reply = "", usedModel = false, cost = 0, calls = 0;
+  const steps: J[] = [];
   const deadline = Date.now() + 50000;
 
   const note = (kind: string, args: J, approval: string) => db.from("notifications").insert({ spec_id: id, kind: kind.slice(0, 40), body: { args, approval, conversation: conv, business: c.name } });
@@ -304,12 +305,14 @@ RULES THAT ALWAYS HOLD:
     usedModel = true; cost += costOf(r.usage);
     const uses = (r.content ?? []).filter((x: J) => x.type === "tool_use");
     const text = (r.content ?? []).filter((x: J) => x.type === "text").map((x: J) => x.text).join(" ").trim();
+    steps.push({ stop: r.stop_reason, text: text.length, tools: uses.map((u: J) => u.name), kinds: (r.content ?? []).map((x: J) => x.type) });
     if (!uses.length || r.stop_reason !== "tool_use") { reply = text; break; }
     msgs.push({ role: "assistant", content: r.content });
     const results: J[] = [];
     for (const u of uses) {
       if (++calls > 6) { results.push({ type: "tool_result", tool_use_id: u.id, content: "Too many actions in one turn. Reply to the customer now.", is_error: true }); continue; }
       const out = await run(u.name, u.input);
+      steps.push({ tool: u.name, error: !!out.error, result: out.text.slice(0, 160) });
       results.push({ type: "tool_result", tool_use_id: u.id, content: out.text, ...(out.error ? { is_error: true } : {}) });
     }
     msgs.push({ role: "user", content: results });
@@ -341,7 +344,7 @@ RULES THAT ALWAYS HOLD:
 
   await db.from("messages").insert([{ conversation_id: conv, role: "user", content: message }, { conversation_id: conv, role: "assistant", content: reply, actions }]);
   if (c.biz?.id && cost > 0) await db.from("usage_events").insert({ business_id: c.biz.id, spec_id: id, unit: channel === "sms" ? "sms" : channel === "voice" ? "voice_minute" : "conversation", qty: 0, cost_usd: Math.round(cost * 1e5) / 1e5, provider: "anthropic", meta: { conversation: conv, model: MODEL } });
-  return json({ conversation: conv, reply, actions, live: usedModel, first, real });
+  return json({ conversation: conv, reply, actions, live: usedModel, first, real, ...(trace ? { steps, offered: tools.map((t) => t.name), unavailable } : {}) });
 }
 
 // ---------- founder testing ----------
@@ -368,7 +371,7 @@ Deno.serve(async (req) => {
     const who = await caller(req);
     if (!who) return json({ error: "forbidden" }, 403);
     const body = await req.json().catch(() => ({}));
-    if (path === "/turn") return await turn(body);
+    if (path === "/turn") return await turn(body, who === "ticket");
     if (path === "/diag" && who !== "site") return await diag(body);
     return json({ error: "not_found" }, 404);
   } catch (e) {
