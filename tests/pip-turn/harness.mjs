@@ -1,13 +1,14 @@
 // Runs the real supabase/functions/pip-turn/index.ts with everything outside it faked:
 // the database, the model and Composio. No network, no keys, no cost.
 // The function's code is not copied or rewritten. Only its one import line is swapped for the fake database.
-import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, symlinkSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 
 const SRC = process.env.PIP_TURN_SRC || fileURLToPath(new URL("../../supabase/functions/pip-turn/index.ts", import.meta.url));
+const SHARED = fileURLToPath(new URL("../../supabase/functions/_shared", import.meta.url));
 const IMPORT_LINE = 'import { createClient } from "jsr:@supabase/supabase-js@2";';
 // Made-up values. They only have to match between the fake caller and the fake function.
 export const SERVICE = "test-service-role";
@@ -168,7 +169,12 @@ export async function boot(opts = {}) {
 
   const src = readFileSync(SRC, "utf8");
   if (!src.includes(IMPORT_LINE)) throw new Error("pip-turn's import line changed. Update IMPORT_LINE in tests/pip-turn/harness.mjs.");
-  dir ??= mkdtempSync(join(tmpdir(), "pip-turn-"));
+  if (!dir) {
+    // The copy sits in a folder laid out like supabase/functions/, so "../_shared/..." imports find the real shared code.
+    const root = mkdtempSync(join(tmpdir(), "pip-turn-"));
+    dir = join(root, "pip-turn"); mkdirSync(dir);
+    if (existsSync(SHARED)) symlinkSync(SHARED, join(root, "_shared"), "dir");
+  }
   const file = join(dir, `index.${++loads}.ts`);
   writeFileSync(file, src.replace(IMPORT_LINE, "const { createClient } = globalThis.__pipTurnMock;"));
   const quiet = console.error; console.error = () => {};
