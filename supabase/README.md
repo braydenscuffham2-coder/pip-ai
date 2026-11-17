@@ -6,6 +6,7 @@ Pip's backend on Supabase: Deno edge functions next to a Postgres database. The 
 |---|---|
 | `lead-alert` | Emails each new lead to the owner through Resend. A database trigger calls it when a lead is inserted, and a 15-minute cron retries anything that didn't send. A burst of leads becomes one digest. |
 | `voice-token` | Hands the call demo a one-time ElevenLabs token for a call with an AI teammate. Adds a monthly ceiling on top of the agent's own daily and per-call caps. |
+| `pip-voice` | Phone calls on a business's Pip number. Twilio asks it first; it asks ElevenLabs to do the listening and speaking, and passes every caller sentence to `pip-turn` so the teammate, its rules and its limits are the same as on chat. Also: the plain message when ElevenLabs is down, transfers inside the owner's hours, and billing per started minute. See `docs/voice.md`. |
 | `site-kit` | Reads a business's homepage for what Pip needs to show it back to them: logo, colors, fonts, headline, menu and buttons. |
 | `rival-read` | Reads each competitor's own homepage: what it says and what it lets a customer do. |
 | `scan-run` | The Brain, as a resumable job. Each call runs one stage and chains the next, so no request outlives the edge-function limit. Has per-scan, per-month and per-IP budget caps. Google review text is used while the job runs and never stored. |
