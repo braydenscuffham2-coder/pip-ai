@@ -3,7 +3,7 @@
 Owned by lane 09 (guard). Everything here runs on every pull request (`.github/workflows/tests.yml`) and on your own machine with Node 24:
 
 ```
-node --test "tests/**/*.test.mjs"     # the suites
+node --test "tests/**/*.test.mjs" "supabase/functions/**/*.test.ts"   # the suites
 node tests/pip-turn/prove.mjs         # proof that the suites catch a removed limit
 ```
 
@@ -40,5 +40,6 @@ Covered today, each matching a line in `docs/handbook.md`:
 ## For other lanes
 
 - Changing `pip-turn`? Run the two commands above before you open the pull request.
+- Tests that sit next to a function (`supabase/functions/**/*.test.ts`) run in the same check. Use `node:test`, no installs.
 - New function? Follow `pip-turn/harness.mjs`: load the real file, fake only what is outside it.
 - If your change moves a line that `prove.mjs` looks for, it prints `STALE` and tells you which entry to update.
