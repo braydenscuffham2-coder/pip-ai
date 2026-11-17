@@ -59,3 +59,31 @@ Every signed-in call sends `Authorization: Bearer <Supabase session token>`. Err
 - Texting: point the Twilio number's "a message comes in" webhook at `https://qqaikvgjzzcdwumnyspb.supabase.co/functions/v1/pip-run/twilio/sms` (POST). Carrier registration must be approved before replies deliver.
 - Phone calls are not built. A call can outlast a Supabase function, so the plan is ElevenLabs for the call audio with Pip's own runtime as the brain. It needs a phone number first.
 - The runtime (`app/api/runtime/chat`) records a teammate's actions as owner notifications. It does not yet carry them out in the connected tools.
+
+## Where things stand, late November 16
+
+### Live now
+- Billing is in the database and connected to the live Pip Stripe account, which can take charges. Charging starts on
+  go-live day. Usage beyond the plan goes on the next invoice. Usage never pauses a team. Only an unpaid invoice does,
+  after 7 days of alerts, and the team restarts on payment.
+- A card on file is required before go-live (`portal_require_card` is on).
+- Default usage rates are kept: $0.15 a chat, $0.04 a text, $0.25 a call minute, with 40% of the monthly price included.
+- A daily check (`portal_billing_watch`) emails the founder about use that is not being billed.
+
+### Teammates that act (`supabase/functions/pip-turn`)
+- Runs one turn of any teammate, including ones built on the Forge Board, from their finished instructions.
+- Lets a teammate use the owner's connected calendar, sheet and email through Composio. Pip never sees the sign-in.
+- Limits enforced in code: calendar read as busy times only; email only to an address the customer typed in that
+  conversation, with an AI line; rows only to one sheet Pip creates; a tool that loses its sign-in pauses that one job;
+  at most 6 actions a turn; a teammate that is not live acts for real only for businesses in `act_sandbox_businesses`.
+- Allowed tools are rows in `tool_catalog`. Nothing outside it can be called.
+- Website chat (`/api/runtime/chat`, Board-built teammates) and texts (`pip-run`) both go through `pip-turn`.
+- `pip-turn` and `pip-run` are deployed as a one-line import pinned to a commit of this repo. To ship a change:
+  commit it, then redeploy the function with the new commit id.
+
+### Waiting
+- A live test in a real Google account (TEST Fork).
+- Phone calls, built after that test passes (ElevenLabs paid plan, Twilio funds and a number needed).
+- Twilio balance and carrier registration before any text can send.
+- Template and camera-box teammates (wait forecast, table watch, floor pulse) have no runner yet.
+- The first three Portal migrations, portal_06 and the `pip-portal` function exist only in Supabase, not in this repo.

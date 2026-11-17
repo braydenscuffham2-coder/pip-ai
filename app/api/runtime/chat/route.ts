@@ -5,7 +5,7 @@ import { runTurn, type ActionSink, type Llm } from '@/lib/skills/runtime';
 import { guard } from '@/lib/server/guard';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST, OPTIONS', 'access-control-allow-headers': 'content-type' };
 const withCors = (r: Response) => { for (const [k, v] of Object.entries(CORS)) r.headers.set(k, v); return r; };
@@ -25,6 +25,28 @@ export async function POST(req: Request) {
   if (!/^[0-9a-f-]{36}$/i.test(id) || !message) return withCors(bad('bad_request'));
   const s = await getSpec(id);
   if (!s || !['live', 'approved', 'sandbox'].includes(s.status)) return withCors(bad('not_found', 404));
+
+  // Teammates built on the Forge Board run in pip-turn, which can also act in the owner's connected tools
+  // (calendar, sheet, email) under hard limits. The spend guard still decides whether the model may be called.
+  if (!s.spec?.agent) {
+    const url = process.env.SUPABASE_URL, secret = process.env.PIP_SERVER_SECRET;
+    if (!url || !secret) return withCors(bad('store_unavailable', 503));
+    const ok = (await guard(req, 'skill_turn')).ok;
+    try {
+      const res = await fetch(`${url}/functions/v1/pip-turn/turn`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-pip-secret': secret },
+        body: JSON.stringify({ skill: id, conversation: typeof b.conversation === 'string' ? b.conversation : undefined, message, visitor: typeof b.visitor === 'string' ? b.visitor.slice(0, 80) : undefined, channel: 'web_chat', limited: !ok }),
+        signal: AbortSignal.timeout(55000),
+      });
+      const j = (await res.json()) as { conversation?: string; reply?: string; actions?: { tool: string; status: string }[]; live?: boolean; error?: string };
+      if (!res.ok || !j.reply) return withCors(bad(res.status === 404 ? 'not_found' : j.error === 'paused' ? 'paused' : 'store_unavailable', res.status === 404 ? 404 : 503));
+      return withCors(json({ conversation: j.conversation, reply: j.reply, actions: (j.actions || []).map(a => ({ tool: a.tool, status: a.status })), live: !!j.live }));
+    } catch (e) {
+      console.error('[runtime/chat] pip-turn', String(e).slice(0, 160));
+      return withCors(bad('store_unavailable', 503));
+    }
+  }
 
   let conv = typeof b.conversation === 'string' && /^[0-9a-f-]{36}$/i.test(b.conversation) ? b.conversation : null;
   if (!conv) conv = await startConversation(id, 'web_chat', typeof b.visitor === 'string' ? b.visitor.slice(0, 80) : null);

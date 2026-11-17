@@ -1821,6 +1821,7 @@ function settingsTab() {
       h("label", { class: "field", for: "mob", style: { marginTop: "14px" } }, h("span", { class: "lab" }, "Mobile for alerts"), mob), h("div", { class: "btns" }, h("button", { class: "btn ghost", "data-k": "save-mob", onclick: () => run(() => api("/business/" + id + "/alerts", { mobile: mob.value }), "Saved.") }, "Save"))) : null,
     isOwner() && b.status !== "disconnected" ? cardCard() : null,
     b.status !== "disconnected" ? usageCard() : null,
+    S.data.role === "founder" && b.status !== "disconnected" ? termsCard() : null,
     b.status !== "disconnected" ? consentCard() : null,
     isOwner() && b.status !== "disconnected" ? h("section", { class: "card warm danger-zone rise", style: { "--i": 4 }, "aria-label": "Disconnect everything" }, kick("Stop everything"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "Disconnect everything"), h("p", { class: "small", style: { marginTop: "6px" } }, "Revokes every tool sign-in and stops every agent right away. One thing only you can undo: call forwarding at your phone company."),
       h("label", { class: "field", for: "conf", style: { marginTop: "14px" } }, h("span", { class: "lab" }, "Type the business name to confirm"), conf),
@@ -1861,6 +1862,26 @@ function usageCard() {
     u.started && (u.lines || []).length ? h("ul", { class: "rules", style: { marginTop: "10px" } }, u.lines.map((l) => h("li", {}, icon("check"), h("span", {}, Number(l.qty).toLocaleString() + " " + unitWord(l.unit, l.qty) + (Number(l.value_usd) > 0 ? ", " + cents(l.value_usd) : ""))))) : null,
     over > 0 ? h("p", { class: "note info", style: { marginTop: "12px" } }, icon("info"), h("span", {}, cents(over) + " beyond your plan so far. It goes on your next invoice. Your team keeps running.")) : null,
     rates ? h("p", { class: "fine", style: { marginTop: "10px" } }, "Beyond your plan: " + rates + ". A busy month never pauses your team.") : null);
+}
+// Founder only: what this business's plan includes and what use beyond it costs. Owners see the result in their Usage card.
+function termsCard() {
+  const u = lazy("usage", "usage");
+  if (!u || u.off) return null;
+  if (u.monthly_usd == null) return h("section", { class: "card rise", style: { "--i": 3 }, "aria-label": "Usage terms" }, kick("Founder"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "Usage terms"), h("p", { class: "small", style: { marginTop: "6px" } }, "Set this business's price first. The usage terms fill in from your defaults."));
+  const rates = u.rates || {}, keys = Array.from(new Set(["conversation", "sms", "voice_minute"].concat(Object.keys(rates))));
+  const inc = h("input", { class: "in", id: "t-inc", inputmode: "decimal", value: u.included_usd == null ? "" : String(u.included_usd) });
+  const ins = keys.map((k) => [k, h("input", { class: "in", id: "t-" + k, inputmode: "decimal", value: rates[k] == null ? "" : String(rates[k]) })]);
+  const save = () => run(async () => {
+    const r = {}; ins.forEach(([k, el]) => { const v = el.value.trim(); if (v !== "") r[k] = v; });
+    await rpc("founder_billing", Object.assign({ rates: r }, inc.value.trim() !== "" ? { included_usd: inc.value.trim() } : {}));
+    S.usage = undefined;
+  }, "Usage terms saved.");
+  return h("section", { class: "card rise", style: { "--i": 3 }, "aria-label": "Usage terms" }, kick("Founder"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "Usage terms"),
+    h("p", { class: "small", style: { marginTop: "6px" } }, "What this plan includes each month, and the price of each kind of use beyond it. Enter 0 to make a kind of use free. A blank box leaves that price as it is."),
+    h("label", { class: "field", for: "t-inc", style: { marginTop: "14px" } }, h("span", { class: "lab" }, "Included each month, in dollars"), inc),
+    ins.map(([k, el]) => h("label", { class: "field", for: "t-" + k, style: { marginTop: "10px" } }, h("span", { class: "lab" }, "Dollars per " + unitWord(k, 1)), el)),
+    h("div", { class: "btns" }, h("button", { class: "btn pri", "data-k": "save-terms", onclick: save }, icon("check"), "Save usage terms")),
+    h("p", { class: "fine", style: { marginTop: "10px" } }, "Changing these after the owner accepted a price changes what they pay. Tell them first."));
 }
 function consentCard() {
   const list = h("textarea", { class: "area", id: "c-list", placeholder: "One per line. Phone numbers or emails." });
