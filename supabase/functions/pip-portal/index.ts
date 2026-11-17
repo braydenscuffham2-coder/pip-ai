@@ -235,11 +235,35 @@ async function composio(path: string, init: RequestInit = {}) {
   if (!r.ok) throw new Fail(502, "connect_failed", `Composio answered ${r.status}: ${cut(j?.error?.message || j?.message || t, 200)}`);
   return j;
 }
-async function composioAuthConfig(slug: string) {
-  const list = await composio(`/auth_configs?toolkit_slug=${encodeURIComponent(slug)}&is_composio_managed=true&limit=20`);
-  const hit = (list?.items ?? []).find((c: any) => c?.toolkit?.slug === slug && c?.is_composio_managed !== false && (!c?.status || c.status === "ENABLED"));
-  if (hit?.id) return hit.id;
-  const made = await composio("/auth_configs", { method: "POST", body: JSON.stringify({ toolkit: { slug }, auth_config: { type: "use_composio_managed_auth" } }) });
+// Which Composio sign-in config a tool uses, in this order:
+// 1. One the founder chose in forge_settings.sign_in_configs, for example Pip's own Google app: { "gmail": "ac_..." }.
+// 2. Composio's own one-step sign-in, when the tool has one.
+// 3. For tools that work with an API key instead: a config that makes Composio's own page ask the owner for the key.
+//    The key goes from the owner straight to Composio. Pip, and every model, never see it.
+const KEY_SCHEMES = ["API_KEY", "BEARER_TOKEN"];
+async function composioAuthConfig(slug: string): Promise<string> {
+  const { data: pick } = await db.from("forge_settings").select("value").eq("key", "sign_in_configs").maybeSingle();
+  const chosen = (pick?.value as any)?.[slug];
+  if (typeof chosen === "string" && /^ac_[A-Za-z0-9_-]{6,40}$/.test(chosen)) return chosen;
+  const list = await composio(`/auth_configs?toolkit_slug=${encodeURIComponent(slug)}&limit=20`);
+  const mine = (list?.items ?? []).filter((c: any) => c?.toolkit?.slug === slug && (!c?.status || c.status === "ENABLED"));
+  const managed = mine.find((c: any) => c?.is_composio_managed !== false);
+  if (managed?.id) return managed.id;
+  try {
+    const made = await composio("/auth_configs", { method: "POST", body: JSON.stringify({ toolkit: { slug }, auth_config: { type: "use_composio_managed_auth" } }) });
+    if (made?.auth_config?.id) return made.auth_config.id;
+  } catch { /* this tool has no one-step sign-in; try a key below */ }
+  const keyed = mine.find((c: any) => KEY_SCHEMES.includes(String(c?.auth_scheme || c?.authScheme || "").toUpperCase()));
+  if (keyed?.id) return keyed.id;
+  const kit = await composio(`/toolkits/${encodeURIComponent(slug)}`);
+  const modes: string[] = (kit?.auth_config_details ?? []).map((d: any) => String(d?.mode || "").toUpperCase());
+  const scheme = KEY_SCHEMES.find((k) => modes.includes(k));
+  if (!scheme) throw new Fail(502, "no_managed_sign_in");
+  let made: any = null;
+  for (const field of ["authScheme", "auth_scheme"]) {
+    try { made = await composio("/auth_configs", { method: "POST", body: JSON.stringify({ toolkit: { slug }, auth_config: { type: "use_custom_auth", [field]: scheme, name: `${slug} key from owner`, credentials: {} } }) }); if (made?.auth_config?.id) break; }
+    catch { /* try the other spelling */ }
+  }
   if (!made?.auth_config?.id) throw new Fail(502, "no_managed_sign_in");
   return made.auth_config.id;
 }
