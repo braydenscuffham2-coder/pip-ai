@@ -1,0 +1,61 @@
+# Pip Portal: backend map
+
+What the Portal page talks to, and what is still waiting. Written for whoever wires a new front end to it.
+
+## Where things live
+
+| Piece | Where | Notes |
+| --- | --- | --- |
+| Portal page | `public/portal.html` | One file, no build step. Live at `https://www.hirepip.com/portal.html`. |
+| Sign-in, business data, setup steps | Supabase function `pip-portal` | Source is only in Supabase for now (`supabase functions download pip-portal`). |
+| Founder steps, consent, cancel, card on file, usage | Supabase function `pip-portal-ops` | `supabase/functions/pip-portal-ops/index.ts` |
+| Billing run and inbound texts | Supabase function `pip-run` | Source is only in Supabase for now. |
+| Rules | Postgres functions named `portal_*` | The functions above prove who is signed in; the database decides what they may do. |
+
+Base URLs: `https://qqaikvgjzzcdwumnyspb.supabase.co/functions/v1/pip-portal` and `.../pip-portal-ops`.
+Every signed-in call sends `Authorization: Bearer <Supabase session token>`. Errors come back as `{ "error": "<code>", "message"?: "<plain words>" }` with a matching HTTP status.
+
+## Calls the page makes
+
+**`pip-portal`** (unchanged): `POST /signin {email}`, `GET /me`, `GET /business/:id`, `GET /business/:id/activity`,
+`POST /business/:id/{profile|accept|connect|refresh|phone|texting|ack|vault|unsupported|issue|people|remove-person|alerts|disconnect}`,
+`POST /business/:id/agents/:spec/{pause|resume}`, `POST /founder/{businesses|quote|link|agreement|setting|resolve}`.
+
+**`pip-portal-ops`**:
+
+| Call | Body | Who | Returns |
+| --- | --- | --- | --- |
+| `POST /rpc/founder_step` | `{business, args:{slot, status: active\|needed\|submitted, pip_number?, note?}}` | founder | `{ok, left}` |
+| `POST /rpc/supervise_now` | `{}` | founder | `{ok, result:{paused, resumed, flagged}}` |
+| `POST /rpc/consent_add` | `{business, args:{kind: phone\|email, channel: sms\|voice\|email, contacts:[...], attest:"true"}}` | owner, staff | `{ok, added, opted_out_skipped, already_on_file, not_valid}` |
+| `POST /rpc/consent_export` | `{business}` | owner | `{ok, rows:[{at, ending, kind, channel, purpose, status, method, code}]}` |
+| `POST /rpc/cancel` | `{business, args:{name}}` | owner, needs a sign-in under 15 minutes old and status `disconnected` | `{ok, deleted}` |
+| `POST /rpc/billing_status` | `{business}` | anyone on the business | `{ok, card_on_file_at, card_hint, price_accepted, billing_status}` |
+| `POST /rpc/usage` | `{business}` | anyone on the business | `{ok, billing_status, monthly_usd, included_usd, rates, started, period_start, period_end, lines:[{unit, qty, rate_usd, value_usd}], value_usd, beyond_plan_usd, past_due_since}` |
+| `POST /rpc/founder_billing` | `{business, args:{included_usd?, rates?:{unit: usd}}}` | founder | `{ok, included_usd, rates}` |
+| `POST /billing/start` | `{business}` | owner | `{ok, url}`; send the browser to `url` (Stripe's card page) |
+| `POST /billing/confirm` | `{business, session}` | owner | `{ok, card_hint}`; call it when the page loads with `?card=<session>` |
+
+`usage`, `founder_billing` and the `billing_status` field on `billing_status` need database update `portal_07` (below).
+
+## What a front end should show that the old page does not yet
+
+- **Price terms in numbers.** `business.quote.included_usd` and `business.quote.rates` (for example `{"conversation":0.15,"sms":0.04,"voice_minute":0.25}`) next to the monthly price, before the owner accepts.
+- **This month's usage.** From `/rpc/usage`: used so far, what is included, and anything beyond the plan.
+- **Billing state.** `billing_status`: `none`, `due` (live, first charge pending), `active`, `past_due` (card declined, days left before a pause), `paused`, `ended`.
+
+## Billing rules (decided 2026-11-16)
+
+- Charging starts on go-live day. Any setup fee is on that first invoice.
+- Each plan includes a usage allowance in dollars. Use is valued at the rates in the business's quote.
+- Use beyond the allowance is added to the next invoice. More than `threshold_usd` beyond it is invoiced right away.
+- Usage never pauses a team. Only an unpaid invoice does, after `grace_days` of alerts, and the team restarts on its own when the invoice is paid.
+- Defaults live in `forge_settings.billing_defaults`. The default rates are estimates and need the founder's review.
+
+## Waiting on someone
+
+- `supabase/migrations/20261116_portal_07_billing_and_texting.sql` is written and **not applied**. Supabase asks the founder to approve it.
+- `STRIPE_SECRET_KEY` (from the Pip Stripe account) is not saved yet. Card on file and billing answer "not switched on" until it is.
+- Texting: point the Twilio number's "a message comes in" webhook at `https://qqaikvgjzzcdwumnyspb.supabase.co/functions/v1/pip-run/twilio/sms` (POST). Carrier registration must be approved before replies deliver.
+- Phone calls are not built. A call can outlast a Supabase function, so the plan is ElevenLabs for the call audio with Pip's own runtime as the brain. It needs a phone number first.
+- The runtime (`app/api/runtime/chat`) records a teammate's actions as owner notifications. It does not yet carry them out in the connected tools.
