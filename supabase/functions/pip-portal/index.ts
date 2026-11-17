@@ -249,7 +249,7 @@ async function connect(u: User, bid: string, body: any) {
   const { data: b } = await db.from("businesses").select("price_accepted_at,composio_user_id,status").eq("id", bid).single();
   if (!b.price_accepted_at && r.role !== "founder") throw new Fail(409, "setup_locked", "Setup unlocks when you accept your price.");
   if (["disconnected", "cancelled"].includes(b.status)) throw new Fail(409, "disconnected");
-  const { data: bc } = await db.from("business_connections").select("id,slot,status").eq("business_id", bid).eq("slot", slot).maybeSingle();
+  const { data: bc } = await db.from("business_connections").select("id,slot,status,connected_account_id,detail").eq("business_id", bid).eq("slot", slot).maybeSingle();
   const { data: cat } = await db.from("connection_catalog").select("kind,choices,label").eq("slot", slot).maybeSingle();
   if (!bc || !cat || cat.kind !== "owner_oauth") throw new Fail(400, "bad_slot");
   if (!(cat.choices as any[]).some((c) => c.toolkit && c.toolkit === toolkit)) throw new Fail(400, "bad_choice");
@@ -263,20 +263,73 @@ async function connect(u: User, bid: string, body: any) {
   if (!link?.redirect_url) throw new Fail(502, "connect_failed");
   const acct = cut(link.connected_account_id, 80) || null;
   await db.from("client_connections").insert({ order_id: order.id, business_id: bid, toolkit, composio_user_id: b.composio_user_id, connected_account_id: acct, status: "link_made", link_expires_at: link.expires_at || null });
-  await db.from("business_connections").update({ status: "link_made", choice: toolkit, connected_account_id: acct, link_expires_at: link.expires_at || null, updated_at: now() }).eq("id", bc.id);
+  const detail = { ...((bc.detail as any) || {}) };
+  if (bc.status === "active" && bc.connected_account_id && acct) {
+    // Signing in again on a step that works: the current sign-in stays in use until the new one is finished.
+    detail.pending = { account: acct, toolkit, at: now() };
+    await db.from("business_connections").update({ detail, updated_at: now() }).eq("id", bc.id);
+    await log(bid, "connection", `${cat.label}: signing in again started. The current sign-in keeps working until the new one is finished.`, { actor: u.email });
+    return json({ ok: true, url: link.redirect_url, again: true });
+  }
+  // A sign-in that was never finished, or stopped working, is replaced. It is removed once the new one works.
+  delete detail.pending;
+  if (bc.connected_account_id && bc.connected_account_id !== acct) detail.replaces = [...new Set([...(detail.replaces || []), bc.connected_account_id])].slice(-5); else if (!detail.replaces?.length) delete detail.replaces;
+  await db.from("business_connections").update({ status: "link_made", choice: toolkit, connected_account_id: acct, link_expires_at: link.expires_at || null, detail, updated_at: now() }).eq("id", bc.id);
   await log(bid, "connection", `${cat.label}: sign-in started.`, { actor: u.email });
   return json({ ok: true, url: link.redirect_url });
 }
 const MAP: Record<string, string> = { ACTIVE: "active", INITIATED: "link_made", INITIALIZING: "link_made", EXPIRED: "expired", FAILED: "failed", INACTIVE: "revoked" };
+// Remove a sign-in that has been replaced, so nothing older and wider than the current one stays behind.
+async function retire(account: string): Promise<boolean> {
+  let gone = false;
+  try { await composio(`/connected_accounts/${encodeURIComponent(account)}`, { method: "DELETE" }); gone = true; }
+  catch (e) { gone = /404|not.?found/i.test(String((e as Error).message)); }
+  if (gone) await db.from("client_connections").update({ status: "revoked", updated_at: now() }).eq("connected_account_id", account);
+  return gone;
+}
 // Read each sign-in's state from Composio. A sign-in that stops working pauses only the agents that use it.
 async function refresh(bid: string, actor: string) {
   const { data: b } = await db.from("businesses").select("composio_user_id,name").eq("id", bid).single();
-  const { data: rows } = await db.from("business_connections").select("id,slot,status,connected_account_id,agents").eq("business_id", bid).not("connected_account_id", "is", null);
+  const { data: rows } = await db.from("business_connections").select("id,slot,status,connected_account_id,agents,detail,choice").eq("business_id", bid).not("connected_account_id", "is", null);
   const { data: extra } = await db.from("client_connections").select("id,toolkit,status,connected_account_id").eq("business_id", bid).not("connected_account_id", "is", null).in("status", ["link_made", "active"]);
   if ((!rows?.length && !extra?.length) || !b?.composio_user_id) return { changed: 0 };
   const live = await composio(`/connected_accounts?user_ids=${encodeURIComponent(b.composio_user_id)}&limit=100`);
   const by = new Map<string, any>((live?.items ?? []).map((i: any) => [i.id, i]));
   let changed = 0;
+  const stateOf = (acct: string, fallback: string) => MAP[String(by.get(acct)?.status || "").toUpperCase()] ?? (by.has(acct) ? fallback : "revoked");
+  // A step being signed in again: switch to the new sign-in once it works, then remove the old one.
+  for (const row of rows || []) {
+    const d = { ...((row.detail as any) || {}) }, p = d.pending;
+    if (!p?.account) continue;
+    const st = stateOf(p.account, "link_made");
+    const stale = Date.now() - Date.parse(p.at || 0) > 2 * 3600 * 1000;
+    if (st === "link_made" && !stale) continue;
+    delete d.pending;
+    const { data: cat } = await db.from("connection_catalog").select("label").eq("slot", row.slot).single();
+    if (st === "active") {
+      const old = row.connected_account_id!;
+      d.replaces = [...new Set([...(d.replaces || []), old])].slice(-5);
+      // If the earlier sign-in stopped working in the meantime, the usual "is connected" handling below takes over.
+      const keep = row.status === "active" ? "active" : "link_made";
+      await db.from("business_connections").update({ connected_account_id: p.account, choice: p.toolkit || row.choice, status: keep, detail: d, checked_at: now(), updated_at: now() }).eq("id", row.id);
+      await db.from("client_connections").update({ status: "active", updated_at: now() }).eq("connected_account_id", p.account);
+      if (keep === "active") await log(bid, "connection", `${cat!.label} was signed in again. The earlier sign-in is being removed.`, { actor, outcome: "ok" });
+      row.connected_account_id = p.account; row.status = keep; row.detail = d; changed++;
+    } else {
+      // The second sign-in was not finished. Nothing changes for the step; the unfinished one is removed.
+      await db.from("business_connections").update({ detail: d, updated_at: now() }).eq("id", row.id);
+      await retire(p.account); row.detail = d;
+    }
+  }
+  // Sign-ins that a working step replaced are removed here, and tried again next time if that fails.
+  for (const row of rows || []) {
+    const d = { ...((row.detail as any) || {}) }, list: string[] = (d.replaces || []).filter((a: string) => a && a !== row.connected_account_id);
+    if (!d.replaces?.length || stateOf(row.connected_account_id!, row.status) !== "active") continue;
+    const left: string[] = [];
+    for (const a of list) if (!(await retire(a))) left.push(a);
+    if (left.length) d.replaces = left; else delete d.replaces;
+    await db.from("business_connections").update({ detail: d }).eq("id", row.id); row.detail = d;
+  }
   for (const row of rows || []) {
     const st = MAP[String(by.get(row.connected_account_id!)?.status || "").toUpperCase()] ?? (by.has(row.connected_account_id!) ? row.status : "revoked");
     if (st === row.status || row.status === "revoked") { await db.from("business_connections").update({ checked_at: now() }).eq("id", row.id); continue; }

@@ -328,7 +328,9 @@ RULES THAT ALWAYS HOLD:
     const r = await execTool(sheet.rows.create.slug, sheet.conn.connected_account_id, c!.biz.composio_user_id, { title: `Pip: ${c!.name}` }, sheet.rows.create.toolkit);
     const sid = dig(r.j?.data, "spreadsheetId") ?? dig(r.j?.data, "spreadsheet_id");
     if (!r.ok || r.j?.successful === false || typeof sid !== "string") return null;
-    sheet.conn.detail = { ...(sheet.conn.detail ?? {}), spreadsheet_id: sid };
+    // Merge into what is stored now: the Portal keeps its own notes in the same field while a sign-in is being redone.
+    const { data: cur } = await db.from("business_connections").select("detail").eq("id", sheet.conn.id).maybeSingle();
+    sheet.conn.detail = { ...(cur?.detail ?? sheet.conn.detail ?? {}), spreadsheet_id: sid };
     await db.from("business_connections").update({ detail: sheet.conn.detail }).eq("id", sheet.conn.id);
     await log(`${c!.teammate} made the sheet "Pip: ${c!.name}"`, "ok", sheet.job);
     return sid;
@@ -367,9 +369,22 @@ RULES THAT ALWAYS HOLD:
       const want = Object.keys(meta.row.schema?.input?.properties ?? {});
       if (want.length) args = Object.fromEntries(Object.entries(args).filter(([k]) => want.includes(k)));
     }
-    const r = await execTool(meta.row.slug, meta.conn.connected_account_id, c!.biz.composio_user_id, args, meta.row.toolkit, !write);
+    let r = await execTool(meta.row.slug, meta.conn.connected_account_id, c!.biz.composio_user_id, args, meta.row.toolkit, !write);
+    const errOf = (x: typeof r) => cut(x.j?.error?.message ?? x.j?.error ?? x.j?.message ?? "", 300);
+    // The Pip sheet can go missing: the owner deleted it, or signed in again with another account.
+    // Start a new one once and save the row there, so the customer's details are not lost.
+    if (isSheet && (!r.ok || r.j?.successful === false) && /not.?found|404|permission|forbidden|insufficient|cannot (access|open)/i.test(errOf(r)) && !/api key/i.test(errOf(r))) {
+      const lost = sheet.conn.detail?.spreadsheet_id;
+      const rest = { ...(sheet.conn.detail ?? {}) }; delete rest.spreadsheet_id;
+      sheet.conn.detail = rest;
+      const sid2 = await ensureSheet();
+      if (sid2 && sid2 !== lost) {
+        for (const k of ["spreadsheetId", "spreadsheet_id"]) if (k in args) args[k] = sid2;
+        r = await execTool(meta.row.slug, meta.conn.connected_account_id, c!.biz.composio_user_id, args, meta.row.toolkit, false);
+      } else if (!sid2 && lost) { sheet.conn.detail = { ...rest, spreadsheet_id: lost }; }
+    }
     const failed = !r.ok || r.j?.successful === false;
-    const err = cut(r.j?.error?.message ?? r.j?.error ?? r.j?.message ?? "", 300);
+    const err = errOf(r);
     if (failed) {
       actions.push({ tool: name, status: "failed" });
       if (r.status === 401 || /invalid_grant|token (has )?expired|revoked|reauth|unauthori[sz]ed|connected account.*(inactive|expired|not found)/i.test(err)) {
