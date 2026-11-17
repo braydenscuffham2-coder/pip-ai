@@ -24,8 +24,11 @@ Only claim what the "live" column says.
 | --- | --- |
 | The shape of a job, the checker, the permission check as a function, the plain-words text | In this repo, tested. Not yet called by anything that runs. |
 | `pip-turn` reading `jobs` and refusing what a job does not allow | **Not live.** Lane 01, pull request 3. Until then `pip-turn` ignores `jobs` and runs every teammate the old way. |
-| Jobs that start on a schedule, from a tool, or from an owner's decision | **Not live.** Lane 01, pull request 2 (`pip-jobs`). |
-| Per-day limits, per-person limits, three-failures pause | **Not live.** Pull request 2. |
+| Jobs that start on a schedule, on an event, or from "Run now" | Built and tested with fakes in pull request 2 (`pip-jobs`, and `POST /job` in `pip-turn`). **Not live** until that is merged, deployed and proven on TEST Fork. |
+| Jobs that start from an owner's decision | **Not live.** Comes after the runner, with lane 04. |
+| Retry safety, per-run and per-day limits, three-failures pause, dead ends to the supervisor | Same as the runner: built and tested, **not live** yet. |
+| A job that started on its own sending a message or placing a call | **Refused.** The rules for who may be reached (`purpose`) are not built yet. Pull request 3. |
+| A job that started on its own updating a record | **Refused.** No tool has a field map yet. Pull request 3. |
 | Long tasks | **Not live.** Pull request 4. |
 | Money records, and any record in a money tool | **Refused for everyone** until lane 08's buying check exists. |
 
@@ -88,7 +91,7 @@ One job answers each channel. Two jobs claiming the same channel is an error, so
 { "type": "schedule", "every": "minutes", "interval": 30 }
 ```
 
-Nothing runs more often than every 15 minutes. A schedule that would start more runs in a day than the job's daily limit is an error. Listing the same schedule twice in one job is an error too. If Pip was down at the set time, the run happens once when it is back, never several times to catch up.
+Nothing runs more often than every 15 minutes. A schedule that would start more runs in a day than the job's daily limit is an error. Listing the same schedule twice in one job is an error too. If Pip was down at the set time, the run happens once when it is back, never several times to catch up. A daily, weekly or monthly slot that is more than 12 hours late is skipped rather than run in the middle of the night.
 
 **An event from a tool**
 
