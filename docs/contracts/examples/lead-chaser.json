@@ -1,0 +1,24 @@
+{
+  "contract": "teammate/1",
+  "jobs": [
+    {
+      "id": "lead_chaser",
+      "name": "New lead follow-up",
+      "does": "When a new lead lands in your customer list, replies once and keeps its status up to date.",
+      "instructions": "A new lead was just added. Read the lead. If it has an email address and has not been contacted, send one short, friendly email that says you are an AI assistant for the business and asks what they need. Then set the lead's status to 'contacted' and add a note saying what you sent. If the lead writes back within the week, the front desk answers; this job only checks once a day and sets the status to 'no reply' after five days of silence.",
+      "triggers": [{ "type": "event", "from": "crm", "event": "record_added", "records": "lead", "if": { "field": "source", "is": "website" } }],
+      "tools": [
+        { "tool": "crm", "records": "lead", "can": ["read", "update"], "fields": { "read": ["name", "email", "source", "status", "created_at"], "update": ["status"] } },
+        { "tool": "crm", "records": "note", "can": ["add"] },
+        { "tool": "email", "records": "message", "can": ["add"], "purpose": "transactional" }
+      ],
+      "limits": {
+        "per_run": { "steps": 6, "actions": 3 },
+        "per_day": { "runs": 100, "actions": 150 },
+        "each": [{ "tool": "email", "records": "message", "per_run": 1, "per_day": 40, "per_contact_per_day": 1 }]
+      },
+      "pause": { "after_failures": 3, "on_limit": "pause", "when": ["The lead asks to stop being contacted"] },
+      "task": { "max_runs": 6, "max_days": 7 }
+    }
+  ]
+}

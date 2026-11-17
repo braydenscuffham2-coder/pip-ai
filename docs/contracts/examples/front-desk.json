@@ -1,0 +1,41 @@
+{
+  "contract": "teammate/1",
+  "jobs": [
+    {
+      "id": "front_desk",
+      "name": "Front desk",
+      "does": "Answers customers on chat, text and the phone, checks the calendar and takes booking requests.",
+      "instructions": "Answer questions from the business facts on file. When a customer wants a time, check the calendar's busy times, then send a booking request to the owner. Save every new customer as a lead and add a row to the sheet. Never quote a price that is not on file.",
+      "triggers": [{ "type": "message", "channels": ["web_chat", "sms", "voice"] }],
+      "tools": [
+        { "tool": "pip", "records": "booking_request", "can": ["add"] },
+        { "tool": "pip", "records": "lead", "can": ["add"] },
+        { "tool": "pip", "records": "owner_alert", "can": ["add"] },
+        { "tool": "pip", "records": "handoff", "can": ["add"] },
+        { "tool": "calendar", "records": "busy_time", "can": ["read"], "required": false },
+        { "tool": "sheets", "records": "row", "can": ["add"], "required": false }
+      ],
+      "limits": { "per_run": { "steps": 6, "actions": 3 }, "per_day": { "actions": 200 } },
+      "pause": { "when": ["A customer says they are in danger or need emergency help", "A customer mentions a lawyer or a complaint to a regulator"] }
+    },
+    {
+      "id": "booking_follow_up",
+      "name": "Booking follow-up",
+      "does": "Tells the customer once when you approve or decline their booking request.",
+      "instructions": "The owner has just approved or declined a booking request. Tell that customer the answer in two short sentences, on the channel they used. If it was approved, add a hold to the calendar for the agreed time. Say nothing else and do not offer other times unless the owner's note says to.",
+      "triggers": [{ "type": "owner", "on": "decision", "about": "booking_request", "when": ["approved", "declined"] }],
+      "tools": [
+        { "tool": "email", "records": "message", "can": ["add"], "purpose": "transactional", "required": false },
+        { "tool": "sms", "records": "message", "can": ["add"], "purpose": "transactional", "required": false },
+        { "tool": "calendar", "records": "appointment", "can": ["add"], "required": false }
+      ],
+      "limits": {
+        "per_run": { "steps": 4, "actions": 2 },
+        "each": [
+          { "tool": "email", "records": "message", "per_run": 1, "per_contact_per_day": 2 },
+          { "tool": "sms", "records": "message", "per_run": 1, "per_contact_per_day": 2 }
+        ]
+      }
+    }
+  ]
+}
