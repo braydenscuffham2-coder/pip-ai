@@ -131,6 +131,7 @@ Contact: [legal@hirepip.com] · [mailing address]
 ## Notes for the lawyer and Brayden (not part of the Terms)
 
 - **Checked against code and database on November 17, 2026:** usage rates, 40% included, $100 early-invoice threshold and 7-day grace (`forge_settings.billing_defaults`); billing starts at go-live and usage never pauses a client (`pip-run` header, `portal_billing_tick`); the section 2 limits (`pip-turn/index.ts`); delete flow (`portal_api_cancel`).
+- Section 8's "billing stops at the end of the paid month" is a proposed term. What the billing code does on disconnect was not checked.
 - **The Portal does not ask for agreement to terms today.** It only shows the tick-box when a terms link is set, and none is set. Set it to the approved Terms before the first client.
 - "A teammate can only use the tools it was built with" is enforced for the main teammate kind. Lane 01 is replacing "add-only" with per-job permission profiles; section 2 must be rewritten when that ships.
 - Section 5's "we may submit registration for you" assumes the answer to memo item 3 on who registers.

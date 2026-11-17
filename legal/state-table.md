@@ -49,7 +49,7 @@ Pip's rule (disclose at the start, always) meets or exceeds each of these. The c
 | New Jersey | Database says bots in online sales must not deceive without disclosure | | Not verified | Unknown | **No source found this session** | none |
 | Idaho | Conversational AI Safety Act, S 1297 (2026 Session Laws ch. 249) | When a reasonable person could think it is human; crisis protocol; rules for minors | **July 1, 2027** | Possibly. Memo item 4. | Says "confirm its effective date": **update** | [S1] |
 | Colorado | Conversational AI law (HB 26-1263); separately the 2024 AI Act, narrowed and delayed by SB 189 | At first interaction and at intervals (per one secondary source) | Jan 1, 2027 | Unknown | Refers to the 2024 Act only: **update** | [S4][S6] |
-| Oregon | 2026 chatbot law | When a person could think it is human | Jan 1, 2027 | Unknown | Says required now: **correct the date** | [S3] |
+| Oregon | 2026 chatbot law | When a person could think it is human | Jan 1, 2027 | Unknown | Has no date: **add it** | [S3] |
 | Washington | 2026 chatbot law | Notice at start and at intervals | Jan 1, 2027 | Database asks the same question | ✓ | [S3][S4] |
 | Connecticut | 2026 chatbot law | Not reviewed | Varies by section; Jan 1, 2027 per one source | Unknown | **Missing: add** | [S3][S4] |
 | Georgia | 2026 chatbot law | Notice at start and at intervals | July 1, 2027 | Unknown | **Missing: add** | [S3][S4] |

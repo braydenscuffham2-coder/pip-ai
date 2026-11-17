@@ -1,7 +1,7 @@
 # Materials for Google's review of Pip's sign-in app
 
 > **DRAFT. Not legal advice. Not reviewed by a lawyer.** Lane 10, for lane 03. November 17, 2026.
-> Google's rules summarized here are from [S12], checked November 17, 2026. Lane 03 should read Google's current verification page before submitting; the requirements change.
+> Google's rules summarized here are from [S12], checked November 17, 2026 from search excerpts. Google's policy page itself could not be opened in this session; lane 03 should read the current verification page before submitting.
 
 ## 1. Where things stand
 
