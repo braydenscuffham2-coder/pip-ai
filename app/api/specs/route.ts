@@ -20,7 +20,9 @@ export async function POST(req: Request) {
   const v = validateSpec(b.spec, business);
   if (!business || !v.spec) return bad('invalid_spec');
   if (!v.ok) return json({ error: 'invalid_spec', errors: v.errors }, 422);
-  const status = ['draft', 'testing', 'needs_review', 'sandbox', 'approved', 'live', 'paused'].includes(b.status as string) ? b.status : 'approved';
+  // Go-live is never done here. It stays with Brayden, through the Forge. The database refuses it too.
+  if (b.status === 'live') return bad('go_live_is_not_done_here', 403);
+  const status = ['draft', 'testing', 'needs_review', 'sandbox', 'approved', 'paused'].includes(b.status as string) ? b.status : 'approved';
   const brain = b.brain as Brain;
   if (!brain || !Array.isArray(brain.facts) || !Array.isArray(brain.qa)) return bad('invalid_brain');
   const id = await upsertSpec({ id: typeof b.id === 'string' ? b.id : null, business, domain: typeof b.domain === 'string' ? b.domain : null, status: status as never, spec: v.spec, brain, quote: b.quote, tests: b.tests });
