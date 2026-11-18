@@ -37,6 +37,8 @@ const BREAKS = [
   ["the spend guard is ignored", "&& body?.limited !== true", ""],
   ["a failed tool is called done", "const failed = !r.ok || r.j?.successful === false;", "const failed = false;"],
   ["an unreadable calendar means free", "if (!Array.isArray(items)) {", "if (false) {"],
+  ["a session is opened for the whole toolkit", "tools: { [toolkit]: { enable: allow } } });\n  if (!r.ok) r = await open({ ...pin, tools:", "});\n  if (!r.ok) r = await open({ ...pin, tools:"],
+  ["tools outside the catalog can be sent to Composio", "if (!only && !kitTools.get(toolkit)?.has(slug)) {", "if (false) {"],
 ];
 
 const dir = mkdtempSync(join(tmpdir(), "pip-turn-prove-"));

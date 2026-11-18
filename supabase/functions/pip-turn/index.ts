@@ -76,33 +76,58 @@ async function composio(path: string, init: RequestInit = {}): Promise<{ ok: boo
 // still run tools inside a session pinned to the owner's connected account, so that is the fallback. The way that
 // works is remembered while this instance lives.
 let direct = true;
-const sessions = new Map<string, { id: string; at: number }>();
-async function sessionFor(user: string, toolkit: string, account: string): Promise<string | null> {
-  const key = `${user}|${toolkit}|${account}`, hit = sessions.get(key);
-  if (hit && Date.now() - hit.at < 20 * 60000) return hit.id;
-  let r = await composio("/tool_router/session", { method: "POST", body: JSON.stringify({ user_id: user, toolkits: { enable: [toolkit] }, connected_accounts: { [toolkit]: [account] }, manage_connections: { enable: false } }) });
-  if (!r.ok) r = await composio("/tool_router/session", { method: "POST", body: JSON.stringify({ user_id: user, connected_accounts: { [toolkit]: [account] } }) });
-  if (!r.ok) r = await composio("/tool_router/session", { method: "POST", body: JSON.stringify({ user_id: user }) });
+// Composio's "Execution Allowlist" on a sign-in config is not applied to tools run inside a session (proved on
+// TEST Fork, docs/connections.md section 3). So every session is opened for exact tools only: the catalog's enabled
+// tools for that toolkit. This guards against a bug or a tricked model here, not against a stolen key.
+const kitTools = new Map<string, Set<string>>();
+function allowTool(toolkit: unknown, slug: unknown) {
+  if (typeof toolkit !== "string" || typeof slug !== "string" || !/^[A-Z0-9_]{3,80}$/.test(slug)) return;
+  if (!kitTools.has(toolkit)) kitTools.set(toolkit, new Set());
+  kitTools.get(toolkit)!.add(slug);
+}
+const sessions = new Map<string, { id: string; at: number; filtered: boolean }>();
+let lastSessionFiltered: boolean | null = null;
+async function sessionFor(user: string, toolkit: string, account: string, slug: string, only?: string[]): Promise<{ id: string; key: string } | null> {
+  const allow = [...new Set(only ?? [...(kitTools.get(toolkit) ?? [])])].filter((x) => /^[A-Z0-9_]{3,80}$/.test(x)).sort();
+  const key = `${user}|${toolkit}|${account}|${allow.join(",")}`, hit = sessions.get(key);
+  if (hit && Date.now() - hit.at < 20 * 60000) { lastSessionFiltered = hit.filtered; return { id: hit.id, key }; }
+  const pin = { user_id: user, connected_accounts: { [toolkit]: [account] }, manage_connections: { enable: false } };
+  const open = (b: J) => composio("/tool_router/session", { method: "POST", body: JSON.stringify(b) });
+  let filtered = true;
+  let r = await open({ ...pin, toolkits: { enable: [toolkit] }, tools: { [toolkit]: { enable: allow } } });
+  if (!r.ok) r = await open({ ...pin, tools: { [toolkit]: { enable: allow } } });
+  if (!r.ok && !only) {
+    // Composio would not open a session with the tool filter. Fall back to how it worked before, and say so loudly.
+    console.error("[turn] session tool filter refused", r.status, JSON.stringify(r.j).slice(0, 200));
+    filtered = false;
+    r = await open({ ...pin, toolkits: { enable: [toolkit] } });
+    if (!r.ok) r = await open({ user_id: user, connected_accounts: { [toolkit]: [account] } });
+    if (!r.ok) r = await open({ user_id: user });
+  }
   const id = r.j?.session_id ?? r.j?.id;
   if (!r.ok || typeof id !== "string") { console.error("[turn] session", r.status, JSON.stringify(r.j).slice(0, 200)); return null; }
-  sessions.set(key, { id, at: Date.now() });
-  return id;
+  sessions.set(key, { id, at: Date.now(), filtered });
+  lastSessionFiltered = filtered;
+  return { id, key };
 }
-async function execTool(slug: string, account: string, user: string, args: J, toolkit: string, retry = false): Promise<{ ok: boolean; status: number; j: J }> {
-  const r = await execOnce(slug, account, user, args, toolkit);
-  if (retry && (r.status === 0 || r.status >= 500)) { await new Promise((x) => setTimeout(x, 700)); return await execOnce(slug, account, user, args, toolkit); }
+async function execTool(slug: string, account: string, user: string, args: J, toolkit: string, retry = false, only?: string[]): Promise<{ ok: boolean; status: number; j: J }> {
+  const r = await execOnce(slug, account, user, args, toolkit, only);
+  if (retry && (r.status === 0 || r.status >= 500)) { await new Promise((x) => setTimeout(x, 700)); return await execOnce(slug, account, user, args, toolkit, only); }
   return r;
 }
-async function execOnce(slug: string, account: string, user: string, args: J, toolkit: string) {
-  if (direct) {
+async function execOnce(slug: string, account: string, user: string, args: J, toolkit: string, only?: string[]) {
+  // Whichever way the key works, only an enabled catalog tool for this toolkit is ever sent to Composio.
+  if (!only && !kitTools.get(toolkit)?.has(slug)) { console.error("[turn] tool outside the catalog refused", toolkit, slug); return { ok: false, status: 403, j: { successful: false, error: "That tool is not in Pip's catalog for this toolkit." } }; }
+  // A founder test of the filter (only) always goes through a session, since that is the path being tested.
+  if (direct && !only) {
     const r = await composio(`/tools/execute/${slug}`, { method: "POST", body: JSON.stringify({ connected_account_id: account, user_id: user, arguments: args }) });
     if (!(r.status === 403 && /permission/i.test(JSON.stringify(r.j)))) return r;
     direct = false;
   }
-  const sid = await sessionFor(user, toolkit, account);
-  if (!sid) return { ok: false, status: 403, j: { error: "This API key can neither run tools directly nor open a session." } };
-  const r = await composio(`/tool_router/session/${sid}/execute`, { method: "POST", body: JSON.stringify({ tool_slug: slug, arguments: args }) });
-  if (r.status === 404 || r.status === 410) sessions.delete(`${user}|${toolkit}|${account}`);
+  const s = await sessionFor(user, toolkit, account, slug, only);
+  if (!s) return { ok: false, status: 403, j: { error: "This API key can neither run tools directly nor open a session." } };
+  const r = await composio(`/tool_router/session/${s.id}/execute`, { method: "POST", body: JSON.stringify({ tool_slug: slug, arguments: args }) });
+  if (r.status === 404 || r.status === 410) sessions.delete(s.key);
   // A session answer reports a tool failure in "error" even when the HTTP call itself worked.
   if (r.ok && r.j && r.j.successful === undefined && typeof r.j.error === "string" && r.j.error) r.j.successful = false;
   return r;
@@ -266,6 +291,7 @@ async function turn(body: J, trace: boolean) {
       db.from("agent_pauses").select("job").eq("spec_id", id).is("resumed_at", null).not("job", "is", null),
     ]);
     const paused = new Set((pauses ?? []).map((p: J) => p.job));
+    for (const row of catalog ?? []) allowTool(row.toolkit, row.slug);
     for (const row of catalog ?? []) {
       if (!c.uses.includes(row.block) && !(row.block === "data_sink" && c.uses.includes("sheets"))) continue;
       const slot = (cat ?? []).find((x: J) => (x.blocks ?? []).includes(row.block));
@@ -298,6 +324,7 @@ async function turn(body: J, trace: boolean) {
       }
       for (const row of rows.slice(0, 6)) {
         if (!row.schema?.input || tools.length >= 24) continue;
+        allowTool(row.toolkit, row.slug);
         outside.set(row.slug, { row, conn: { connected_account_id: x.connected_account_id }, job: x.toolkit });
         tools.push({ name: row.slug, description: cut(`Adds a new record in the business's ${x.toolkit}. ${row.schema.description ?? ""}`, 700), input_schema: row.schema.input });
         if (!extraKits.includes(x.toolkit)) extraKits.push(x.toolkit);
@@ -508,10 +535,14 @@ async function diag(body: J) {
     const { data: biz } = await db.from("businesses").select("composio_user_id").eq("id", pr.business).maybeSingle();
     const { data: conn } = row ? await db.from("business_connections").select("connected_account_id").eq("business_id", pr.business).eq("choice", row.toolkit).eq("status", "active").limit(1).maybeSingle() : { data: null };
     if (!row || !biz?.composio_user_id || !conn?.connected_account_id) return json({ error: "no_tool_or_connection" }, 404);
-    const r = await execTool(row.slug, conn.connected_account_id, biz.composio_user_id, pr.args ?? {}, row.toolkit);
+    // "only": run the tool inside a session opened for just these tools, to prove Composio refuses anything else.
+    const only = Array.isArray(pr.only) ? pr.only.filter((x: J) => typeof x === "string" && /^[A-Z0-9_]{3,80}$/.test(x)).slice(0, 10) : undefined;
+    if (!only) { const { data: kit } = await db.from("tool_catalog").select("slug,toolkit").eq("enabled", true).eq("toolkit", row.toolkit); for (const k of kit ?? []) allowTool(k.toolkit, k.slug); }
+    lastSessionFiltered = null;
+    const r = await execTool(row.slug, conn.connected_account_id, biz.composio_user_id, pr.args ?? {}, row.toolkit, false, only);
     const shape = (o: J, d = 0): J => o === null ? "null" : Array.isArray(o) ? [o.length, d < 4 && o.length ? shape(o[0], d + 1) : "…"] : typeof o === "object" ? (d < 4 ? Object.fromEntries(Object.entries(o).slice(0, 25).map(([k, v]) => [k, shape(v, d + 1)])) : "{…}") : typeof o;
     const items = dig(r.j?.data, "items");
-    out.probe = { status: r.status, direct, successful: r.j?.successful, error: cut(r.j?.error?.message ?? r.j?.error ?? "", 200), shape: shape(r.j), items: Array.isArray(items) ? items.length : null, sheet_id: dig(r.j?.data, "spreadsheetId") ?? dig(r.j?.data, "spreadsheet_id") ?? null };
+    out.probe = { status: r.status, direct, session_filtered: lastSessionFiltered, successful: r.j?.successful, error: cut(r.j?.error?.message ?? r.j?.error ?? "", 200), shape: shape(r.j), items: Array.isArray(items) ? items.length : null, sheet_id: dig(r.j?.data, "spreadsheetId") ?? dig(r.j?.data, "spreadsheet_id") ?? null };
   }
   return json(out);
 }
