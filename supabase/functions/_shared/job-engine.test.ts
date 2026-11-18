@@ -52,7 +52,7 @@ function world(over: Partial<{ exec: (t: Tool, a: J, n: number) => ExecResult | 
     hash: (s) => Promise.resolve(String(s.length)),
     now: over.now ?? (() => 0),
   });
-  const go = (j: Job, script: J[], state: State | null = null) => runJob(j, TOOLS, { system: "You are Hallie.", input: "Run the job.", state, deadline: 1000 }, deps(script));
+  const go = (j: Job, script: J[], state: State | null = null, tools: Tool[] = TOOLS) => runJob(j, tools, { system: "You are Hallie.", input: "Run the job.", state, deadline: 1000 }, deps(script));
   return { w, go };
 }
 
@@ -190,4 +190,41 @@ test("endings: no model, out of time, asks for a person, a needed tool is gone, 
   const loop = world();
   const forever = Array.from({ length: 50 }, () => turn(call("CRM_GET_CONTACT")));
   assert.equal((await loop.go(job(), forever)).outcome, "dead_end"); assert.ok(loop.w.execs.length <= 6);
+});
+
+test("hold 1: a job that lists fields.add cannot fill a field outside the list", async () => {
+  const narrow = () => job((j) => (j.tools[0].fields = { add: ["date", "note"] }));
+  // The sheet tool says which fields a call fills in, the way the runner builds it.
+  const tools = TOOLS.map((t) => (t.name === "save_to_sheet" ? { ...t, fields: (a: J) => Object.keys(a?.row && typeof a.row === "object" ? a.row : {}) } : t));
+  const { w, go } = world();
+  const r = await go(narrow(), [
+    turn(call("save_to_sheet", { row: { date: "2026-11-18", note: "Daily line", card_number: "4242" } })),
+    turn(call("save_to_sheet", { row: {} }), call("save_to_sheet", { row: "date" }), call("save_to_sheet", {})),
+    turn(call("save_to_sheet", { row: { date: "2026-11-18", note: "Daily line" } })),
+    done("Added today's line."),
+  ], null, tools);
+  assert.equal(r.outcome, "done");
+  assert.deepEqual(w.offered.sort(), ["CRM_GET_CONTACT", "CRM_UPDATE_CONTACT", "SEND_EMAIL", "needs_a_person", "save_to_sheet"]);
+  assert.deepEqual(w.execs, ["save_to_sheet"], "only the call that stayed inside the list ran");
+  assert.equal(w.ledger.size, 1, "the refused calls were never written down as attempts");
+  assert.equal(w.refused.length, 4);
+  assert.match(w.refused[0], /Outside this job's permissions: card_number/);
+  for (const why of w.refused.slice(1)) assert.match(why, /must say exactly which fields|Outside this job's permissions/);
+  // The same job without a field list is not narrowed.
+  const wide = world();
+  await wide.go(job(), [turn(call("save_to_sheet", { row: { date: "x", card_number: "4242" } })), done()], null, tools);
+  assert.deepEqual(wide.w.execs, ["save_to_sheet"]);
+});
+
+test("hold 1: a tool that cannot say which fields it fills is never offered to a job that lists them", async () => {
+  // TOOLS has save_to_sheet with no `fields` function: the runner as it was when the review found the gap.
+  const { w, go } = world();
+  const r = await go(job((j) => (j.tools[0].fields = { add: ["date", "note"] })), [turn(call("save_to_sheet", { row: { date: "x", card_number: "4242" } }), call("save_to_sheet", { row: { date: "x" } })), done()]);
+  assert.ok(!w.offered.includes("save_to_sheet"), "not shown to the model");
+  assert.deepEqual(w.execs, [], "and not run if the model asks anyway");
+  assert.equal(w.refused.length, 2); assert.equal(w.ledger.size, 0); assert.equal(r.outcome, "done");
+  // The same holds for a read when the job lists what it may see.
+  const seen = world();
+  await seen.go(job((j) => (j.tools[1].fields.read = ["name"])), [turn(call("CRM_GET_CONTACT", { id: "1" })), done()]);
+  assert.ok(!seen.w.offered.includes("CRM_GET_CONTACT")); assert.deepEqual(seen.w.execs, []);
 });

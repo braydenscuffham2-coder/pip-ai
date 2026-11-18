@@ -19,7 +19,11 @@ export type Tool = {
   name: string; description: string; input_schema: J;
   /** What this tool is in the job's terms. Checked with allows() on every call. */
   tool: string; records: string; level: "read" | "add" | "update";
-  /** For an update: the fields a call with these arguments would change. */
+  /**
+   * The fields a call with these arguments would touch. Passed to allows() on every call. An update always needs it,
+   * and so does a read or an add whenever the job lists fields for that level: a tool without it is then not offered
+   * and every call to it is refused, so a field list is never skipped because a tool could not say what it fills in.
+   */
   fields?: (args: J) => string[];
   /** Messages and calls: who a call with these arguments would reach, as a one-way code. */
   contact?: (args: J) => string | null;
@@ -83,8 +87,11 @@ export async function runJob(job: Job, tools: Tool[], start: { system: string; i
   for (const t of tools) {
     if (t.name === NEEDS.name) continue;
     const g = job.tools.find((x) => x.tool === t.tool && x.records === t.records);
-    const probe = t.level === "update" ? g?.fields?.update?.slice(0, 1) : undefined;
-    if (allows(job, { tool: t.tool, records: t.records, level: t.level, ...(probe ? { fields: probe } : {}) }).ok) byName.set(t.name, t);
+    // Where the job lists fields for this level, the tool must be able to say which fields a call touches. The probe
+    // asks about one listed field; the real fields are checked on every call below.
+    const listed = g?.fields?.[t.level];
+    if (listed && !t.fields) continue;
+    if (allows(job, { tool: t.tool, records: t.records, level: t.level, ...(listed ? { fields: listed.slice(0, 1) } : {}) }).ok) byName.set(t.name, t);
   }
   const offered = [...[...byName.values()].map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema })), NEEDS];
   const system = `${start.system}\n\nYOUR JOB NOW: ${job.name}\n${job.instructions}\n${job.pause.when.length ? `\nCall needs_a_person if: ${job.pause.when.join("; ")}.\n` : ""}\n${RULES}`;

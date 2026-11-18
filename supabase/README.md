@@ -13,7 +13,7 @@ Pip's backend on Supabase: Deno edge functions next to a Postgres database. The 
 | `pip-forge` | The building side. Takes an owner's order and turns it into build orders, skill specs and queued build jobs. `POST /intake` takes Pip's own Lock it in order, gives it a code (PIP-XXXX) and files the API Shelf's needs. The API-key engine only builds an order after the Board has had it for the fallback window. |
 | `pip-forge-mcp` | The founder-only "Pip Forge" connector the Forge Board uses: the real order queue, taking an order onto the Board, saving results, go-live, the API Shelf, the Forge's safety settings, owner sign-in links through Composio (`client_connect`, `client_connections`) and the red team's read and save (`redteam_pack`, `redteam_save`). Its URL ends in a key; only the key's hash is stored. |
 | `pip-shelf` | The API Shelf's alert. When an order needs an API you don't own, it emails one digest: what to fund, which orders wait on it, the price and the budget so far. It checks keys by secret name only. |
-| `pip-jobs` | Starts a teammate's jobs when nobody asked: on a schedule (the database knocks on `/tick` every 5 minutes), on an event (`/event`), or from "Run now" (`/run`). It only decides when; `pip-turn` `POST /job` does the work under the job's permissions and limits. Each slot or event starts at most one run, and a retry never repeats a real change (`job_runs`, `job_actions`). See `docs/contracts/teammate-spec.md`. |
+| `pip-jobs` | Starts a teammate's jobs when nobody asked: on a schedule (the database knocks on `/tick` every 5 minutes), on an event (`/event`), or from "Run now" (`/run`). It only decides when; `pip-turn` `POST /job` does the work under the job's permissions and limits. Each slot or event starts at most one run, and a retry never repeats a real change (`job_runs`, `job_actions`). A run whose worker dies three times is failed and its job paused, the same as three reported failures. The timer reads this project's own functions address from `forge_settings` key `functions_url` and knocks on nothing until it is set (see "Switching the job timer on" below). See `docs/contracts/teammate-spec.md`. |
 | `pip-reader` | A small remote MCP server that lets the Pip build inside the Claude app call Pip's own read endpoints, and send an owner's Lock it in order to `pip-forge/intake` (`pip_order`). |
 
 `scan-run/brain.js` and `pip-forge/forge.js` are bundled build files. They carry the 63-part primitives library and the stage logic.
@@ -62,3 +62,17 @@ This copy matches the deployed functions as of November 12, 2026, with these cha
 ## Secrets
 
 `ANTHROPIC_API_KEY`, `GOOGLE_PLACES_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`, `RESEND_API_KEY`, `LEAD_ALERT_TO`, `LEAD_ALERT_FROM`, `SITE_KIT_CHECK_CODE`, plus any key the API Shelf asks for (`COMPOSIO_API_KEY`, `TWILIO_AUTH_TOKEN` and the rest, by the name the Shelf shows), plus optional `FIRECRAWL_API_KEY`, `MICROLINK_API_KEY`, `OPENAI_API_KEY`, `DATAFORSEO_PASSWORD`, `FOUNDER_TOKEN` and the `BRAIN_*` budget caps. Supabase provides `SUPABASE_URL` and the service key itself.
+
+## Switching the job timer on
+
+The migration `20261117_01_job_runner.sql` schedules the 5-minute knock on `pip-jobs`, but it does not contain any project's address. The knock reads the address from `public.forge_settings`, key `functions_url`, each time. With no such row, or a value that is not `https://<host>/functions/v1`, nothing is called. So a test project that runs the same migration can never call the live function.
+
+To switch the timer on for a project, run this once on that project, with that project's own address (for the live project the reference id is in `docs/handbook.md`). It goes through the Supabase migration tool like any other change, so Brayden sees the approval prompt:
+
+```sql
+insert into public.forge_settings (key, value)
+values ('functions_url', to_jsonb('https://<project ref>.supabase.co/functions/v1'::text))
+on conflict (key) do update set value = excluded.value;
+```
+
+To switch it off, delete that row. The schedule stays; it just has nowhere to knock.

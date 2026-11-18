@@ -576,7 +576,12 @@ async function jobRun(body: J) {
       db.from("agent_pauses").select("job").eq("spec_id", run.spec_id).is("resumed_at", null).not("job", "is", null),
     ]);
     const paused = new Set((pauses ?? []).map((p: J) => p.job));
+    // The same door as a turn: only an enabled catalog tool is ever sent to Composio, and a session is opened for
+    // exactly those. Without this line every tool call from a job is refused as "outside the catalog".
+    for (const row of catalog ?? []) allowTool(row.toolkit, row.slug);
     let sheet: J = null;
+    /** Tells the model which fields this job may fill in, when the job lists them. The check itself is allows(). */
+    const only = (g: J) => (g.fields?.add ? ` Only these may be filled in: ${g.fields.add.join(", ")}.` : "");
     for (const row of catalog ?? []) {
       const slot = (cat ?? []).find((x: J) => (x.blocks ?? []).includes(row.block));
       if (!slot) continue;
@@ -586,6 +591,8 @@ async function jobRun(body: J) {
       const kind = `${g.tool}/${g.records}`;
       // Not open to jobs yet: sending (recipient rules come with permission profiles) and updates (field maps do too).
       if (["message", "call"].includes(row.record) || row.level === "update") continue;
+      // Nor a read for a job that lists what it may see: nothing here can cut a tool's answer down to those fields yet.
+      if (row.level === "read" && g.fields?.read) continue;
       const conn = (conns ?? []).find((x: J) => x.slot === slot.slot);
       if (!c.biz.composio_user_id || !conn || conn.status !== "active" || conn.choice !== row.toolkit || !conn.connected_account_id || paused.has(slot.label)) { gone.add(kind); continue; }
       have.add(kind);
@@ -593,12 +600,17 @@ async function jobRun(body: J) {
       const sc = await toolSchema(row);
       if (!sc) continue;
       const hide: string[] = [...(row.hide ?? []), ...Object.keys(row.fixed ?? {})];
-      tools.push({ name: row.slug, description: sc.description, tool: g.tool, records: g.records, level: row.level,
+      // What a call fills in is every argument the model sends that reaches the tool. allows() gets that list on every
+      // call, so a job that lists fields.add is held to it. Until field maps exist the names are the tool's own.
+      tools.push({ name: row.slug, description: sc.description + only(g), tool: g.tool, records: g.records, level: row.level,
+        ...(row.level === "add" ? { fields: (args: J) => Object.keys(args && typeof args === "object" ? args : {}).filter((k) => !hide.includes(k)) } : {}),
         input_schema: { ...sc.input, properties: Object.fromEntries(Object.entries(sc.input?.properties ?? {}).filter(([k]) => !hide.includes(k))), required: (sc.input?.required ?? []).filter((k: string) => !hide.includes(k)) } });
       how.set(row.slug, { row, conn, slot: slot.label });
     }
     if (sheet?.rows.append && sheet?.rows.create) {
-      tools.push({ name: "save_to_sheet", description: "Add one row to the business's Pip sheet.", tool: sheet.grant.tool, records: "row", level: "add",
+      // On the sheet, the fields are the column names of the row.
+      tools.push({ name: "save_to_sheet", description: "Add one row to the business's Pip sheet." + only(sheet.grant), tool: sheet.grant.tool, records: "row", level: "add",
+        fields: (args: J) => Object.keys(args?.row && typeof args.row === "object" ? args.row : {}),
         input_schema: { type: "object", properties: { row: { type: "object", description: "Column name to value, for example {\"Date\":\"...\",\"Note\":\"...\"}", additionalProperties: { type: "string" } } }, required: ["row"] } });
       how.set("save_to_sheet", { sheet });
     }

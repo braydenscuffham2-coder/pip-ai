@@ -4,7 +4,7 @@
 -- what already happened and never does it twice. The rules that matter are here in the database, where two copies of
 -- a function running at once cannot both win:
 --   job_enqueue       starts a run at most once per job and key, never for a paused job, never past the day's limit
---   job_claim         lets exactly one worker hold a run at a time
+--   job_claim         lets exactly one worker hold a run at a time, and ends a run whose workers keep dying
 --   job_action_begin  a numbered action in a run is attempted at most once, ever
 --   job_finish        done, try again later, or stop: three failures pause the job and tell the business;
 --                     a dead end opens a supervisor issue instead of looping
@@ -97,10 +97,24 @@ end $$;
 
 -- ---------- hold a run ----------
 -- One worker at a time. A run is free when it is queued and due, or when the worker holding it went quiet.
+-- A worker that is killed, times out or crashes never reaches job_finish, so its failed try is counted here: when the
+-- hold on a run has run out and the run has already had max_attempts tries, it is not handed out again. It is marked
+-- failed, the job is paused and the business is told (portal_job_pause, the same door job_finish uses after the last
+-- reported failure), and the caller gets nothing. Without this a dead worker would be replaced on every tick, for ever.
 create or replace function public.job_claim(p_run uuid, p_seconds integer default 120)
 returns public.job_runs language plpgsql security definer set search_path to '' as $$
 declare r public.job_runs;
 begin
+  select * into r from public.job_runs
+  where id = p_run and status = 'running' and lease_until < now() and attempts >= max_attempts for update;
+  if r.id is not null then
+    update public.job_runs set status = 'failed', lease_until = null, finished_at = now(),
+      error = 'The last try stopped without finishing: it was cut off, timed out or crashed.'
+    where id = p_run;
+    perform public.portal_job_pause(r.spec_id, 'job:' || r.job_id, 'supervisor',
+      'It failed ' || r.attempts || ' times in a row: the last try stopped without finishing.');
+    return null;
+  end if;
   update public.job_runs set status = 'running', attempts = attempts + 1, started_at = coalesce(started_at, now()),
     lease_until = now() + make_interval(secs => least(greatest(coalesce(p_seconds, 120), 30), 300))
   where id = p_run and ((status = 'queued' and due_at <= now()) or (status = 'running' and lease_until < now()))
@@ -187,4 +201,16 @@ end $$;
 -- ---------- the timer ----------
 -- Every 5 minutes the database knocks on pip-jobs. The knock carries no instructions: pip-jobs works out for itself
 -- what is due, so knocking more often, or from outside, starts nothing extra.
-select cron.schedule('pip-jobs-tick', '*/5 * * * *', $c$select net.http_post(url := 'https://qqaikvgjzzcdwumnyspb.supabase.co/functions/v1/pip-jobs/tick', body := '{}'::jsonb, headers := '{"content-type":"application/json"}'::jsonb, timeout_milliseconds := 120000) where exists (select 1 from public.skill_specs s where s.spec ? 'jobs') or exists (select 1 from public.job_runs r where r.status in ('queued', 'running'))$c$);
+--
+-- Which project to knock on is NOT written here. It is read, at every knock, from public.forge_settings, key
+-- 'functions_url': this project's own functions address, as a JSON string that ends in /functions/v1. A database with
+-- no such setting, or one that is not a plain address of that shape, knocks on nothing. So running this migration on a
+-- test project can never make the test database call the live function. To switch the timer on, run this once on the
+-- project, with that project's own address (the statement is also in supabase/README.md):
+--   insert into public.forge_settings (key, value) values ('functions_url', to_jsonb('<this project's address>/functions/v1'::text))
+--   on conflict (key) do update set value = excluded.value;
+--
+-- /tick needs no pass. It ignores knocks closer together than 45 seconds, but that gate reads the last knock and then
+-- writes the new one as two steps, so two knocks that arrive at the same moment can both get through and each do the
+-- full scan. That costs two scans, not two runs: job_enqueue and job_claim above decide what starts and who holds it.
+select cron.schedule('pip-jobs-tick', '*/5 * * * *', $c$select net.http_post(url := rtrim(f.value #>> '{}', '/') || '/pip-jobs/tick', body := '{}'::jsonb, headers := '{"content-type":"application/json"}'::jsonb, timeout_milliseconds := 120000) from public.forge_settings f where f.key = 'functions_url' and (f.value #>> '{}') ~ '^https://[a-z0-9.-]+/functions/v1/?$' and (exists (select 1 from public.skill_specs s where s.spec ? 'jobs') or exists (select 1 from public.job_runs r where r.status in ('queued', 'running')))$c$);

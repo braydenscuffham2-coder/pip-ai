@@ -2,7 +2,9 @@
 //   POST /tick   The database knocks every 5 minutes. No pass is needed and the knock carries no instructions:
 //                this works out for itself which scheduled jobs are due (in each business's own time zone), starts
 //                each due slot at most once (job_enqueue), and wakes every run that is waiting. Knocking again, or
-//                from outside, starts nothing extra.
+//                from outside, starts nothing extra. (Two knocks at the very same moment can both get past the
+//                45-second gate and both scan; see tick() below. They still start nothing twice.)
+//                The database finds this function through forge_settings 'functions_url', never a fixed address.
 //   POST /event  { business, from, event, records?, key, data? }  A tool, Pip itself or a box says something happened.
 //                Starts the jobs of that business whose trigger matches, at most once per key. `data` is passed to the
 //                job as information only. Callers: other Pip functions (service bearer) or a founder test ticket.
@@ -86,7 +88,10 @@ async function wake(limit = 8): Promise<J[]> {
 }
 
 async function tick() {
-  // Knocks closer together than 45 seconds are ignored, so hammering this address costs nothing.
+  // Knocks closer together than 45 seconds are ignored, so hammering this address costs almost nothing.
+  // This gate is read-then-write, two steps and not one: two knocks that land at the same moment can both read the old
+  // time, both pass, and each do the full scan below. That costs a second scan and nothing more. A slot still starts
+  // one run (job_enqueue) and a run is still held by one worker (job_claim); those are single steps in the database.
   const { data: last } = await db.from("forge_settings").select("value").eq("key", "jobs_tick").maybeSingle();
   if (last?.value?.at && Date.now() - new Date(last.value.at).getTime() < 45000) return json({ ok: true, skipped: "too_soon" });
   await db.from("forge_settings").upsert({ key: "jobs_tick", value: { at: new Date().toISOString() } });

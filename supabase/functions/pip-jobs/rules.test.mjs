@@ -10,7 +10,11 @@ try { ({ PGlite } = await import(process.env.PGLITE ?? "@electric-sql/pglite"));
 const MIGRATION = readFileSync(new URL("../../migrations/20261117_01_job_runner.sql", import.meta.url), "utf8");
 const STUBS = `
 create role anon; create role authenticated; create role service_role;
-create schema cron; create function cron.schedule(text, text, text) returns bigint language sql as 'select 1::bigint';
+create schema cron; create table cron.job (jobname text, schedule text, command text);
+create function cron.schedule(text, text, text) returns bigint language sql as 'insert into cron.job values ($1, $2, $3); select 1::bigint';
+create schema net; create table net.posted (url text);
+create function net.http_post(url text, body jsonb, headers jsonb, timeout_milliseconds integer) returns bigint language sql as 'insert into net.posted values ($1); select 1::bigint';
+create table public.forge_settings (key text primary key, value jsonb);
 create table public.businesses (id uuid primary key default gen_random_uuid(), name text);
 create table public.skill_specs (id uuid primary key default gen_random_uuid(), business_id uuid, spec jsonb default '{}');
 create table public.tool_catalog (slug text primary key);
@@ -137,6 +141,53 @@ test("database rules", { skip: !PGlite && "PGlite is not installed" }, async (t)
     assert.equal(await one("select reason from agent_pauses"), "missing_connection");
     assert.equal(await one("select job_finish($1, 'made_up')", [b]), null);
     await db.query("select 1");
+  });
+
+  await t.test("hold 2: a run whose worker keeps dying is failed after its last try, the job is paused, and nothing is handed out", async () => {
+    const { enqueue, claim, one, run, db } = await fresh();
+    const id = await enqueue("k");
+    // The worker is killed, times out or crashes: it never reaches job_finish, and its hold simply runs out.
+    const die = () => db.query("update job_runs set lease_until = now() - interval '1 second' where id = $1", [id]);
+    for (const n of [1, 2, 3]) { const r = await claim(id); assert.equal(r.status, "running"); assert.equal(r.attempts, n, `try ${n}`); await die(); }
+    for (let i = 0; i < 5; i++) assert.equal((await claim(id)).id, null, "after three dead tries nothing is handed out, however often the timer asks");
+    const r = await run(id);
+    assert.equal(r.status, "failed"); assert.equal(r.attempts, 3, "the count stops at max_attempts"); assert.ok(r.finished_at); assert.equal(r.lease_until, null);
+    assert.match(r.error, /stopped without finishing/);
+    const p = (await db.query("select job, reason, detail from agent_pauses")).rows;
+    assert.deepEqual(p, [{ job: "job:daily_line", reason: "supervisor", detail: "It failed 3 times in a row: the last try stopped without finishing." }], "paused once, through the same door as three reported failures");
+    assert.equal(await enqueue("next"), null, "the paused job starts nothing new");
+    assert.ok(await enqueue("x", { job: "other_job" }), "another job of the same teammate still starts");
+    assert.equal(await one("select job_finish($1, 'done')", [id]), null, "a late answer from a dead worker cannot un-fail it");
+    assert.deepEqual(await one("select job_action_begin($1, 1, 'save_to_sheet', 'row', 'add', 'h')", [id]), { status: "no_run" }, "and it can change nothing");
+
+    // A job built to stop after one failure stops after one dead try.
+    const once = await enqueue("m", { job: "other_job", maxAttempts: 1 });
+    assert.equal((await claim(once)).attempts, 1);
+    assert.equal((await claim(once)).id, null, "still held: a live worker is not failed");
+    assert.equal((await run(once)).status, "running");
+    await db.query("update job_runs set lease_until = now() - interval '1 second' where id = $1", [once]);
+    assert.equal((await claim(once)).id, null);
+    assert.equal((await run(once)).status, "failed");
+    assert.equal(Number(await one("select count(*) from agent_pauses where job = 'job:other_job'")), 1);
+  });
+
+  await t.test("smaller: the timer knocks on the address in forge_settings, and on nothing when there is none", async () => {
+    const { db, one, spec } = await fresh();
+    const jobs = (await db.query("select jobname, schedule, command from cron.job")).rows;
+    assert.equal(jobs.length, 1); assert.equal(jobs[0].jobname, "pip-jobs-tick"); assert.equal(jobs[0].schedule, "*/5 * * * *");
+    assert.ok(!/supabase\.co/.test(MIGRATION) && !/https:\/\/[a-z0-9]/.test(jobs[0].command), "no project address is written into the migration");
+    const knock = async () => { await db.exec(jobs[0].command); return (await db.query("select url from net.posted")).rows.map((r) => r.url); };
+    await db.query("update skill_specs set spec = '{\"jobs\": []}' where id = $1", [spec]); // there is something to do
+    assert.deepEqual(await knock(), [], "no address set: nothing is called");
+    for (const bad of ["http://insecure.example/functions/v1", "https://x.example/other/path", "", "not an address", "https://x.example/functions/v1?to=https://elsewhere.example"]) {
+      await db.query("insert into forge_settings values ('functions_url', to_jsonb($1::text)) on conflict (key) do update set value = excluded.value", [bad]);
+      assert.deepEqual(await knock(), [], `"${bad}" is not a functions address`);
+    }
+    await db.query("update forge_settings set value = to_jsonb('https://this-project.example/functions/v1'::text) where key = 'functions_url'");
+    assert.deepEqual(await knock(), ["https://this-project.example/functions/v1/pip-jobs/tick"]);
+    await db.query("update skill_specs set spec = '{}'");
+    assert.equal((await knock()).length, 1, "nothing to do: no knock");
+    assert.equal(Number(await one("select count(*) from net.posted")), 1);
   });
 
   await t.test("the tables are closed to the public roles", async () => {
