@@ -384,6 +384,9 @@ async function refresh(bid: string, actor: string) {
     const st = MAP[String(by.get(x.connected_account_id!)?.status || "").toUpperCase()] ?? (by.has(x.connected_account_id!) ? x.status : "revoked");
     if (st === x.status) continue;
     changed++;
+    // A sign-in that ran out or failed before it ever worked was never connected. Remove it, so the owner is not
+    // told to "reconnect" something that was never there. If the removal fails it is tried again next time.
+    if (x.status === "link_made" && st !== "active") { await retire(x.connected_account_id!); continue; }
     await db.from("client_connections").update({ status: st, updated_at: now() }).eq("id", x.id);
     if (st === "active") {
       await log(bid, "connection", `${x.toolkit} is connected. Pip will add it to your team.`, { actor, outcome: "ok" });
