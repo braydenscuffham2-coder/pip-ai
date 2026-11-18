@@ -82,6 +82,38 @@ test("Pip sets the sender on an email itself; the model cannot choose who it is 
   assert.ok(!JSON.stringify(t.world.model.calls).includes("owner@testfork.example"), "the owner's address must not be shown to the model");
 });
 
+// ---------- Composio sessions ----------
+// Composio's allowlist on a sign-in config is not applied inside a session (docs/connections.md section 3),
+// so pip-turn opens every session for exact tools only.
+const sessionOnly = (onExecute = () => ok()) => (path) => {
+  if (path.startsWith("/tools/execute/")) return { status: 403, json: { error: { message: "This API key lacks the Tool execution permission" } } };
+  if (path === "/tool_router/session") return { status: 200, json: { session_id: "sess_1" } };
+  if (path === "/tool_router/session/sess_1/execute") return onExecute();
+  return { status: 404, json: {} };
+};
+
+test("a session is opened for the catalog's tools for that toolkit and nothing else", async () => {
+  const t = await boot({ model: [acts(use("GMAIL_SEND_EMAIL", { recipient_email: "sam@customer.example", body: "Your table is held." })), says("I am an AI assistant. Sent.")], composio: sessionOnly() });
+  const r = await t.turn("I am sam@customer.example, email me");
+  assert.deepEqual(r.json.actions, [{ tool: "GMAIL_SEND_EMAIL", status: "done" }]);
+  const opened = t.world.composio.calls.filter((c) => c.path === "/tool_router/session");
+  assert.equal(opened.length, 1);
+  assert.deepEqual(opened[0].body.tools, { gmail: { enable: ["GMAIL_SEND_EMAIL"] } }, "the session must name exact tools, not the whole toolkit");
+  assert.deepEqual(opened[0].body.connected_accounts, { gmail: [opened[0].body.connected_accounts.gmail[0]] }, "and stay pinned to the owner's one sign-in");
+  assert.equal(opened[0].body.manage_connections.enable, false);
+});
+
+test("a tool that is not an enabled catalog tool is never sent to Composio, even from the founder's test route", async () => {
+  const tables = baseTables();
+  tables.tool_catalog.find((x) => x.slug === "GMAIL_SEND_EMAIL").enabled = false;
+  tables.forge_settings.push({ key: "act_sandbox_businesses", value: [IDS.business] });
+  const t = await boot({ tables, composio: sessionOnly() });
+  const r = await t.call("/diag", { probe: { business: IDS.business, slug: "GMAIL_SEND_EMAIL", args: { recipient_email: "x@y.example", body: "hi" } } });
+  assert.equal(r.status, 200);
+  assert.equal(r.json.probe.status, 403);
+  assert.equal(t.executed().length, 0, "nothing may reach Composio's execute routes");
+});
+
 // ---------- the calendar ----------
 test("the calendar comes back as busy times only: no titles, guests or notes reach the model", async () => {
   const events = { items: [
