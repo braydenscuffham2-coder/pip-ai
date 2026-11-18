@@ -1,0 +1,15 @@
+{
+  "contract": "teammate/1",
+  "jobs": [
+    {
+      "id": "daily_line",
+      "name": "Daily line",
+      "does": "Adds one line to your Pip sheet each morning with yesterday's number of conversations.",
+      "instructions": "Add exactly one row to the sheet: the date, the words 'Daily line', and how many conversations were handled yesterday. Then stop. Do not add a second row for any reason.",
+      "triggers": [{ "type": "schedule", "every": "day", "at": "07:30" }, { "type": "owner", "on": "run_now" }],
+      "tools": [{ "tool": "sheets", "records": "row", "can": ["add"] }],
+      "limits": { "per_run": { "steps": 2, "actions": 1 }, "per_day": { "runs": 3, "actions": 3 } },
+      "pause": { "after_failures": 3, "on_limit": "wait" }
+    }
+  ]
+}

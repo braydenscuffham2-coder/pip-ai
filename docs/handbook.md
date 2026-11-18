@@ -77,7 +77,8 @@ Several of these were built before this handbook and are not described here (`va
 - Outside tools come only from enabled rows in `tool_catalog`, for active connections. Each row can hide fields, fix fields, and carry a guard.
 - Hard limits live in code, not in the prompt: an email address in a write must have been typed by the customer; calendar reads return busy times only; at most 6 tool calls and 5 rounds a turn; real actions only when the spec is live or the business is on the TEST list (`forge_settings.act_sandbox_businesses`).
 - Tools the owner connected beyond the setup steps get add-only actions (create one lead, contact, task and so on), and money tools get none.
-- Expired access pauses that job through `portal_job_pause` and alerts the business.
+- Expired access pauses that job through `portal_job_pause` and alerts the business. Today the thing paused is the tool (the `job` column of `agent_pauses` holds a name like "Calendar"), not a job.
+- How a teammate declares jobs, permissions, limits and pauses is in `docs/contracts/teammate-spec.md`. Its status table says which parts are live.
 
 What does not exist yet is the reason for the lanes: nothing runs unprompted, teammates cannot read or update records outside Google, there are no long tasks, no calls, no email in, no password-only route, no spending controls.
 

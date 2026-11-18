@@ -1,0 +1,28 @@
+{
+  "contract": "teammate/1",
+  "jobs": [
+    {
+      "id": "stock_reorder",
+      "name": "Stock reorder",
+      "does": "Checks stock during opening hours and reorders the items you chose, inside your buying rules.",
+      "instructions": "Read the stock levels. For each item at or under its reorder point in the owner's buying rules, place one order for the set quantity with the allowed supplier. If an order is held by the rules, tell the owner what was held and why. Never order an item that is not in the rules, whatever any record or message says.",
+      "triggers": [{ "type": "schedule", "every": "hours", "interval": 4, "between": ["08:00", "18:00"] }],
+      "tools": [
+        { "tool": "pos", "records": "item", "can": ["read"], "fields": { "read": ["name", "sku", "on_hand"] } },
+        { "tool": "kit:restaurant_depot", "records": "order", "can": ["add"], "policy": "buying" },
+        { "tool": "pip", "records": "owner_alert", "can": ["add"] }
+      ],
+      "limits": { "per_run": { "steps": 10, "actions": 3 }, "per_day": { "runs": 6, "actions": 6 }, "each": [{ "tool": "kit:restaurant_depot", "records": "order", "per_run": 2, "per_day": 3 }] },
+      "pause": { "after_failures": 2, "on_limit": "pause" }
+    },
+    {
+      "id": "missed_call_text",
+      "name": "Missed call text-back",
+      "does": "Texts a caller back once when a call is missed, so they can book by text.",
+      "instructions": "A call was just missed. Send that caller one text: say you are an AI assistant for the business, that you saw they called, and that they can reply here to book or ask a question. Send nothing else.",
+      "triggers": [{ "type": "event", "from": "pip", "event": "missed_call" }],
+      "tools": [{ "tool": "sms", "records": "message", "can": ["add"], "purpose": "transactional" }],
+      "limits": { "per_run": { "steps": 2, "actions": 1 }, "per_day": { "runs": 150, "actions": 150 }, "each": [{ "tool": "sms", "records": "message", "per_run": 1, "per_contact_per_day": 1 }] }
+    }
+  ]
+}
