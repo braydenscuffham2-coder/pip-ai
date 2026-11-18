@@ -27,7 +27,7 @@ Only claim what the "live" column says.
 | Jobs that start on a schedule, from a tool, or from an owner's decision | **Not live.** Lane 01, pull request 2 (`pip-jobs`). |
 | Per-day limits, per-person limits, three-failures pause | **Not live.** Pull request 2. |
 | Long tasks | **Not live.** Pull request 4. |
-| Money records | **Refused for everyone** until lane 08's buying check exists. |
+| Money records, and any record in a money tool | **Refused for everyone** until lane 08's buying check exists. |
 
 Lane 01 updates this table in the same pull request that makes a row live.
 
@@ -46,7 +46,9 @@ Both of today's shapes keep their own keys untouched. A Board build keeps `board
 
 Because jobs are part of the spec, they change only the way a spec changes: through the Forge and Brayden's go-live (handbook rule 9). No teammate, owner message or tool result can edit them.
 
-**A teammate with no `contract` key works exactly as it does today.** The code gives it one implied job called `conversation`: it answers messages on any channel and may do what `pip-turn` already allows (Pip's own actions it was designed with, busy times and a hold on the calendar, an email to the customer, a row on the Pip sheet, and one new record in any other connected tool that is not a money tool). `POST /turn` does not change.
+**A teammate with no `contract` key works exactly as it does today.** The code gives it one implied job called `conversation`: it answers messages on any channel and may do what `pip-turn` already allows and nothing wider: Pip's own actions it was designed with, busy times and a hold on the calendar, an email to the customer, a row on the Pip sheet, and one new record in any other connected tool. `POST /turn` does not change.
+
+"One new record in any other connected tool" means exactly what `pip-turn`'s add-one rule covers: a new **lead, contact, deal, task, ticket, note, job or row**. The implied job cannot send a message, place a call or add a file through such a tool, cannot read or change anything there, and gets nothing at all in a money tool.
 
 **A spec that has `contract` or `jobs` but fails the check has no jobs at all.** It does not fall back to the old behaviour. A broken build must not run.
 
@@ -86,7 +88,7 @@ One job answers each channel. Two jobs claiming the same channel is an error, so
 { "type": "schedule", "every": "minutes", "interval": 30 }
 ```
 
-Nothing runs more often than every 15 minutes. A schedule that would start more runs in a day than the job's daily limit is an error. If Pip was down at the set time, the run happens once when it is back, never several times to catch up.
+Nothing runs more often than every 15 minutes. A schedule that would start more runs in a day than the job's daily limit is an error. Listing the same schedule twice in one job is an error too. If Pip was down at the set time, the run happens once when it is back, never several times to catch up.
 
 **An event from a tool**
 
@@ -145,6 +147,7 @@ A new kind is added to the code on purpose, in a pull request to lane 01.
 - `busy_time` and `count` can only be read.
 - **`update` must list `fields.update`**: the exact fields the job may change. There is no "update anything". An update that would touch any other field is refused whole.
 - `fields.read` narrows what the job sees. `fields.add` narrows what it may fill in on a new record. Left out, the tool's catalog row decides, and the catalog can only narrow further (today: the calendar shows busy times only).
+- **A listed field list is never skipped.** When a job lists fields for read or for add, every read or add must say exactly which fields it touches, the same as an update. A caller that leaves the fields out, or sends an empty list, is refused. It does not get the wide answer.
 
 **`required`** (default true): if the tool is not connected or has lost access, a required tool pauses the job. With `false` the job carries on without it, which is right for a front desk that can still take details.
 
@@ -158,7 +161,22 @@ A new kind is added to the code on purpose, in a pull request to lane 01.
 
 An outbound call is never a `reply`, and always needs a stored consent record (handbook rule 7). Opt-outs are honoured before any send, whatever the purpose. Every send gets a per-person daily limit even if the spec sets none (3 by default).
 
-**Money.** Any permission on a money kind, even read, must carry `"policy": "buying"`, and the permission check still refuses it unless code has checked that policy and it passed for this exact action. That check is lane 08's `pip-buy`. Until it exists, money is refused for everyone. A spec may declare it so the Forge can report an honest "not yet".
+**Money.** Two things count as money, and both are refused unless an owner policy opens them:
+
+- a money kind of record (the list above), in any tool
+- **any kind of record in a money tool**, at any level, even reading a contact. A money tool is one whose name matches the list `pip-turn` already uses to keep its add-one rule away from payment, accounting and payroll products (Stripe, Square, PayPal, QuickBooks, Xero, Shopify, Gusto, ADP, anything with "pay", "bank", "billing", "invoice" or "payroll" in its name, and the rest of that list). The contract carries the same list, and a test fails if the two ever differ.
+
+Which policy may open what is a fixed table in the code. There is one policy today:
+
+| Policy | Opens | Does not open |
+| --- | --- | --- |
+| `buying` | `order`: read, add, update. `price`: read only. `invoice`: read only. | Everything else. |
+
+So `payment`, `refund`, `payout`, `payroll`, `discount` and `estimate`, changing a `price`, adding an `invoice`, and every other kind of record in a money tool (a contact in Stripe, an item in QuickBooks) have **no policy that can open them yet**. A spec that asks for one is invalid, with or without `"policy": "buying"`. This matches the handbook decision: stage 1 is reordering on supplier accounts the business already has, nothing more.
+
+A permission the table does open must carry `"policy": "buying"`, and the permission check still refuses it unless code has checked that policy and it passed for this exact action. That check is lane 08's `pip-buy`. Until it exists, money is refused for everyone. A spec may declare it so the Forge can report an honest "not yet".
+
+The contract can only see the name a job uses. When a building block such as `pos` or `accounting` turns out to be a money product for one business, the code that makes that match (`pip-turn`, pull request 3) must ask `isMoneyTool` again with the product's own name before it offers the tool.
 
 **Pip's own actions** are records of the tool `pip`, add only:
 
@@ -241,13 +259,19 @@ checkSpec(spec)            // { ok, errors, jobs }: every problem in plain words
 jobsOf(spec, manifest)     // the jobs to run, including the implied one for older teammates
 allows(job, { tool, records, level, fields }, passedPolicies)   // { ok } or { ok: false, why, say }
 plainWords(job, { crm: "HubSpot" })   // { starts, can, cannot, limits, pauses } as owner-ready sentences
+isMoneyTool("stripe")      // true: the same list pip-turn uses
 ```
+
+`allows` never throws. An ask it does not understand (a tool that is not text, fields that are not a list of names, a missing level) gets a no. Pass `fields` whenever you know which fields the action touches: for an update always, and for a read or an add whenever the job lists fields for that level, or the answer is no.
 
 The file has no imports and runs in Deno, Node and the browser. Tests:
 
 ```
 node --experimental-strip-types --test supabase/functions/_shared/teammate-spec.test.ts
+node --experimental-strip-types --test supabase/functions/_shared/teammate-spec.attack.test.ts
 ```
+
+The second is the attack: it breaks every worked example in about 9,400 ways and checks that the checker never crashes and never passes an unsafe version, then asks the permission check a few million questions and compares each answer with a second statement of the rules. It runs in a few seconds and prints its counts.
 
 ## Notes for each lane
 
@@ -259,9 +283,11 @@ node --experimental-strip-types --test supabase/functions/_shared/teammate-spec.
 
 **06 portal.** "What this teammate can and cannot do" is `plainWords(job, toolNames)`, generated, never hand-written. You own how it reads on screen; if a sentence is wrong, change it in the code file through a pull request named for lane 01 so every screen changes together.
 
+Do not show these sentences in the Portal for a teammate until the row for that part in the status table at the top of this page says live. Sentences such as "only to people who agreed to hear from you" describe a check that does not run yet, so until then they would promise an owner something the code does not enforce.
+
 **07 browser.** A password-only site is still a `tool` with kinds of record and levels. Your allowed pages and actions come from the job's permissions, and `pip-browser` carries out an action that `pip-turn` has already checked. It never decides permission itself.
 
-**08 buying.** Your policy check is the only thing that opens a money record: the caller passes `["buying"]` to `allows` only after `pip-buy` has checked this exact order. Holds and refusals are yours to log with the numbers checked.
+**08 buying.** Your policy check is the only thing that opens a money record: the caller passes `["buying"]` to `allows` only after `pip-buy` has checked this exact order. Holds and refusals are yours to log with the numbers checked. `buying` opens orders, and reading prices and invoices, and nothing else, including in a money tool: a buying job cannot read items or contacts in a supplier account whose name is on the money-tool list. If stage 1 needs more than that, ask for a row in the policy table through a pull request to lane 01; it needs Brayden.
 
 **09 guard.** The test command is above. Please add it to the checks that run on every pull request.
 

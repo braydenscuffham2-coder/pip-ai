@@ -4,9 +4,10 @@
 //   checkSpec(spec)            is this spec's job list valid? Returns every problem in plain words, and the jobs
 //                              with defaults filled in.
 //   jobsOf(spec, manifest?)    the jobs a teammate has. A teammate built before this contract gets one job,
-//                              "conversation", that matches what pip-turn lets it do today.
+//                              "conversation", that covers what pip-turn lets it do today and nothing wider.
 //   jobForMessage(jobs, ch)    which job answers a customer message on a channel. Decided here, never by a model.
-//   allows(job, ask)           may this job do this to this kind of record? The one permission check.
+//   allows(job, ask)           may this job do this to this kind of record? The one permission check. It answers
+//                              no to anything it does not understand; it never throws.
 //   plainWords(job)            the same permissions as sentences an owner can read.
 //
 // A spec that breaks a rule is refused whole. Nothing is quietly dropped or trimmed to fit, because a teammate that
@@ -32,6 +33,28 @@ export const PIP_RECORDS: Record<string, string> = {
   owner_alert: "notify_owner", lead: "capture_lead", booking_request: "request_booking", handoff: "handoff", draft: "draft_for_approval",
 };
 export const POLICIES = ["buying"] as const;
+/**
+ * Which policy may open which kinds of record, and how far. A kind that is not in a policy's row has no policy that
+ * can open it yet: it is refused in the checker and again in allows(), whatever the spec says and whatever has passed.
+ * "buying" is stage 1 only (handbook, November 17): reorder on supplier accounts the business already has.
+ */
+export const POLICY_OPENS: Record<string, Record<string, readonly string[]>> = {
+  buying: { order: ["read", "add", "update"], price: ["read"], invoice: ["read"] },
+};
+/**
+ * Money and payroll products, by name. This is pip-turn's own list (the MONEY pattern in
+ * supabase/functions/pip-turn/index.ts); a test keeps the two identical. A permission on one of these needs an owner
+ * policy for any kind of record at any level, exactly as a money record does.
+ */
+export const MONEY_TOOLS = /(stripe|square|paypal|quickbooks|xero|shopify|braintree|freshbooks|wave|plaid|brex|ramp|gusto|chargebee|recurly|paddle|venmo|coinbase|wise|adp|payroll|bank|billing|invoice|pay)/;
+/** Is this tool name a money tool? Callers that turn a building block into a real product must ask again with the product's name. */
+export const isMoneyTool = (tool: unknown): boolean => typeof tool === "string" && MONEY_TOOLS.test(tool.toLowerCase());
+/**
+ * The kinds of record pip-turn's "add one record" rule covers in a tool the owner connected on their own (its ADD_ONE
+ * pattern: lead, contact/customer/client/person/company, deal/opportunity, task, ticket, note, job/request, record/row).
+ * The implied job for older teammates gets exactly these, add only. Never a message, a call or a file.
+ */
+export const ADD_ONE_RECORDS = ["lead", "contact", "deal", "task", "ticket", "note", "job", "row"] as const;
 export const PURPOSES = ["reply", "transactional", "marketing"] as const;
 export const EVENTS = ["record_added", "record_changed", "lead_added", "missed_call", "conversation_ended", "count_changed"] as const;
 export const DECISIONS = ["booking_request", "draft"] as const;
@@ -91,6 +114,9 @@ const money = (r: string) => (MONEY_RECORDS as readonly string[]).includes(r);
 /** Looks a key up in a plain table without ever reaching inherited names like "constructor". */
 const at = (m: Record<string, string>, k: string): string | undefined => (Object.hasOwn(m, k) ? m[k] : undefined);
 const known = (r: string) => (RECORDS as readonly string[]).includes(r) || money(r);
+/** Does this policy open this kind of record at this level? Own keys only, so "constructor" is never a policy or a kind. */
+const opens = (policy: unknown, rec: unknown, level: unknown): boolean =>
+  typeof policy === "string" && typeof rec === "string" && Object.hasOwn(POLICY_OPENS, policy) && Object.hasOwn(POLICY_OPENS[policy], rec) && POLICY_OPENS[policy][rec].includes(level as string);
 
 function extra(o: Record<string, J>, allowed: string[], where: string, errors: string[]) {
   for (const k of Object.keys(o)) if (!allowed.includes(k)) errors.push(`${where}: "${k}" is not part of the contract.`);
@@ -182,8 +208,15 @@ function checkGrant(g: J, w: string, errors: string[]): Grant | null {
   } else {
     if (!known(rec)) errors.push(`${w}: records must be one kind from the contract's list. "*" and made-up kinds are refused.`);
     if ((READ_ONLY_RECORDS as readonly string[]).includes(rec) && can.some((c) => c !== "read")) errors.push(`${w}: ${rec} can only be read.`);
-    if (money(rec)) { if (!(POLICIES as readonly string[]).includes(g.policy)) errors.push(`${w}: ${rec} is a money record. It needs "policy": one of ${POLICIES.join(", ")}, and stays refused until that policy check exists and passes.`); }
-    else if (g.policy !== undefined) errors.push(`${w}: policy is only for money records.`);
+    if (money(rec) || isMoneyTool(tool)) {
+      // Money: the kind of record, or the tool itself. The policy must be named, and must be one that opens this kind
+      // at every level asked for. Most money kinds have no policy that can open them yet.
+      const what = money(rec) ? `${rec} is a money record` : `${tool} is a money tool`;
+      const could = POLICIES.filter((p) => LEVELS.some((l) => opens(p, rec, l)));
+      if (!could.length) errors.push(`${w}: ${what}. No policy can open ${money(rec) ? rec : `${rec || "that"} there`} yet, so it is refused.`);
+      else if (!(POLICIES as readonly string[]).includes(g.policy)) errors.push(`${w}: ${what}. It needs "policy": one of ${could.join(", ")}, and stays refused until that policy check exists and passes.`);
+      else { const shut = can.filter((c) => (LEVELS as readonly string[]).includes(c) && !opens(g.policy, rec, c)); if (shut.length) errors.push(`${w}: ${what}. The ${g.policy} policy cannot open ${shut.join(" or ")} on ${rec}.`); }
+    } else if (g.policy !== undefined) errors.push(`${w}: policy is only for money records and money tools.`);
     const outbound = ["message", "call"].includes(rec) && can.includes("add");
     if (outbound && !(PURPOSES as readonly string[]).includes(g.purpose)) errors.push(`${w}: sending a ${rec} needs "purpose": reply, transactional or marketing.`);
     if (outbound && rec === "call" && g.purpose === "reply") errors.push(`${w}: an outbound call is never a reply. Use transactional or marketing; both need a stored consent record.`);
@@ -220,6 +253,13 @@ function checkJob(j: J, w: string, errors: string[]): Job | null {
   if (!Array.isArray(j.triggers) || !j.triggers.length || j.triggers.length > CEILING.triggers) errors.push(`${w}: triggers must list 1 to ${CEILING.triggers} things that start the job.`);
   else j.triggers.forEach((t: J, i: number) => { const ok = checkTrigger(t, `${w}.triggers[${i}]`, errors); if (ok) triggers.push(ok); });
   if (triggers.filter((t) => t.type === "message").length > 1) errors.push(`${w}: list every channel in one message trigger.`);
+  const schedules = new Set<string>();
+  for (const t of triggers) if (t.type === "schedule") {
+    // The same schedule whatever order its keys or its days were written in.
+    const k = JSON.stringify(Object.keys(t).sort().map((key) => [key, key === "on" ? [...(t.on ?? [])].map(String).sort() : (t as J)[key]]));
+    if (schedules.has(k)) errors.push(`${w}: the same schedule is listed twice. List each schedule once.`);
+    schedules.add(k);
+  }
 
   const tools: Grant[] = [];
   if (j.tools !== undefined && (!Array.isArray(j.tools) || j.tools.length > CEILING.tools)) errors.push(`${w}: tools must be a list of at most ${CEILING.tools}.`);
@@ -332,9 +372,10 @@ export function checkSpec(spec: unknown): { ok: boolean; errors: string[]; jobs:
 /**
  * The jobs a teammate has. With `contract: "teammate/1"` they are the checked list (none, if the list is invalid:
  * a broken spec does not run). Without it, the teammate was built before the contract and gets one job,
- * "conversation", with what pip-turn already allows: Pip's own actions it was designed with, busy times and a hold on
- * the calendar, an email to the customer, a row on the Pip sheet, and one new record in any other connected tool
- * that is not a money tool.
+ * "conversation", with what pip-turn already allows and nothing wider: Pip's own actions it was designed with, busy
+ * times and a hold on the calendar, an email to the customer, a row on the Pip sheet, and one new record of the kinds
+ * in ADD_ONE_RECORDS in any other connected tool that is not a money tool. It cannot send a message, place a call or
+ * add a file through such a tool, because pip-turn's add-one rule does not cover those.
  */
 export function jobsOf(spec: unknown, manifest?: unknown, brain?: unknown): { jobs: Job[]; legacy: boolean; errors: string[]; notes: string[] } {
   const s = (isObj(spec) ? spec : {}) as J, notes: string[] = [];
@@ -349,7 +390,9 @@ export function jobsOf(spec: unknown, manifest?: unknown, brain?: unknown): { jo
   if (has("calendar")) tools.push({ tool: "calendar", records: "busy_time", can: ["read"], required: false }, { tool: "calendar", records: "appointment", can: ["add"], required: false });
   if (has("email")) tools.push({ tool: "email", records: "message", can: ["add"], required: false, purpose: "reply" });
   if (has("data_sink") || has("sheets")) tools.push({ tool: "sheets", records: "row", can: ["add"], required: false });
-  tools.push({ tool: "kit:*", records: "*", can: ["add"], required: false });
+  // "kit:*" is any tool the owner connected on their own. Only allows() reads it, only for this implied job, and it
+  // still refuses a money tool there because no policy is named.
+  for (const rec of ADD_ONE_RECORDS) tools.push({ tool: "kit:*", records: rec, can: ["add"], required: false });
   if (classic && Array.isArray(s.triggers) && s.triggers.some((t: J) => t !== "inbound_message")) notes.push(`It was designed to start from: ${s.triggers.join(", ")}. Nothing starts it that way yet; it needs real jobs from the Forge.`);
   return {
     legacy: true, errors: [], notes,
@@ -374,24 +417,40 @@ export type Verdict = { ok: true } | { ok: false; why: "never" | "not_granted" |
  * May this job do this? The one permission check, used before every read and every change, whatever route the
  * action then takes (a connected tool, the browser, a box, a purchase).
  *   level  anything but read, add or update is refused for every job, always
- *   fields for an update, exactly which fields the action would change: required, and every one must be granted.
- *          For an add or a read they are checked only when the job listed fields for that level.
+ *   fields exactly which fields the action would touch. For an update: always required, and every one must be
+ *          granted. For a read or an add: required whenever the job listed fields for that level, and every one must
+ *          be in that list. An ask that leaves them out, or sends an empty list, is refused; it does not get the wide
+ *          answer. Fields that are not a list of names are refused at any level.
  *   passed the owner policies that code has already checked and passed for this exact action (lane 08's "buying").
- *          A money record is refused without it, whatever the job says.
+ *          A money record, or any record in a money tool, is refused without it, whatever the job says, and refused
+ *          with it unless that policy opens that kind of record at that level (POLICY_OPENS).
+ * It never throws. An ask, a job or a list of policies that is the wrong shape is answered with a no.
  */
 export function allows(job: Job, ask: Ask, passed: string[] = []): Verdict {
-  if (!(LEVELS as readonly string[]).includes(ask.level)) return { ok: false, why: "never", say: `No teammate may ${String(ask.level).slice(0, 20)} anything. Only read, add and update exist.` };
-  const level = ask.level as Level;
-  const g = job.tools.find((x) => (x.tool === ask.tool || (job.legacy === true && x.tool === "kit:*" && ask.tool.startsWith("kit:"))) && (x.records === ask.records || (job.legacy === true && x.records === "*")));
-  if (!g || !g.can.includes(level)) return { ok: false, why: "not_granted", say: `This job may not ${level} ${ask.records} in ${ask.tool}.` };
-  if (money(ask.records) && !(g.policy && passed.includes(g.policy))) return { ok: false, why: "money", say: `${ask.records} is a money record. It is refused until the owner's ${g.policy ?? "money"} policy has been checked and passed for this action.` };
-  if ((READ_ONLY_RECORDS as readonly string[]).includes(ask.records) && level !== "read") return { ok: false, why: "never", say: `${ask.records} can only be read.` };
-  const listed = g.fields?.[level];
-  if (level === "update" && !(Array.isArray(ask.fields) && ask.fields.length)) return { ok: false, why: "field", say: "An update must say exactly which fields it changes." };
+  const a = ask as J, jb = job as J;
+  if (!isObj(a) || typeof a.level !== "string" || !(LEVELS as readonly string[]).includes(a.level))
+    return { ok: false, why: "never", say: isObj(a) && typeof a.level === "string" ? `No teammate may ${a.level.slice(0, 20)} anything. Only read, add and update exist.` : "Only read, add and update exist." };
+  const level = a.level as Level;
+  if (typeof a.tool !== "string" || typeof a.records !== "string") return { ok: false, why: "not_granted", say: "An action must name its tool and its kind of record, as text." };
+  if (a.fields !== undefined && !(Array.isArray(a.fields) && a.fields.every((f: J) => typeof f === "string"))) return { ok: false, why: "field", say: "The fields an action touches must be given as a list of field names." };
+  const tool: string = a.tool, records: string = a.records;
+  const grants: J[] = isObj(jb) && Array.isArray(jb.tools) ? jb.tools : [];
+  const g = grants.find((x) => isObj(x) && (x.tool === tool || (jb.legacy === true && x.tool === "kit:*" && tool.startsWith("kit:"))) && x.records === records);
+  if (!g || !Array.isArray(g.can) || !g.can.includes(level)) return { ok: false, why: "not_granted", say: `This job may not ${level} ${records.slice(0, 40)} in ${tool.slice(0, 70)}.` };
+  if (money(records) || isMoneyTool(tool)) {
+    const what = money(records) ? `${records} is a money record` : `${tool.slice(0, 70)} is a money tool`;
+    if (!opens(g.policy, records, level)) return { ok: false, why: "money", say: `${what}. No policy can open this yet, so it is refused.` };
+    if (!(Array.isArray(passed) && passed.includes(g.policy))) return { ok: false, why: "money", say: `${what}. It is refused until the owner's ${g.policy} policy has been checked and passed for this action.` };
+  }
+  if ((READ_ONLY_RECORDS as readonly string[]).includes(records) && level !== "read") return { ok: false, why: "never", say: `${records} can only be read.` };
+  const listed: J = isObj(g.fields) && Array.isArray(g.fields[level]) ? g.fields[level] : null;
+  const named = Array.isArray(a.fields) && a.fields.length > 0;
+  if (level === "update" && !named) return { ok: false, why: "field", say: "An update must say exactly which fields it changes." };
   if (level === "update" && !listed) return { ok: false, why: "field", say: "This job has no fields it may change." };
-  if (listed && ask.fields) {
-    const out = ask.fields.filter((f) => !listed.includes(f));
-    if (out.length) return { ok: false, why: "field", say: `Outside this job's permissions: ${out.slice(0, 5).join(", ")}.` };
+  if (listed) {
+    if (!named) return { ok: false, why: "field", say: `This job lists the fields it may ${level === "read" ? "see" : "fill in"}, so the action must say exactly which fields it touches.` };
+    const out = (a.fields as string[]).filter((f) => !listed.includes(f));
+    if (out.length) return { ok: false, why: "field", say: `Outside this job's permissions: ${out.slice(0, 5).map((f) => f.slice(0, 60)).join(", ")}.` };
   }
   return { ok: true };
 }
@@ -443,8 +502,10 @@ function startWords(t: Trigger, names: Record<string, string>): string {
  */
 export function plainWords(job: Job, toolNames: Record<string, string> = {}): { starts: string[]; can: string[]; cannot: string[]; limits: string[]; pauses: string[] } {
   const can: string[] = [], cannot: string[] = ["Delete anything, anywhere."];
+  const anyTool = job.tools.filter((g) => g.tool === "kit:*" && g.can.includes("add")).map((g) => g.records.replace(/_/g, " "));
   for (const g of job.tools) {
     if (g.tool === "pip") { can.push(at(PIP_WORDS, g.records) ?? ""); continue; }
+    if (g.tool === "kit:*") continue;
     const what = g.records === "*" ? "records" : at(PLURAL, g.records) ?? g.records, place = where(g.tool, toolNames);
     const gate = g.policy ? `, only inside the ${g.policy} rules you set` : "";
     if (g.can.includes("read")) can.push(g.fields?.read ? `See these details of ${what} in ${place}: ${list(g.fields.read.map((f) => f.replace(/[_.]/g, " ")))}.` : `See ${what} in ${place}.`);
@@ -452,6 +513,10 @@ export function plainWords(job: Job, toolNames: Record<string, string> = {}): { 
     if (g.can.includes("update")) { can.push(`Change only these details of ${what} in ${place}: ${list(g.fields!.update!.map((f) => f.replace(/[_.]/g, " ")))}${gate}.`); cannot.push(`Change anything else about ${what} in ${place}.`); }
     if (!g.can.includes("read") && g.records !== "message" && g.records !== "call") cannot.push(`Look at ${what} already in ${place}.`);
     if (!g.can.includes("add") && !g.can.includes("update") && !(READ_ONLY_RECORDS as readonly string[]).includes(g.records)) cannot.push(`Change ${what} in ${place}.`);
+  }
+  if (anyTool.length) {
+    can.push(`Add one new ${anyTool.length < 2 ? anyTool.join("") : `${anyTool.slice(0, -1).join(", ")} or ${anyTool[anyTool.length - 1]}`} in any other tool you connect. Never in a money tool.`);
+    cannot.push("See, change or send anything in those other tools.");
   }
   if (!job.tools.some((g) => g.policy)) cannot.push("Move money, place orders, or change prices.");
   cannot.push("Use any tool or any kind of record not listed here.");

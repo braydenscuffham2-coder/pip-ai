@@ -4,7 +4,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
-import { allows, CEILING, checkSpec, jobForMessage, jobsOf, plainWords, runsPerDay } from "./teammate-spec.ts";
+import { allows, CEILING, checkSpec, jobForMessage, jobsOf, MONEY_RECORDS, plainWords, runsPerDay } from "./teammate-spec.ts";
+import * as contract from "./teammate-spec.ts";
 
 const DIR = new URL("../../../docs/contracts/examples/", import.meta.url);
 const example = (name: string) => JSON.parse(readFileSync(new URL(name, DIR), "utf8"));
@@ -121,7 +122,7 @@ test("unknown keys, duplicate ids and wrong shapes are refused", () => {
 
 test("allows: the permission check", () => {
   const [job] = checkSpec(example("lead-chaser.json")).jobs;
-  assert.deepEqual(allows(job, { tool: "crm", records: "lead", level: "read" }), { ok: true });
+  assert.deepEqual(allows(job, { tool: "crm", records: "lead", level: "read", fields: ["name", "status"] }), { ok: true });
   assert.deepEqual(allows(job, { tool: "crm", records: "lead", level: "update", fields: ["status"] }), { ok: true });
   const no = (ask: J, why: string, passed?: string[]) => { const v = allows(job, ask, passed); assert.equal(v.ok, false, JSON.stringify(ask)); assert.equal((v as J).why, why); };
   no({ tool: "crm", records: "lead", level: "delete" }, "never");
@@ -130,6 +131,7 @@ test("allows: the permission check", () => {
   no({ tool: "crm", records: "lead", level: "update" }, "field");
   no({ tool: "crm", records: "lead", level: "update", fields: [] }, "field");
   no({ tool: "crm", records: "lead", level: "read", fields: ["phone"] }, "field");
+  no({ tool: "crm", records: "lead", level: "read" }, "field"); // this job lists what it may see, so a read must say what it reads
   no({ tool: "crm", records: "lead", level: "add" }, "not_granted");
   no({ tool: "crm", records: "contact", level: "read" }, "not_granted");
   no({ tool: "kit:hubspot", records: "lead", level: "read" }, "not_granted");
@@ -224,4 +226,135 @@ test("hostile input cannot crash the checker or slip through", () => {
   for (const n of nasty) { const c = checkSpec(n); assert.equal(c.ok, false); assert.equal(c.jobs.length, 0); }
   const [job] = checkSpec(spec()).jobs;
   for (const ask of [{ tool: "constructor", records: "toString", level: "read" }, { tool: "crm", records: "contact", level: "__proto__" }, { tool: "crm", records: "contact", level: "update", fields: ["__proto__"] }]) assert.equal(allows(job, ask).ok, false);
+});
+
+// ---------- one test per finding in the review of pull request #29 ----------
+
+test("hold 1: a job that lists fields for a level refuses an ask that names none (read and add, like update)", () => {
+  const [job] = checkSpec(spec((j) => (j.tools = [
+    { tool: "crm", records: "lead", can: ["read", "add"], fields: { read: ["name", "status"], add: ["name"] } },
+    { tool: "crm", records: "note", can: ["read", "add"] },
+  ]))).jobs;
+  const why = (ask: J) => { const v = allows(job, ask); return v.ok ? "ok" : v.why; };
+  for (const level of ["read", "add"]) {
+    const ask = { tool: "crm", records: "lead", level };
+    assert.equal(why(ask), "field", `${level} with no fields`);
+    assert.equal(why({ ...ask, fields: [] }), "field", `${level} with an empty list`);
+    assert.equal(why({ ...ask, fields: ["name"] }), "ok", `${level} of a listed field`);
+    assert.equal(why({ ...ask, fields: ["name", "email"] }), "field", `${level} of a field outside the list`);
+  }
+  // A job that lists no fields for a level is not narrowed there, whether or not the ask names fields.
+  assert.equal(why({ tool: "crm", records: "note", level: "add" }), "ok");
+  assert.equal(why({ tool: "crm", records: "note", level: "read", fields: ["anything"] }), "ok");
+});
+
+test("hold 2: a money tool needs the policy for any record at any level, in checkSpec and in allows", () => {
+  // The two specs from the review. Both were valid with no policy.
+  bad(spec((j) => (j.tools = [{ tool: "kit:stripe", records: "contact", can: ["add", "update"], fields: { update: ["email"] } }])), /money tool/);
+  bad(spec((j) => (j.tools = [{ tool: "kit:quickbooks", records: "item", can: ["read", "update"], fields: { update: ["unit_price"] } }])), /money tool/);
+  for (const tool of ["kit:stripe", "kit:square", "kit:paypal", "kit:quickbooks", "kit:xero", "kit:shopify", "kit:gusto", "kit:adp", "kit:my_bank", "billing", "payroll", "payments"])
+    for (const can of [["read"], ["add"]]) bad(spec((j) => (j.tools = [{ tool, records: "contact", can }])), /money tool/);
+  // Naming the policy is not enough: buying does not open a contact, so there is still nothing that can.
+  bad(spec((j) => (j.tools = [{ tool: "kit:stripe", records: "contact", can: ["add"], policy: "buying" }])), /money tool/);
+  // An order in a money tool can be declared with the policy, and is refused until the policy has passed.
+  const [job] = checkSpec(spec((j) => (j.tools = [{ tool: "kit:shopify", records: "order", can: ["add"], policy: "buying" }]))).jobs;
+  const order = { tool: "kit:shopify", records: "order", level: "add" };
+  assert.equal((allows(job, order) as J).why, "money");
+  assert.deepEqual(allows(job, order, ["buying"]), { ok: true });
+  // allows() holds the same line for a job that never went through the checker.
+  const forged: J = { ...job, tools: [
+    { tool: "kit:stripe", records: "contact", can: ["add", "update"], fields: { update: ["email"] }, required: true },
+    { tool: "kit:quickbooks", records: "item", can: ["update"], fields: { update: ["unit_price"] }, required: true, policy: "buying" },
+  ] };
+  for (const passed of [[], ["buying"]]) {
+    assert.equal((allows(forged, { tool: "kit:stripe", records: "contact", level: "add" }, passed) as J).why, "money");
+    assert.equal((allows(forged, { tool: "kit:stripe", records: "contact", level: "update", fields: ["email"] }, passed) as J).why, "money");
+    assert.equal((allows(forged, { tool: "kit:quickbooks", records: "item", level: "update", fields: ["unit_price"] }, passed) as J).why, "money");
+  }
+  // A tool that is not a money tool is untouched by this rule.
+  assert.ok(checkSpec(spec((j) => (j.tools = [{ tool: "kit:hubspot", records: "contact", can: ["add"] }]))).ok);
+  bad(spec((j) => (j.tools = [{ tool: "kit:hubspot", records: "contact", can: ["add"], policy: "buying" }])), /policy is only for/);
+});
+
+test("hold 2: the contract's money-tool list is the one pip-turn uses", () => {
+  const src = readFileSync(new URL("../pip-turn/index.ts", import.meta.url), "utf8");
+  const m = src.match(/^const MONEY = \/(.+)\/;$/m);
+  assert.ok(m, "pip-turn's MONEY pattern was not found; if it moved, update this test");
+  assert.equal((contract as J).MONEY_TOOLS?.source, m[1]);
+});
+
+test("hold 3: the implied job for older teammates adds only what pip-turn's add-one rule covers", () => {
+  const job = jobsOf(BOARD, BOARD_MANIFEST).jobs[0];
+  const ok = (tool: string, records: string, level = "add") => allows(job, { tool, records, level }).ok;
+  const addOne = ["lead", "contact", "deal", "task", "ticket", "note", "job", "row"];
+  for (const r of addOne) assert.equal(ok("kit:hubspot", r), true, `add ${r}`);
+  // The four from the review.
+  assert.equal(ok("kit:stripe", "contact"), false, "a contact in a money tool");
+  assert.equal(ok("kit:slack", "message"), false, "a message through any connected tool");
+  assert.equal(ok("kit:twilio", "call"), false, "a call through any connected tool");
+  assert.equal(ok("kit:dropbox", "file"), false, "a file in any connected tool");
+  for (const r of ["message", "call", "file", "appointment", "item", "review", "post", "busy_time", "count", ...MONEY_RECORDS, "*", "secret"]) assert.equal(ok("kit:hubspot", r), false, `add ${r}`);
+  for (const kit of ["kit:stripe", "kit:square", "kit:paypal", "kit:quickbooks", "kit:xero", "kit:shopify", "kit:gusto"]) for (const r of addOne) assert.equal(ok(kit, r), false, `${kit}/${r}`);
+  for (const level of ["read", "update", "delete"]) for (const r of addOne) assert.equal(ok("kit:hubspot", r, level), false, `${level} ${r}`);
+  assert.ok(!job.tools.some((g) => g.records === "*"), "no wildcard kind of record is left in the implied job");
+  const w = plainWords(job);
+  assert.ok(w.can.includes("Add one new lead, contact, deal, task, ticket, note, job or row in any other tool you connect. Never in a money tool."), w.can.join(" | "));
+  assert.ok(w.cannot.includes("See, change or send anything in those other tools."));
+  for (const part of Object.values(w)) for (const s of part) assert.ok(s && !/undefined|\[object|\*/.test(s), s);
+});
+
+test("hold 4: buying opens orders, and reading prices or invoices, and nothing else", () => {
+  const grant = (records: string, can: string[], more: J = {}) => spec((j) => (j.tools = [{ tool: "kit:restaurant_depot", records, can, policy: "buying", ...more }]));
+  for (const r of ["payout", "payroll", "refund", "discount", "payment", "estimate"]) for (const can of [["read"], ["add"]]) bad(grant(r, can), /No policy can open/);
+  bad(grant("price", ["read", "update"], { fields: { update: ["amount"] } }), /cannot open update/);
+  bad(grant("price", ["add"]), /cannot open add/);
+  bad(grant("invoice", ["add"]), /cannot open add/);
+  assert.ok(checkSpec(grant("order", ["read", "add"])).ok);
+  assert.ok(checkSpec(grant("price", ["read"])).ok);
+  assert.ok(checkSpec(grant("invoice", ["read"])).ok);
+  // allows() refuses the same things on a job that never went through the checker, even after buying has passed.
+  const [base] = checkSpec(grant("order", ["add"])).jobs;
+  const forged = (records: string): J => ({ ...base, tools: [{ tool: "kit:restaurant_depot", records, can: ["read", "add", "update"], fields: { update: ["amount"] }, required: true, policy: "buying" }] });
+  for (const r of ["payout", "payroll", "refund", "discount", "payment", "estimate"]) for (const level of ["read", "add", "update"])
+    assert.equal((allows(forged(r), { tool: "kit:restaurant_depot", records: r, level, fields: ["amount"] }, ["buying"]) as J).why, "money", `${level} ${r}`);
+  for (const r of ["price", "invoice"]) {
+    for (const level of ["add", "update"]) assert.equal((allows(forged(r), { tool: "kit:restaurant_depot", records: r, level, fields: ["amount"] }, ["buying"]) as J).why, "money", `${level} ${r}`);
+    assert.deepEqual(allows(forged(r), { tool: "kit:restaurant_depot", records: r, level: "read" }, ["buying"]), { ok: true });
+    assert.equal((allows(forged(r), { tool: "kit:restaurant_depot", records: r, level: "read" }) as J).why, "money", `read ${r} before the policy passed`);
+  }
+});
+
+test("smaller a: allows answers no, and does not crash, when the ask is not well formed", () => {
+  const [job] = checkSpec(example("lead-chaser.json")).jobs;
+  const legacy = jobsOf(BOARD, BOARD_MANIFEST).jobs[0];
+  const asks: J[] = [
+    { tool: 5, records: "lead", level: "read" }, { tool: null, records: "lead", level: "read" }, { records: "lead", level: "read" }, { tool: {}, records: "lead", level: "add" },
+    { tool: ["crm"], records: "lead", level: "read" }, { tool: "crm", records: 7, level: "read" }, { tool: "crm", records: "lead", level: 3 }, { tool: "crm", records: "lead" },
+    { tool: "crm", records: "lead", level: "read", fields: "name" }, { tool: "crm", records: "lead", level: "read", fields: [null, {}] }, { tool: "crm", records: "lead", level: "update", fields: [7] },
+    null, undefined, "crm", 4, [], {},
+  ];
+  // The crash from the review: a tool that is not text, asked of the implied job.
+  assert.doesNotThrow(() => allows(legacy, { tool: 5, records: "lead", level: "add" } as J));
+  for (const j of [legacy, job]) for (const ask of asks) {
+    let v: J;
+    assert.doesNotThrow(() => { v = allows(j, ask); }, `threw on ${JSON.stringify(ask)}`);
+    assert.equal(v.ok, false, JSON.stringify(ask)); assert.equal(typeof v.say, "string");
+  }
+  // A job or a list of passed policies that is the wrong shape is a no as well.
+  const ask = { tool: "crm", records: "lead", level: "read", fields: ["name"] };
+  for (const j of [null, undefined, 3, {}, { tools: "all" }, { tools: [null, 3, { tool: "crm", records: "lead" }] }] as J[]) {
+    let v: J;
+    assert.doesNotThrow(() => { v = allows(j, ask); }, `threw on job ${JSON.stringify(j)}`);
+    assert.equal(v.ok, false);
+  }
+  const [buyer] = checkSpec(example("stock-reorder.json")).jobs;
+  for (const passed of ["buying", "not buying at all", { 0: "buying", length: 1 }, null] as J[]) assert.equal(allows(buyer, { tool: "kit:restaurant_depot", records: "order", level: "add" }, passed).ok, false, `passed = ${JSON.stringify(passed)}`);
+});
+
+test("smaller b: the same schedule listed twice in one job is an error", () => {
+  const daily = { type: "schedule", every: "day", at: "09:00" };
+  bad(spec((j) => (j.triggers = [daily, { ...daily }])), /same schedule/);
+  bad(spec((j) => (j.triggers = [daily, { at: "09:00", every: "day", type: "schedule" }, { type: "owner", on: "run_now" }])), /same schedule/);
+  bad(spec((j) => (j.triggers = [{ type: "schedule", every: "week", on: ["mon", "thu"], at: "07:30" }, { type: "schedule", every: "week", on: ["thu", "mon"], at: "07:30" }])), /same schedule/);
+  assert.ok(checkSpec(spec((j) => (j.triggers = [daily, { ...daily, at: "17:00" }]))).ok, "two different schedules are fine");
 });
