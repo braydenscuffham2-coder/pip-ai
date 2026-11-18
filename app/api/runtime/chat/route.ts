@@ -3,6 +3,7 @@ import { llm, llmEnabled } from '@/lib/server/llm';
 import { addMessage, getSpec, history, notify, startConversation } from '@/lib/server/runtime-store';
 import { runTurn, type ActionSink, type Llm } from '@/lib/skills/runtime';
 import { guard } from '@/lib/server/guard';
+import { withAiNotice } from '@/lib/skills/ai-notice';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -62,6 +63,8 @@ export async function POST(req: Request) {
     return { ...a, status: approval === 'owner' ? 'waiting_for_owner' : 'done' };
   };
   const turn = await runTurn({ spec: s.spec, brain: s.brain, history: past, message, llm: model, sink });
+  // The first reply always says it is an AI, in code, the same as pip-turn does for Forge Board teammates.
+  turn.reply = withAiNotice(turn.reply, past.length === 0, '', s.business);
   await addMessage(conv, 'user', message);
   await addMessage(conv, 'assistant', turn.reply, turn.actions);
   return withCors(json({ conversation: conv, reply: turn.reply, actions: turn.actions.map(a => ({ tool: a.tool, status: a.status })), live: llmEnabled() }));
