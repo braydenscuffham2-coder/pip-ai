@@ -1695,7 +1695,7 @@ function teamTab() {
 // One short line each, and only what is true of the sign-in today (docs/connections.md). Takes the choices that can be signed in to.
 function signNotes(choices) {
   const google = choices.some((c) => c.toolkit && (c.provider === "google" || c.toolkit === "gmail" || /^google/.test(c.toolkit))), gmail = choices.some((c) => c.toolkit === "gmail"), out = [];
-  if (google) out.push(h("p", { class: "fine" }, "For now, Google's screen shows the name \"composio.dev\" instead of Pip. That is the service Pip uses to hold sign-ins. It also shows a \"Google hasn't verified this app\" notice. Both are expected."));
+  if (google) out.push(h("p", { class: "fine" }, "For now, Google's screen shows the name \"composio.dev\" instead of Pip. That is the service Pip uses to hold sign-ins. It also shows a \"Google hasn't verified this app\" notice. Both are expected. Choose Continue."));
   if (gmail) out.push(h("p", { class: "note info" }, icon("info"), h("span", {}, "On Google's screen, tick the box next to \"Send email on your behalf\". If you leave it empty, your team cannot send email.")));
   return out;
 }
@@ -1735,7 +1735,6 @@ function stepBody(s, i) {
   const other = () => h("button", { class: "btn link", type: "button", "data-k": "other-" + s.slot, onclick: () => askSheet({ title: "What do you use for this?", label: "The tool you use", ok: "Tell Pip", onOk: (t) => run(() => api("/business/" + id + "/unsupported", { tool_name: t, slot: s.slot }), "Thanks. I'll add it and tell you. The rest of your team can still go live.") }) }, "I use something else");
   if (s.kind === "owner_oauth") {
     kids.push(h("p", { class: "fine" }, "You sign in on the tool's own screen. Pip never sees your password. That screen lists what the connection can reach; Pip limits your agents to what is written above."));
-    if (s.choices.some((c) => c.toolkit === "gmail")) kids.push(h("p", { class: "fine" }, "Using Gmail? Google's screen has a box to allow ongoing access. Tick it, or Google ends the connection after six months and asks you to sign in again."));
     if (!d.connect_on) kids.push(h("p", { class: "note info" }, icon("info"), h("span", {}, "Tool sign-ins are not switched on yet. Pip will let you know.")));
     // Before the buttons: what to expect and do on Google's screen. Right under them: the time limit.
     kids.push(signNotes(s.choices));
