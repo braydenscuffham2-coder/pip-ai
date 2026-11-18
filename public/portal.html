@@ -226,6 +226,8 @@ a.chip:hover,button.chip:hover{box-shadow:inset 0 0 0 1px rgba(var(--violet-rgb)
 #pip canvas{opacity:0;transition:opacity .7s var(--ease)}
 #pip.live canvas{opacity:1}
 #pip.live img{opacity:0}
+/* Pip is drawn wider than its box on purpose. On a phone that must not make the page scroll sideways. */
+@media (max-width:620px){html,body{overflow-x:clip}}
 .pipslot.park{visibility:hidden}
 
 /* Pip's voice: the Marketplace's speech bubble */
@@ -1581,7 +1583,7 @@ function stageCard() {
   if (st === "disconnected") return h("div", { class: "card warm stage rise", style: { "--i": 1 } },
     h("div", { class: "top" }, kick("Where things stand"), pill("Disconnected", "warn")),
     h("h2", { class: "h-m" }, "Everything is disconnected"),
-    h("p", { class: "lead" }, "Every tool sign-in was revoked and every agent is stopped. Remember to turn off call forwarding at your phone company."),
+    h("p", { class: "lead" }, "Every tool sign-in was revoked and every teammate is stopped. Remember to turn off call forwarding at your phone company."),
     isOwner() ? h("button", { class: "btn ghost", style: { marginTop: "18px" }, "data-k": "to-settings", "data-pip": "next", onclick: () => setTab("settings") }, "Open settings", icon("arrow", "arr")) : null);
   if (st === "building") return h("div", { class: "card hair stage rise", style: { "--i": 1 } },
     h("div", { class: "top" }, kick("Where things stand"), pill("Being built", "vio")),
@@ -1716,7 +1718,7 @@ function stepBody(s, i) {
   const d = S.data, locked = !d.setup_unlocked && d.role !== "founder", id = S.bid, kids = [];
   kids.push(h("p", { class: "can" }, icon("check"), h("span", {}, s.can)));
   if (s.cannot) kids.push(h("p", { class: "cannot" }, icon("x"), h("span", {}, s.cannot)));
-  kids.push(h("p", { class: "meta" }, h("span", {}, "Usual wait: ", h("b", {}, s.lead_time)), h("span", { class: "who" }, "Used by: ", s.agents.map((k, j) => { const a = d.agents.find((x) => x.skill_id === k); const nm = a ? (a.teammate || a.name) : k; return h("span", { class: "who" }, a ? face(nm, (a.role || "") + " " + a.name, "xs") : null, nm + (j < s.agents.length - 1 ? "," : "")); }))));
+  kids.push(h("p", { class: "meta" }, s.status === "active" ? null : h("span", {}, "Usual wait: ", h("b", {}, s.lead_time)), h("span", { class: "who" }, "Used by: ", s.agents.map((k, j) => { const a = d.agents.find((x) => x.skill_id === k); const nm = a ? (a.teammate || a.name) : k; return h("span", { class: "who" }, a ? face(nm, (a.role || "") + " " + a.name, "xs") : null, nm + (j < s.agents.length - 1 ? "," : "")); }))));
   if (s.status === "active") {
     // A connected step can be signed in again (a different account, or after Pip changes what a sign-in asks for).
     // The current sign-in keeps working until the new one is finished.
@@ -1734,7 +1736,7 @@ function stepBody(s, i) {
   if (locked) { kids.push(h("p", { class: "note info" }, icon("lock"), h("span", {}, "Unlocks when you accept your price."))); return kids; }
   const other = () => h("button", { class: "btn link", type: "button", "data-k": "other-" + s.slot, onclick: () => askSheet({ title: "What do you use for this?", label: "The tool you use", ok: "Tell Pip", onOk: (t) => run(() => api("/business/" + id + "/unsupported", { tool_name: t, slot: s.slot }), "Thanks. I'll add it and tell you. The rest of your team can still go live.") }) }, "I use something else");
   if (s.kind === "owner_oauth") {
-    kids.push(h("p", { class: "fine" }, "You sign in on the tool's own screen. Pip never sees your password. That screen lists what the connection can reach; Pip limits your agents to what is written above."));
+    kids.push(h("p", { class: "fine" }, "You sign in on the tool's own screen. Pip never sees your password. That screen lists what the connection can reach; Pip limits your teammates to what is written above."));
     if (!d.connect_on) kids.push(h("p", { class: "note info" }, icon("info"), h("span", {}, "Tool sign-ins are not switched on yet. Pip will let you know.")));
     // Before the buttons: what to expect and do on Google's screen. Right under them: the time limit.
     kids.push(signNotes(s.choices));
@@ -1779,14 +1781,14 @@ function setupTab() {
   return [
     locked ? h("div", { class: "lockbar rise", style: { "--i": 0 } }, h("span", { class: "ic" }, icon("lock")), h("p", {}, h("b", {}, "Setup unlocks when you accept your price. "), "You can look around until then."), b.quote ? h("button", { class: "btn pri", "data-k": "see-price", "data-pip": "next", onclick: () => setTab("team") }, "See your price", icon("arrow", "arr")) : null) : null,
     h("div", { class: "card" + (b.state ? "" : " warm") + " rise", style: { "--i": 1 } },
-      kick("Your location"), h("h2", { class: "h-s" , style: { marginTop: "10px" } }, "Where is your business?"), h("p", { class: "small", style: { marginTop: "6px" } }, "Call, text, recording and camera rules differ by state. Your agents follow the rules for yours."),
+      kick("Your location"), h("h2", { class: "h-s" , style: { marginTop: "10px" } }, "Where is your business?"), h("p", { class: "small", style: { marginTop: "6px" } }, "Call, text, recording and camera rules differ by state. Your teammates follow the rules for yours."),
       isOwner() ? h("div", { class: "state-row" }, h("label", { class: "sr-only", for: "st-pick" }, "Your state"), st, h("button", { class: "btn " + (b.state ? "ghost" : "pri"), "data-k": "st-save", "data-pip": b.state ? null : "state", onclick: () => st.value && run(() => api("/business/" + id + "/profile", { state: st.value }), "Saved.") }, "Save")) : h("p", { class: "lead", style: { marginTop: "12px" } }, b.state || "Not set yet")),
     h("section", { class: "card rise", style: { "--i": 2 }, "aria-label": "Setup steps" },
       h("div", { class: "card-h" }, h("div", {}, kick(d.checklist.length ? done + " of " + d.checklist.length + " done" : "Setup"), h("h2", { class: "h-s" }, need.length || !d.checklist.length ? "Connect your tools" : "Every step is done")), d.checklist.length && !need.length ? pill("Done", "good") : null),
       d.checklist.length ? null : h("p", { class: "small", style: { marginTop: "12px" } }, "Nothing to connect yet."),
       h("div", { class: "steps", style: { marginTop: d.checklist.length ? "8px" : "0" } }, d.checklist.map((s, i) => {
         const c = STEP[s.status] || [s.status, ""], wait = s.status !== "active" && s.waiting_on === "pip" && s.status !== "submitted";
-        const dflt = need[0] === s && d.setup_unlocked, open = S.openTouched ? S.openSlots.has(s.slot) : dflt;
+        const dflt = need[0] === s && d.setup_unlocked, open = S.openTouched ? S.openSlots.has(s.slot) : (dflt || !!(s.detail && s.detail.pending)); // a half-finished second sign-in opens by itself, so "check again" is in view
         const cls = s.status === "active" ? "done" : locked ? "locked" : ["failed", "expired", "revoked"].includes(s.status) ? "bad" : need[0] === s ? "next" : "";
         const det = h("details", { class: "step " + cls, id: "step-" + s.slot, open: open || null },
           h("summary", { "data-k": "sum-" + s.slot }, h("span", { class: "num", "aria-hidden": "true" }, s.status === "active" ? icon("check") : locked ? icon("lock") : String(i + 1)),
@@ -1819,6 +1821,7 @@ function anyToolCard() {
   const mine = d.extra_tools || [], word = { active: "connected", link_made: "sign-in not finished", expired: "needs to be reconnected", failed: "did not connect" };
   return h("section", { class: "card rise", style: { "--i": 3 }, "aria-label": "Connect another tool" }, kick("Anything else"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "Use a tool that is not listed?"),
     h("p", { class: "small", style: { marginTop: "6px" } }, "Search for it and connect it here. You sign in on the tool's own screen. If the tool uses a key or its own username and password instead, you enter it on a secure page run by our connection partner. Make a separate login for Pip in that tool first, not your own. Either way Pip never sees your password or key. Pip then adds it to your team and tells you when it is in use."),
+    signTime(),
     h("label", { class: "field", for: "tool-q", style: { marginTop: "14px" } }, h("span", { class: "lab" }, "Tool name"), q), out,
     mine.length ? h("ul", { class: "rules", style: { marginTop: "14px" } }, mine.map((t) => h("li", {}, icon(t.status === "active" ? "check" : "info"), h("span", {}, t.toolkit + ": " + (word[t.status] || t.status))))) : null);
 }
@@ -1872,7 +1875,7 @@ function settingsTab() {
   const mob = h("input", { class: "in", id: "mob", type: "tel", autocomplete: "tel", inputmode: "tel", placeholder: "Mobile for alerts", value: a.mobile || "" }), conf = h("input", { class: "in", id: "conf", autocomplete: "off", placeholder: b.name });
   const rule = (txt, cls) => h("li", { class: cls }, icon("check"), h("span", {}, txt));
   return [
-    h("section", { class: "card rise", style: { "--i": 1 }, "aria-label": "How your agents behave" }, kick("Rules your team follows"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "How your agents behave" + (b.state ? " in " + b.state : "")), h("ul", { class: "rules", style: { marginTop: "10px" } },
+    h("section", { class: "card rise", style: { "--i": 1 }, "aria-label": "How your teammates behave" }, kick("Rules your team follows"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "How your teammates behave" + (b.state ? " in " + b.state : "")), h("ul", { class: "rules", style: { marginTop: "10px" } },
       rule("They say they are an AI at the start of every call, text thread and chat."), rule("Every recorded call starts with a recording notice."),
       rule("They only call or text people who wrote in first or agreed to it, and they honor STOP at once in every channel."),
       us.outbound_hours ? rule("Outbound calls and texts only go out Monday to Saturday " + ((us.outbound_hours.mon_sat || []).join(" to ")) + " and Sunday " + ((us.outbound_hours.sun || []).join(" to ")) + ", your local time.") : null,
@@ -2024,7 +2027,7 @@ function founderHome() {
       : h("div", { class: "card dash empty rise", style: { "--i": 1, marginTop: "22px" } }, h("p", { class: "h-s" }, "No businesses yet.")),
     h("section", { class: "card rise", style: { "--i": 6, marginTop: "18px" }, "aria-label": "Switches" }, kick("Switches"),
       h("div", { style: { marginTop: "6px" } }, toggle("portal_invites", "Email owners at Lock it in", "Off: no owner is emailed automatically. Needs your own sending domain on Resend first."),
-        toggle("portal_golive_gate", "Go-live gate", "On: an agent cannot go live until price, location, connections and agreements are in place."))),
+        toggle("portal_golive_gate", "Go-live gate", "On: a teammate cannot go live until price, location, connections and agreements are in place."))),
     f.issues.length ? h("section", { class: "card rise", style: { "--i": 7, marginTop: "18px" }, "aria-label": "Open reports" }, kick("Open reports"), h("ul", { class: "log", style: { marginTop: "8px" } }, f.issues.map((i) => h("li", {}, h("span", { class: "dot" }, icon("alert")), h("div", {}, h("p", { class: "sum" }, i.body), h("p", { class: "when" }, i.opened_by + " · " + new Date(i.created_at).toLocaleString()), h("button", { class: "btn link", onclick: () => run(() => api("/founder/resolve", { issue_id: i.id }), "Resolved.") }, "Mark resolved")))))) : null,
     h("div", { class: "row", style: { justifyContent: "center", marginTop: "18px" } }, h("button", { class: "btn ghost", "data-k": "sign-out", onclick: signOut }, icon("out"), "Sign out"))];
 }
