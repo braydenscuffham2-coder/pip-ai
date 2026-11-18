@@ -395,6 +395,7 @@ html.has-dock{--dock-h:78px}
 .step.locked .num{color:var(--ink-3);background:rgba(11,13,31,.04);box-shadow:none}
 .step .lbl{font:600 16px/1.3 var(--f-body);min-width:0}
 .step .lbl small{display:block;margin-top:4px;font-weight:400;font-size:13px;line-height:1.5;color:var(--ink-3)}
+.step .lbl small .btn.link{min-height:32px;padding:0;font-size:13px;white-space:normal;text-align:left}
 .step .pill.p-in{display:none}
 @media (max-width:620px){.step .pill.p-in{display:inline-flex;min-height:24px;font-size:12px;margin:2px 8px 2px 0;vertical-align:middle}.step .pill.p-out{display:none}.step>summary{grid-template-columns:34px minmax(0,1fr) 24px}.step .body{padding-left:0}}
 .step .end{display:flex;align-items:center;gap:8px}
@@ -736,7 +737,7 @@ dialog.sheet::backdrop{background:rgba(246,246,251,.6);-webkit-backdrop-filter:b
 <p class="sr-only" id="sr-alert" role="alert"></p>
 <p class="sr-only" id="pipsr" aria-live="polite"></p>
 <dialog class="sheet" id="sheet" aria-modal="true"></dialog>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js" integrity="sha384-uteMfOloLDGt042uDz+xHGF3ym63/WQ6rFq7murQRG8Ih7QrXGEGNtWd8688sb4O" crossorigin="anonymous" defer></script>
 <script>
 // ---------- Pip in 3D ----------
 // A readable port of the Marketplace's own Pip (public/app.html, the Recall script): the same body, pearl glass,
@@ -1690,6 +1691,27 @@ function teamTab() {
       d.health_missing.length ? h("ul", { class: "health", style: { marginTop: "12px" } }, d.health_missing.map((m) => h("li", {}, icon("info"), m.party))) : h("p", { class: "note ok", style: { marginTop: "12px" } }, icon("check"), h("span", {}, "All signed."))) : null];
 }
 
+// ---------- sign-in steps: what the owner should know before the tool's own screen opens ----------
+// One short line each, and only what is true of the sign-in today (docs/connections.md). Takes the choices that can be signed in to.
+function signNotes(choices) {
+  const google = choices.some((c) => c.toolkit && (c.provider === "google" || c.toolkit === "gmail" || /^google/.test(c.toolkit))), gmail = choices.some((c) => c.toolkit === "gmail"), out = [];
+  if (google) out.push(h("p", { class: "fine" }, "For now, Google's screen shows the name \"composio.dev\" instead of Pip. That is the service Pip uses to hold sign-ins. It also shows a \"Google hasn't verified this app\" notice. Both are expected. Choose Continue."));
+  if (gmail) out.push(h("p", { class: "note info" }, icon("info"), h("span", {}, "On Google's screen, tick the box next to \"Send email on your behalf\". If you leave it empty, your team cannot send email.")));
+  return out;
+}
+function signTime() { return h("p", { class: "fine" }, "Finish the sign-in within 10 minutes. If the time runs out, come back here and start it again."); }
+// A connected sign-in step can be signed in again. Which choice that is, and the quiet link for the step's row.
+function againChoice(s) {
+  const d = S.data, locked = !d.setup_unlocked && d.role !== "founder";
+  if (s.status !== "active" || s.kind !== "owner_oauth" || !isOwner() || !d.connect_on || locked) return null;
+  return s.choices.find((x) => x.toolkit && x.toolkit === s.choice) || (s.choices.filter((x) => x.toolkit).length === 1 ? s.choices.find((x) => x.toolkit) : null);
+}
+function againLink(s) {
+  const c = againChoice(s), id = S.bid;
+  if (!c) return null;
+  // It lives inside the row's <summary>, so the click must not also open or close the step.
+  return h("button", { class: "btn link", type: "button", "data-k": "again-" + s.slot, onclick: (e) => { e.preventDefault(); run(async () => { const r = await api("/business/" + id + "/connect", { slot: s.slot, toolkit: c.toolkit }); location.href = r.url; }); } }, s.detail && s.detail.pending ? "Start the sign-in over" : "Sign in again or switch account");
+}
 function stepBody(s, i) {
   const d = S.data, locked = !d.setup_unlocked && d.role !== "founder", id = S.bid, kids = [];
   kids.push(h("p", { class: "can" }, icon("check"), h("span", {}, s.can)));
@@ -1699,12 +1721,12 @@ function stepBody(s, i) {
     // A connected step can be signed in again (a different account, or after Pip changes what a sign-in asks for).
     // The current sign-in keeps working until the new one is finished.
     if (isOwner() && s.kind === "owner_oauth" && d.connect_on && !locked) {
-      const c = s.choices.find((x) => x.toolkit && x.toolkit === s.choice) || (s.choices.filter((x) => x.toolkit).length === 1 ? s.choices.find((x) => x.toolkit) : null);
-      const again = s.detail && s.detail.pending;
+      const c = againChoice(s), again = s.detail && s.detail.pending;
       if (again) kids.push(h("p", { class: "note info" }, icon("info"), h("span", {}, "A new sign-in was started. The current one keeps working until you finish it.")));
-      if (c) kids.push(h("div", { class: "row wrap", style: { gap: "4px 18px" } },
-        h("button", { class: "btn link", type: "button", "data-k": "again-" + s.slot, onclick: () => run(async () => { const r = await api("/business/" + id + "/connect", { slot: s.slot, toolkit: c.toolkit }); location.href = r.url; }) }, again ? "Start the sign-in over" : "Sign in again or switch account"),
-        again ? h("button", { class: "btn link", type: "button", "data-k": "chk-" + s.slot, onclick: () => run(() => api("/business/" + id + "/refresh", {}), "Checked.") }, "I finished signing in. Check again.") : null));
+      // The "sign in again" control itself sits on the step's row (againLink), so it shows without opening the step.
+      if (c && again) kids.push(h("div", { class: "row wrap", style: { gap: "4px 18px" } },
+        h("button", { class: "btn link", type: "button", "data-k": "chk-" + s.slot, onclick: () => run(() => api("/business/" + id + "/refresh", {}), "Checked.") }, "I finished signing in. Check again.")));
+      if (c) kids.push(h("p", { class: "fine" }, "Before you sign in again:"), signNotes([c]), signTime());
     }
     return kids;
   }
@@ -1713,13 +1735,15 @@ function stepBody(s, i) {
   const other = () => h("button", { class: "btn link", type: "button", "data-k": "other-" + s.slot, onclick: () => askSheet({ title: "What do you use for this?", label: "The tool you use", ok: "Tell Pip", onOk: (t) => run(() => api("/business/" + id + "/unsupported", { tool_name: t, slot: s.slot }), "Thanks. I'll add it and tell you. The rest of your team can still go live.") }) }, "I use something else");
   if (s.kind === "owner_oauth") {
     kids.push(h("p", { class: "fine" }, "You sign in on the tool's own screen. Pip never sees your password. That screen lists what the connection can reach; Pip limits your agents to what is written above."));
-    if (s.choices.some((c) => c.toolkit === "gmail")) kids.push(h("p", { class: "fine" }, "Using Gmail? Google's screen has a box to allow ongoing access. Tick it, or Google ends the connection after six months and asks you to sign in again."));
     if (!d.connect_on) kids.push(h("p", { class: "note info" }, icon("info"), h("span", {}, "Tool sign-ins are not switched on yet. Pip will let you know.")));
+    // Before the buttons: what to expect and do on Google's screen. Right under them: the time limit.
+    kids.push(signNotes(s.choices));
     let firstPri = true;
     kids.push(h("div", { class: "connects" }, s.choices.map((c) => {
       if (c.toolkit) { const pri = firstPri; firstPri = false; return h("button", { class: "btn " + (pri ? "pri" : "ghost"), disabled: !d.connect_on, "data-k": "con-" + s.slot + "-" + c.toolkit, "data-pip": pri ? "step-" + s.slot : null, onclick: () => run(async () => { const r = await api("/business/" + id + "/connect", { slot: s.slot, toolkit: c.toolkit }); try { sessionStorage.setItem("pip-chain", JSON.stringify({ provider: c.provider || "", slot: s.slot, n: 0 })); } catch (e) { /* the chain is a convenience */ } location.href = r.url; }) }, h("span", { class: "tl", "aria-hidden": "true" }, String(c.label).charAt(0)), (s.status === "needed" ? "Connect " : "Reconnect ") + c.label, icon("arrow", "arr")); }
       return h("button", { class: "btn ghost", "data-k": "use-" + s.slot + "-" + c.label, onclick: () => run(() => api("/business/" + id + "/unsupported", { tool_name: c.label, slot: s.slot }), "Thanks. I'll add " + c.label + " and tell you.") }, h("span", { class: "tl", "aria-hidden": "true" }, String(c.label).charAt(0)), "I use " + c.label);
     })));
+    kids.push(signTime());
     const links = [];
     if (s.status === "link_made") links.push(h("button", { class: "btn link", "data-k": "chk-" + s.slot, onclick: () => run(() => api("/business/" + id + "/refresh", {}), "Checked.") }, "I finished signing in. Check again."));
     links.push(other());
@@ -1766,7 +1790,7 @@ function setupTab() {
         const cls = s.status === "active" ? "done" : locked ? "locked" : ["failed", "expired", "revoked"].includes(s.status) ? "bad" : need[0] === s ? "next" : "";
         const det = h("details", { class: "step " + cls, id: "step-" + s.slot, open: open || null },
           h("summary", { "data-k": "sum-" + s.slot }, h("span", { class: "num", "aria-hidden": "true" }, s.status === "active" ? icon("check") : locked ? icon("lock") : String(i + 1)),
-            h("span", { class: "lbl" }, s.label, h("small", {}, pill(wait ? "Waiting on Pip" : c[0], (wait ? "vio" : c[1]) + " p-in"), s.status === "active" ? null : h("span", { class: "wait" }, "Usual wait: " + s.lead_time))),
+            h("span", { class: "lbl" }, s.label, h("small", {}, pill(wait ? "Waiting on Pip" : c[0], (wait ? "vio" : c[1]) + " p-in"), s.status === "active" ? againLink(s) : h("span", { class: "wait" }, "Usual wait: " + s.lead_time))),
             h("span", { class: "end" }, pill(wait ? "Waiting on Pip" : c[0], (wait ? "vio" : c[1]) + " p-out"), icon("chev", "chev"))),
           h("div", { class: "body" }, stepBody(s, i)));
         det.addEventListener("toggle", () => { if (!S.openTouched) { S.openTouched = true; S.openSlots = new Set(d.checklist.filter((x) => document.getElementById("step-" + x.slot) && document.getElementById("step-" + x.slot).open).map((x) => x.slot)); } else if (det.open) S.openSlots.add(s.slot); else S.openSlots.delete(s.slot); Pip.sync(); });
