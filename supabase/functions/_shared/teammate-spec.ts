@@ -36,10 +36,11 @@ export const POLICIES = ["buying"] as const;
 /**
  * Which policy may open which kinds of record, and how far. A kind that is not in a policy's row has no policy that
  * can open it yet: it is refused in the checker and again in allows(), whatever the spec says and whatever has passed.
- * "buying" is stage 1 only (handbook, November 17): reorder on supplier accounts the business already has.
+ * "buying" is stage 1 only (handbook, November 17): reorder on supplier accounts the business already has. That is
+ * seeing orders and placing a new one. No policy lets a job change an order yet.
  */
 export const POLICY_OPENS: Record<string, Record<string, readonly string[]>> = {
-  buying: { order: ["read", "add", "update"], price: ["read"], invoice: ["read"] },
+  buying: { order: ["read", "add"], price: ["read"], invoice: ["read"] },
 };
 /**
  * Money and payroll products, by name. This is pip-turn's own list (the MONEY pattern in

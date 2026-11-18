@@ -264,7 +264,7 @@ test("attack: a job that never went through the checker still gets no money, no 
       assert.ok(!NEVER.includes(g.records), `${level} ${g.records} was allowed`);
       if (isMoney(g.records) || isMoneyTool(g.tool)) {
         assert.ok(passed.includes("buying") && g.policy === "buying", `${g.tool}/${g.records} opened without the buying policy passing`);
-        assert.ok(g.records === "order" || (level === "read" && ["price", "invoice"].includes(g.records)), `buying opened ${level} ${g.records} in ${g.tool}`);
+        assert.ok((g.records === "order" && ["read", "add"].includes(level)) || (level === "read" && ["price", "invoice"].includes(g.records)), `buying opened ${level} ${g.records} in ${g.tool}`);
       }
       if (level === "update") assert.ok(fields && g.fields?.update?.includes(fields[0]), `an open update on ${g.tool}/${g.records}`);
       if (has(READ_ONLY_RECORDS, g.records)) assert.equal(level, "read");

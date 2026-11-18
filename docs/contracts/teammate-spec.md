@@ -170,9 +170,9 @@ Which policy may open what is a fixed table in the code. There is one policy tod
 
 | Policy | Opens | Does not open |
 | --- | --- | --- |
-| `buying` | `order`: read, add, update. `price`: read only. `invoice`: read only. | Everything else. |
+| `buying` | `order`: read and add (see orders, place a new one). `price`: read only. `invoice`: read only. | Everything else, including changing an order. |
 
-So `payment`, `refund`, `payout`, `payroll`, `discount` and `estimate`, changing a `price`, adding an `invoice`, and every other kind of record in a money tool (a contact in Stripe, an item in QuickBooks) have **no policy that can open them yet**. A spec that asks for one is invalid, with or without `"policy": "buying"`. This matches the handbook decision: stage 1 is reordering on supplier accounts the business already has, nothing more.
+So `payment`, `refund`, `payout`, `payroll`, `discount` and `estimate`, changing an `order` or a `price`, adding an `invoice`, and every other kind of record in a money tool (a contact in Stripe, an item in QuickBooks) have **no policy that can open them yet**. A spec that asks for one is invalid, with or without `"policy": "buying"`. This matches the handbook decision: stage 1 is reordering on supplier accounts the business already has, nothing more.
 
 A permission the table does open must carry `"policy": "buying"`, and the permission check still refuses it unless code has checked that policy and it passed for this exact action. That check is lane 08's `pip-buy`. Until it exists, money is refused for everyone. A spec may declare it so the Forge can report an honest "not yet".
 
@@ -287,7 +287,7 @@ Do not show these sentences in the Portal for a teammate until the row for that 
 
 **07 browser.** A password-only site is still a `tool` with kinds of record and levels. Your allowed pages and actions come from the job's permissions, and `pip-browser` carries out an action that `pip-turn` has already checked. It never decides permission itself.
 
-**08 buying.** Your policy check is the only thing that opens a money record: the caller passes `["buying"]` to `allows` only after `pip-buy` has checked this exact order. Holds and refusals are yours to log with the numbers checked. `buying` opens orders, and reading prices and invoices, and nothing else, including in a money tool: a buying job cannot read items or contacts in a supplier account whose name is on the money-tool list. If stage 1 needs more than that, ask for a row in the policy table through a pull request to lane 01; it needs Brayden.
+**08 buying.** Your policy check is the only thing that opens a money record: the caller passes `["buying"]` to `allows` only after `pip-buy` has checked this exact order. Holds and refusals are yours to log with the numbers checked. `buying` opens seeing orders and placing a new one, and reading prices and invoices, and nothing else, including in a money tool. An order cannot be changed under any policy yet, and a buying job cannot read items or contacts in a supplier account whose name is on the money-tool list. If stage 1 needs more than that, ask for a row in the policy table through a pull request to lane 01; it needs Brayden.
 
 **09 guard.** The test command is above. Please add it to the checks that run on every pull request.
 

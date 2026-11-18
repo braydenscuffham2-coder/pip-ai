@@ -324,6 +324,24 @@ test("hold 4: buying opens orders, and reading prices or invoices, and nothing e
   }
 });
 
+test("hold 4, tightened: an order update is refused in checkSpec and in allows, even with buying passed", () => {
+  // Stage 1 is reorder only: a job may see orders and place a new one. Nothing may change an order yet.
+  const grant = (can: string[], more: J = {}) => spec((j) => (j.tools = [{ tool: "kit:restaurant_depot", records: "order", can, policy: "buying", ...more }]));
+  bad(grant(["update"], { fields: { update: ["quantity"] } }), /cannot open update on order/);
+  bad(grant(["read", "add", "update"], { fields: { update: ["quantity"] } }), /cannot open update on order/);
+  assert.ok(checkSpec(grant(["read", "add"])).ok, "seeing orders and placing one stay open to buying");
+  // allows() says the same about a job that never went through the checker.
+  const [base] = checkSpec(grant(["add"])).jobs;
+  const forged: J = { ...base, tools: [{ tool: "kit:restaurant_depot", records: "order", can: ["read", "add", "update"], fields: { update: ["quantity"] }, required: true, policy: "buying" }] };
+  const ask = (level: string) => ({ tool: "kit:restaurant_depot", records: "order", level, ...(level === "update" ? { fields: ["quantity"] } : {}) });
+  for (const passed of [[], ["buying"]]) assert.equal((allows(forged, ask("update"), passed) as J).why, "money", `update with ${JSON.stringify(passed)} passed`);
+  assert.deepEqual(allows(forged, ask("add"), ["buying"]), { ok: true });
+  assert.deepEqual(allows(forged, ask("read"), ["buying"]), { ok: true });
+  assert.deepEqual((contract as J).POLICY_OPENS, { buying: { order: ["read", "add"], price: ["read"], invoice: ["read"] } }, "the whole table, written out: widening it must fail here");
+  // The worked example still stands.
+  assert.deepEqual(checkSpec(example("stock-reorder.json")).errors, []);
+});
+
 test("smaller a: allows answers no, and does not crash, when the ask is not well formed", () => {
   const [job] = checkSpec(example("lead-chaser.json")).jobs;
   const legacy = jobsOf(BOARD, BOARD_MANIFEST).jobs[0];
