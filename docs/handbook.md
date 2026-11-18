@@ -80,6 +80,8 @@ Several of these were built before this handbook and are not described here (`va
 - Expired access pauses that job through `portal_job_pause` and alerts the business. Today the thing paused is the tool (the `job` column of `agent_pauses` holds a name like "Calendar"), not a job.
 - How a teammate declares jobs, permissions, limits and pauses is in `docs/contracts/teammate-spec.md`. Its status table says which parts are live.
 
+Shared code that more than one function imports lives in `supabase/functions/_shared/` (the teammate contract, schedule maths, the job engine). It has no imports of its own and each file has tests beside it.
+
 What does not exist yet is the reason for the lanes: nothing runs unprompted, teammates cannot read or update records outside Google, there are no long tasks, no calls, no email in, no password-only route, no spending controls.
 
 Full gap list and the reasoning: https://claude.ai/artifact/DivuHf23JD9t4gpCcS633m

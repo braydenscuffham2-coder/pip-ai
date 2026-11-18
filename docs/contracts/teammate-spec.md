@@ -24,8 +24,13 @@ Only claim what the "live" column says.
 | --- | --- |
 | The shape of a job, the checker, the permission check as a function, the plain-words text | In this repo, tested. Not yet called by anything that runs. |
 | `pip-turn` reading `jobs` and refusing what a job does not allow | **Not live.** Lane 01, pull request 3. Until then `pip-turn` ignores `jobs` and runs every teammate the old way. |
-| Jobs that start on a schedule, from a tool, or from an owner's decision | **Not live.** Lane 01, pull request 2 (`pip-jobs`). |
-| Per-day limits, per-person limits, three-failures pause | **Not live.** Pull request 2. |
+| Jobs that start on a schedule, on an event, or from "Run now" | Built and tested with fakes in pull request 2 (`pip-jobs`, and `POST /job` in `pip-turn`). **Not live** until that is merged, deployed and proven on TEST Fork. |
+| Jobs that start from an owner's decision | **Not live.** Comes after the runner, with lane 04. |
+| Retry safety, per-run and per-day limits, three-failures pause, dead ends to the supervisor | Same as the runner: built and tested, **not live** yet. |
+| A job that started on its own sending a message or placing a call | **Refused.** The rules for who may be reached (`purpose`) are not built yet. Pull request 3. |
+| A job that started on its own updating a record | **Refused.** No tool has a field map yet. Pull request 3. |
+| A job that started on its own and lists `fields.add` | Held to the list on every call, in the runner (`POST /job`): a call that fills in anything else is refused and logged. Until field maps exist the names are the tool's own argument names, or the column names on the Pip sheet. Built and tested, **not live** yet. |
+| A job that started on its own reading with `fields.read` listed | **Not offered.** Nothing can cut a tool's answer down to the listed fields yet. Pull request 3. |
 | Long tasks | **Not live.** Pull request 4. |
 | Money records, and any record in a money tool | **Refused for everyone** until lane 08's buying check exists. |
 
@@ -88,7 +93,7 @@ One job answers each channel. Two jobs claiming the same channel is an error, so
 { "type": "schedule", "every": "minutes", "interval": 30 }
 ```
 
-Nothing runs more often than every 15 minutes. A schedule that would start more runs in a day than the job's daily limit is an error. Listing the same schedule twice in one job is an error too. If Pip was down at the set time, the run happens once when it is back, never several times to catch up.
+Nothing runs more often than every 15 minutes. A schedule that would start more runs in a day than the job's daily limit is an error. Listing the same schedule twice in one job is an error too. If Pip was down at the set time, the run happens once when it is back, never several times to catch up. A daily, weekly or monthly slot that is more than 12 hours late is skipped rather than run in the middle of the night.
 
 **An event from a tool**
 
@@ -224,7 +229,7 @@ An owner may make a limit tighter in the Portal. Making one looser is a change t
 Always on, for every job, and not something a spec can switch off:
 
 - A sign-in that stops working, a changed password, or a code sent to a person pauses the jobs that need that tool, and only those.
-- A job started by a schedule, an event or an owner's decision pauses after `after_failures` failed runs in a row (1 to 3, default 3).
+- A job started by a schedule, an event or an owner's decision pauses after `after_failures` failed runs in a row (1 to 3, default 3). A try that is cut off, times out or crashes without an answer counts as a failed try, so a run whose worker keeps dying stops too.
 - A run that reaches a dead end stops and opens a supervisor issue. It does not loop.
 
 Set by the spec:
