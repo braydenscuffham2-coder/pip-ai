@@ -58,6 +58,7 @@ export default function AboutPage() {
             A teammate checks when you are free and adds a hold or a booking. Pip reads the time zone of your
             calendar so the hold lands on the right calendar at the right time.
           </p>
+          <p className="pub-no">Pip does not change or delete events that are already on your calendar.</p>
         </li>
         <li>
           <h3>Files Pip itself created</h3>
@@ -82,7 +83,8 @@ export default function AboutPage() {
 
       <h3>You can disconnect at any time</h3>
       <p>
-        Disconnect Google in the <a href="/portal.html">Pip Portal</a>, or on the{' '}
+        Use &quot;Disconnect everything&quot; in the <a href="/portal.html">Pip Portal</a>, which removes every tool
+        sign-in, or remove Pip on the{' '}
         <a href="https://myaccount.google.com/connections" rel="noopener noreferrer">third-party access page</a> of your
         Google account.
       </p>
