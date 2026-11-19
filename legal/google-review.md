@@ -6,8 +6,10 @@
 ## 1. Where things stand
 
 - Decision (handbook, November 17): Pip's own Google app in project `pip-ai`, asking only for send mail, calendar events and files Pip made.
-- Today: sign-ins go through Composio's Google app, which asks for the full mailbox and full calendar (`docs/portal-backend.md`). Full-mailbox access is a "restricted" permission. **Pip's own app must not request it**, or Google will require a security assessment.
-- The Privacy Policy draft, section 4, is written for Pip's own app and must not be published while the old sign-in is in use.
+- Since November 17 to 18, 2026: sign-ins go through Pip's own Google app (project `pip-ai`). It asks for five permissions and no others: `gmail.send`, `calendar.events`, `calendar.calendars.readonly`, `drive.file` and `userinfo.email`. The old sign-in through Composio's Google app, which asked for the full mailbox and full calendar, is no longer used. Full-mailbox access is a "restricted" permission. **Pip's own app must not request it**, or Google will require a security assessment.
+- November 18, 2026: ownership of hirepip.com was verified in Google Search Console.
+- The pages Google will read are on hirepip.com: `/about` (the application home page), `/privacy` and `/terms`. `/privacy` and `/terms` show a short holding notice, not the draft, until `legal/privacy-policy.md` and `legal/terms-of-service.md` have no blanks left.
+- The Privacy Policy draft, section 4, was written for Pip's own app, but it lists three permissions and still carries a note about the old sign-in. It needs `calendar.calendars.readonly` and the account's email address added, and that note closed, before it is published.
 
 ## 2. What Google will look for
 
@@ -34,11 +36,19 @@ Paste-ready. One feature per permission, in Google's "My app will use … to …
 
 > My app will use calendar.events to check when the business is busy so the assistant can tell a customer which times are open, and to add an event when a booking is made. The app reduces events to busy and free times on its own server before anything is shown to the AI model or the customer; event titles, guests and notes are not displayed or stored. A read-only permission is not enough because the assistant must add the booking. The broader calendar permission is not requested because the app does not manage calendars or sharing.
 
+**`https://www.googleapis.com/auth/calendar.calendars.readonly`** (label to confirm in the Google Cloud console)
+
+> My app will use calendar.calendars.readonly to read the name and default time zone of the business's calendars, so that when the assistant adds a hold or a booking it lands on the right calendar in the right time zone. The app does not read other calendar settings, and it cannot change a calendar or how it is shared. This is the read-only form of the permission; the form that can change calendars is not requested.
+
 **`https://www.googleapis.com/auth/drive.file`** (non-sensitive)
 
 > My app will use drive.file to create one spreadsheet named "Pip: [business name]" in the business's Drive and add a row when a customer leaves details, so the owner has a record. The app can only open files it created and cannot see any other file.
 
-[LANE 03: the handbook asks you to "find the smallest extra calendar permission that lets a hold be created". If the final permission set differs from the three above, tell lane 10 so this page and the Privacy Policy change together. If `calendar.events` cannot be made to work and the full `calendar` permission is needed, the second justification must be rewritten and it remains a sensitive permission.]
+[LANE 03: the handbook asks you to "find the smallest extra calendar permission that lets a hold be created". If the final permission set differs from the four above, tell lane 10 so this page and the Privacy Policy change together. If `calendar.events` cannot be made to work and the full `calendar` permission is needed, the second justification must be rewritten and it remains a sensitive permission.]
+
+[LANE 03: two things to confirm before pasting the `calendar.calendars.readonly` text. (1) Google's list of Calendar permissions, read November 18, 2026 (https://developers.google.com/workspace/calendar/api/auth), describes this one as seeing the title, description, default time zone and other properties of calendars. Seeing the list of calendars an account is subscribed to is a different permission (`calendar.calendarlist.readonly`). If the code asks Google for that list, this permission may not cover it. (2) That page does not say whether the permission is sensitive. Use the label the Google Cloud console shows.]
+
+[LANE 10: `userinfo.email` is also requested. It gives Pip the email address of the Google account that was connected. No justification text is written for it here. The Privacy Policy, section 4, does not mention it yet.]
 
 ## 4. Limited Use: how Pip meets each rule
 
