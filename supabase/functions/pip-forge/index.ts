@@ -16,6 +16,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { buildOrder, checkOrder, runForgeJob, agentTurn, openaiModel, renderConsole, anthropicModel, primitive } from './forge.js';
 import type { ForgeDb, ForgeJob, SpecRow } from './forge.js';
+import { declares, goLive, loadCatalog, NO_CATALOG, stamp } from '../_shared/forge-check.ts';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
@@ -40,7 +41,9 @@ function chain() { EdgeRuntime.waitUntil(fetch(`${SELF}/run`, { method: 'POST' }
 // ---------- the DB adapter the stage machine uses ----------
 const forgeDb: ForgeDb = {
   async getSpec(id) { const r = await rows(`skill_specs?id=eq.${id}&select=*`); return (r?.[0] as SpecRow) ?? null; },
-  async updateSpec(id, p) { await patch('skill_specs', `id=eq.${id}`, { ...p, updated_at: new Date().toISOString() }); },
+  // A spec the API-key engine saves is the older shape: its compile step keeps only the Skill Spec's own keys, so it
+  // never carries jobs. The record says so (forge_check.declared = false), the same note a Board save leaves.
+  async updateSpec(id, p) { const at = new Date().toISOString(); await patch('skill_specs', `id=eq.${id}`, { ...p, ...(p.spec && typeof p.spec === 'object' ? { spec: stamp(p.spec, NO_CATALOG, at) } : {}), updated_at: at }); },
   async enqueue(j) { await insert('build_jobs', { order_id: j.order_id, spec_id: j.spec_id, stage: j.stage, attempt: j.attempt, status: 'queued', log: j.log ?? [] }); },
   async notify(spec_id, kind, body) { await insert('notifications', { spec_id, kind, body }); },
   async orderAgentsAllAtLeast(order_id, statuses) { const r = await rows(`skill_specs?order_id=eq.${order_id}&select=status`); return Array.isArray(r) && r.length > 0 && r.every((x: any) => statuses.includes(x.status)); },
@@ -209,6 +212,10 @@ async function routeConsole(req: Request, u: URL) {
     const spec = await forgeDb.getSpec(specId);
     if (!spec) return json({ ok: false, error: 'no such agent' }, 404);
     if (action === 'golive') {
+      // The same gate as the connector's forge_golive: declared jobs must pass the contract now, and a job's required
+      // tool must have something behind it. A teammate with no declared jobs goes live as before.
+      const gate = goLive((spec as any).spec, declares((spec as any).spec) ? await loadCatalog(rows) : NO_CATALOG);
+      if (!gate.ok) return json({ ok: false, error: gate.why.join(' ') }, 409);
       const m = models();
       const r = await runForgeJob({ id: 0, order_id: orderId || (spec as any).order_id, spec_id: specId, stage: 'golive', attempt: 1, status: 'queued', log: [] }, { model: m?.model ?? (async () => '{}'), reviewer: null, db: forgeDb });
       await insert('events', { kind: 'golive', domain: spec.domain, detail: { spec: specId, by: 'founder', note: String(b.note ?? '').slice(0, 500) } });

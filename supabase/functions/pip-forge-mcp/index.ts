@@ -9,7 +9,12 @@
 // Board first: taking an order marks it engine='board' and keeps a heartbeat. The API-key fallback in
 // pip-forge only claims jobs for orders older than the fallback window whose Board heartbeat has gone quiet.
 // Secret values are never read: the Shelf checks only whether a secret name exists.
+//
+// The teammate contract on every build (docs/contracts/teammate-spec.md, docs/forge.md): forge_save puts a
+// teammate's `contract` and `jobs` at the top of its spec and refuses a save whose jobs fail the check; forge_golive
+// checks again at that moment. The decisions are in ../_shared/forge-check.ts; this file only reads and writes.
 // deno-lint-ignore-file no-explicit-any
+import { BUILDER_NOTE, type Catalog, declares, goLive, loadCatalog, NO_CATALOG, OLDER_SHAPE, saveBuild } from '../_shared/forge-check.ts';
 
 const SB_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SB_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -46,6 +51,9 @@ async function keyOk(key: string) {
   if (!k.last_used_at || Date.now() - Date.parse(k.last_used_at) > 3600_000) patch('founder_keys', `id=eq.${k.id}`, { last_used_at: now() }).catch(() => {});
   return true;
 }
+
+/** A save that was refused on purpose. Its lines reach the builder whole, so every problem can be fixed in one go. */
+class Refused extends Error {}
 
 async function settings() {
   return Object.fromEntries(((await rows('forge_settings?select=key,value')) ?? []).map((s: any) => [s.key, s.value]));
@@ -103,7 +111,7 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
     },
   },
   forge_take: {
-    description: 'Take one order onto the Board: marks it as built on Brayden\'s Claude plan (the API-key fallback leaves it alone while the Board keeps a heartbeat) and returns its brief in the Board\'s order format plus each teammate\'s saved status.',
+    description: 'Take one order onto the Board: marks it as built on Brayden\'s Claude plan (the API-key fallback leaves it alone while the Board keeps a heartbeat) and returns its brief in the Board\'s order format plus each teammate\'s saved status, and jobs_guide: how to write each teammate\'s jobs for forge_save.',
     inputSchema: { type: 'object', properties: { order_id: { type: 'string' }, force: { type: 'boolean', description: 'Take it even if the API key already started on it.' } }, required: ['order_id'], additionalProperties: false },
     async run(a) {
       const id = uuid(a?.order_id); if (!id) throw new Error('order_id must be an order id');
@@ -112,8 +120,8 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
       if (!o.brief?.agents?.length) throw new Error('this order has no brief the Board can build from (it came from an older path); it builds on the API key');
       if (o.engine === 'key' && !a?.force) throw new Error('the API key is already building this order; pass force to take it back');
       await patch('build_orders', `id=eq.${id}`, { engine: 'board', board_seen_at: now(), updated_at: now() });
-      const specs = await rows(`skill_specs?order_id=eq.${id}&select=skill_id,status,forge_stage,spec->board`);
-      return { order: { ...o.brief, id: o.id, code: o.code }, saved: o.board ?? null, agents: (specs ?? []).map((s: any) => ({ id: s.skill_id, status: s.status, stage: s.forge_stage, board: s.board ?? null })) };
+      const specs = await rows(`skill_specs?order_id=eq.${id}&select=skill_id,status,forge_stage,spec->board,spec->forge_check`);
+      return { order: { ...o.brief, id: o.id, code: o.code }, saved: o.board ?? null, jobs_guide: BUILDER_NOTE, agents: (specs ?? []).map((s: any) => ({ id: s.skill_id, status: s.status, stage: s.forge_stage, board: s.board ?? null, jobs_check: s.forge_check ?? null })) };
     },
   },
   forge_heartbeat: {
@@ -126,13 +134,19 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
     },
   },
   forge_save: {
-    description: 'Save the Board\'s result for one teammate (agent_id) or the whole team (no agent_id) back to Pip. status is one of building, sandbox, design_only, needs_you, failed, paused. result is the Board\'s JSON for that teammate or team.',
-    inputSchema: { type: 'object', properties: { order_id: { type: 'string' }, agent_id: { type: 'string' }, status: { type: 'string', enum: ['building', 'sandbox', 'design_only', 'needs_you', 'failed', 'paused'] }, result: { type: 'object' }, note: { type: 'string' } }, required: ['order_id'], additionalProperties: false },
+    description: 'Save the Board\'s result for one teammate (agent_id) or the whole team (no agent_id) back to Pip. status is one of building, sandbox, design_only, needs_you, failed, paused. result is the Board\'s JSON for that teammate or team. For one teammate, also send its jobs: contract ("teammate/1") and jobs, beside result. ' + BUILDER_NOTE.rule + ' Jobs that fail the contract check are refused with every problem in plain words, and nothing is saved. The answer lists, for each tool a job needs, what is behind it today; a required tool with nothing behind it does not stop the save but does stop go-live. A save with no jobs still works and is recorded as having no declared jobs. The rules and worked examples: ' + BUILDER_NOTE.read.join(' and ') + '.',
+    inputSchema: { type: 'object', properties: {
+      order_id: { type: 'string' }, agent_id: { type: 'string' }, status: { type: 'string', enum: ['building', 'sandbox', 'design_only', 'needs_you', 'failed', 'paused'] }, result: { type: 'object' }, note: { type: 'string' },
+      contract: { type: 'string', enum: [BUILDER_NOTE.contract], description: 'The teammate contract these jobs are written to. Send it with jobs.' },
+      jobs: { type: 'array', items: { type: 'object' }, description: 'This teammate\'s jobs, 1 to 12. Each job: id, name, does (one plain sentence for the owner), instructions, triggers (1 to 4 of: message with channels, schedule, event, owner), tools (each: tool, records, can as a list of read, add, update; plus fields, required, purpose, policy where the contract asks for them), and optional limits, pause, task. Any other key, level or kind of record is refused.' },
+    }, required: ['order_id'], additionalProperties: false },
     async run(a) {
       const id = uuid(a?.order_id); if (!id) throw new Error('order_id must be an order id');
       const result = a?.result && typeof a.result === 'object' ? a.result : {};
-      if (JSON.stringify(result).length > 900_000) throw new Error('result too large');
+      if (JSON.stringify(result).length + JSON.stringify(a?.jobs ?? null).length > 900_000) throw new Error('result too large');
+      const sent = { contract: a?.contract, jobs: a?.jobs };
       if (!a?.agent_id) {
+        if (sent.contract !== undefined || sent.jobs !== undefined) throw new Error('jobs belong to one teammate: send agent_id with contract and jobs');
         await patch('build_orders', `id=eq.${id}`, { board: { ...result, saved_at: now() }, board_seen_at: now(), updated_at: now() });
         return { ok: true, saved: 'team' };
       }
@@ -140,9 +154,13 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
       const st = cut(a.status, 20) || 'building';
       const spec = (await rows(`skill_specs?order_id=eq.${id}&skill_id=eq.${encodeURIComponent(agent)}&select=id,spec`))?.[0];
       if (!spec) throw new Error('no such teammate on this order');
+      // The contract on every build. Jobs sent now, or already on the record, are checked before anything is written.
+      const catalog = declares({ ...(spec.spec ?? {}), ...(sent.contract !== undefined ? { contract: sent.contract } : {}), ...(sent.jobs !== undefined ? { jobs: sent.jobs } : {}) }) ? await loadCatalog(rows) : NO_CATALOG;
+      const build = saveBuild(spec.spec, sent, { ready: STATUS_MAP[st] === 'sandbox', at: now() }, catalog);
+      if (!build.ok) throw new Refused([build.say, ...build.errors.map((e) => `- ${e}`)].join('\n'));
       await patch('skill_specs', `id=eq.${spec.id}`, {
         status: STATUS_MAP[st] ?? 'testing', forge_stage: `board:${st}`, updated_at: now(),
-        spec: { ...(spec.spec ?? {}), board: { ...result, status: st, saved_at: now(), note: cut(a.note, 500) || undefined } },
+        spec: { ...build.spec, board: { ...result, status: st, saved_at: now(), note: cut(a.note, 500) || undefined } },
         ...(result.tests ? { tests: result.tests } : {}), ...(result.integration ? { quote: { integration: result.integration } } : {}),
       });
       if (['sandbox', 'design_only', 'needs_you'].includes(st)) {
@@ -152,8 +170,16 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
       const all = await rows(`skill_specs?order_id=eq.${id}&select=status`);
       if (all?.length && all.every((s: any) => ['sandbox', 'approved', 'live'].includes(s.status))) await patch('build_orders', `id=eq.${id}`, { status: 'awaiting_golive', updated_at: now() });
       await patch('build_orders', `id=eq.${id}`, { board_seen_at: now() });
-      await insert('events', { kind: 'board_save', domain: null, detail: { order: id, agent, status: st } }).catch(() => {});
-      return { ok: true, saved: agent, status: st };
+      await insert('events', { kind: 'board_save', domain: null, detail: { order: id, agent, status: st, jobs: build.check.declared } }).catch(() => {});
+      const c = build.check;
+      return {
+        ok: true, saved: agent, status: st,
+        jobs: c.declared ? (c.ok ? 'declared and checked' : 'declared, but they no longer pass the contract check') : 'none declared',
+        // What is behind each tool a job needs, today. Gaps never stop a save; a required one stops go-live.
+        can_run: c.declared ? (c.ok ? c.lines : c.errors) : [OLDER_SHAPE],
+        blocks_golive: c.declared && !c.ok ? ['Its jobs do not pass the teammate contract. Save corrected jobs.'] : c.blocked,
+        ...(sent.jobs === undefined && (result.jobs !== undefined || result.contract !== undefined) ? { note: 'result has contract or jobs inside it. Those are kept as part of the Board\'s own notes and are not checked or run. Jobs only count when sent as contract and jobs beside result.' } : {}),
+      };
     },
   },
   forge_release: {
@@ -167,17 +193,23 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
     },
   },
   forge_golive: {
-    description: 'Go live: Brayden\'s tap. Puts one teammate (agent_id) or every sandbox-ready teammate of the order live. Refused, with the list, while anything they need is still missing from the Shelf.',
+    description: 'Go live: Brayden\'s tap. Puts one teammate (agent_id) or every sandbox-ready teammate of the order live. Refused, with the list, while anything they need is still missing from the Shelf. A teammate with declared jobs is also refused, with the reasons, if its jobs do not pass the contract check at this moment or a job needs a tool that has nothing behind it yet. A teammate with no declared jobs goes live as before.',
     inputSchema: { type: 'object', properties: { order_id: { type: 'string' }, agent_id: { type: 'string' } }, required: ['order_id'], additionalProperties: false },
     async run(a) {
       const id = uuid(a?.order_id); if (!id) throw new Error('order_id must be an order id');
       const q = a?.agent_id ? `&skill_id=eq.${encodeURIComponent(cut(a.agent_id, 60))}` : '&status=in.(sandbox,approved)';
-      const specs = await rows(`skill_specs?order_id=eq.${id}${q}&select=id,skill_id,status`);
+      const specs = await rows(`skill_specs?order_id=eq.${id}${q}&select=id,skill_id,status,spec`);
       if (!specs?.length) throw new Error('nothing on this order is ready to go live');
       const out: any[] = [];
+      let catalog: Catalog | null = null;
       for (const s of specs) {
-        try { await patch('skill_specs', `id=eq.${s.id}`, { status: 'live', forge_stage: 'live', updated_at: now() }); out.push({ id: s.skill_id, live: true }); }
-        catch (e) { out.push({ id: s.skill_id, live: false, why: String((e as Error).message || e).replace(/^shelf: /, '') }); }
+        try {
+          // The contract, checked again now: it may have tightened since the build, and what exists may have changed.
+          if (declares(s.spec)) catalog ??= await loadCatalog(rows);
+          const gate = goLive(s.spec, catalog ?? NO_CATALOG);
+          if (!gate.ok) { out.push({ id: s.skill_id, live: false, declared_jobs: true, why: gate.why.join(' ') }); continue; }
+          await patch('skill_specs', `id=eq.${s.id}`, { status: 'live', forge_stage: 'live', updated_at: now() }); out.push({ id: s.skill_id, live: true, declared_jobs: gate.check.declared });
+        } catch (e) { out.push({ id: s.skill_id, live: false, why: String((e as Error).message || e).replace(/^shelf: /, '') }); }
       }
       const all = await rows(`skill_specs?order_id=eq.${id}&select=status`);
       if (all?.every((x: any) => x.status === 'live')) await patch('build_orders', `id=eq.${id}`, { status: 'live', updated_at: now() });
@@ -368,7 +400,7 @@ async function handle(m: Msg): Promise<unknown | null> {
   switch (m.method) {
     case 'initialize': {
       const asked = String(m.params?.protocolVersion || '');
-      return ok({ protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0], capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'pip-forge', title: 'Pip Forge', version: '1.1.0' }, instructions: "Pip's founder-only Forge: the real order queue, Board builds on Brayden's Claude plan, the API Shelf, owner sign-in links through Composio, and go-live. Never asks for or returns a secret value or a client credential." });
+      return ok({ protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0], capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'pip-forge', title: 'Pip Forge', version: '1.1.0' }, instructions: `Pip's founder-only Forge: the real order queue, Board builds on Brayden's Claude plan, the API Shelf, owner sign-in links through Composio, and go-live. Never asks for or returns a secret value or a client credential. When you build a teammate, write its jobs (contract ${BUILDER_NOTE.contract}) and send them with forge_save. ${BUILDER_NOTE.rule}` });
     }
     case 'ping': return ok({});
     case 'tools/list':
@@ -381,7 +413,7 @@ async function handle(m: Msg): Promise<unknown | null> {
         const out = await tool.run((m.params?.arguments || {}) as any);
         return ok({ content: [{ type: 'text', text: JSON.stringify(out) }], structuredContent: out });
       } catch (e) {
-        return ok({ isError: true, content: [{ type: 'text', text: String((e as Error).message || e).slice(0, 500) }] });
+        return ok({ isError: true, content: [{ type: 'text', text: String((e as Error).message || e).slice(0, e instanceof Refused ? 12000 : 500) }] });
       }
     }
     case 'resources/list': return ok({ resources: [] });
