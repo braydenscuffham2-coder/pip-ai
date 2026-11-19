@@ -22,9 +22,9 @@ export const catalog = () => ({
   tool_catalog: [
     { slug: "GOOGLECALENDAR_EVENTS_LIST", block: "calendar", toolkit: "googlecalendar", enabled: true, record: "busy_time", level: "read" },
     { slug: "GOOGLECALENDAR_CREATE_EVENT", block: "calendar", toolkit: "googlecalendar", enabled: true, record: "appointment", level: "add" },
-    { slug: "GMAIL_SEND_EMAIL", block: "email", toolkit: "gmail", enabled: true, record: "message", level: "add" },
+    { slug: "GMAIL_SEND_EMAIL", block: "email", toolkit: "gmail", enabled: true, record: "message", level: "add", guard: "email" },
     { slug: "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND", block: "data_sink", toolkit: "googlesheets", enabled: true, record: "row", level: "add" },
-    // Found automatically for an extra product: not reviewed for jobs, so it must never count.
+    // Found automatically for an extra product before that was stopped: never reviewed, so it must never count.
     { slug: "AIRTABLE_CREATE_RECORD", block: "any_tool", toolkit: "airtable", enabled: true, record: null, level: null },
     // Reviewed but switched off: must never count either.
     { slug: "POS_LIST_ITEMS", block: "pos", toolkit: "square", enabled: false, record: "item", level: "read" },

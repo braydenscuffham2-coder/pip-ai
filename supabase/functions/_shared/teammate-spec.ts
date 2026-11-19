@@ -8,6 +8,8 @@
 //   jobForMessage(jobs, ch)    which job answers a customer message on a channel. Decided here, never by a model.
 //   allows(job, ask)           may this job do this to this kind of record? The one permission check. It answers
 //                              no to anything it does not understand; it never throws.
+//   notYet(grant, row, turn)   what stays shut whatever a job lists, because the check that would make it safe is
+//                              not built. pip-turn asks it before offering a tool; the Forge asks it before go-live.
 //   plainWords(job)            the same permissions as sentences an owner can read.
 //
 // A spec that breaks a rule is refused whole. Nothing is quietly dropped or trimmed to fit, because a teammate that
@@ -444,6 +446,23 @@ export function allows(job: Job, ask: Ask, passed: string[] = []): Verdict {
     if (out.length) return { ok: false, why: "field", say: `Outside this job's permissions: ${out.slice(0, 5).map((f) => f.slice(0, 60)).join(", ")}.` };
   }
   return { ok: true };
+}
+
+/**
+ * What stays shut whatever a job lists, because the check that would make it safe is not built yet. `row` is the
+ * reviewed tool_catalog row that would do the work (its record, level and guard); `conversation` is true on a customer
+ * turn and false in a job that started on its own.
+ *   - an update: no tool has a field map, so nothing can say which fields a call would change
+ *   - a read for a job that lists what it may see: nothing can cut a tool's answer down to those fields
+ *   - a call, and a message. The one message that is open is a reply by email inside a customer conversation, where
+ *     the rule that an address must have been typed by the customer is the check on who it reaches.
+ * This is the one copy. pip-turn uses it for POST /turn and POST /job, and the Forge's check uses it for go-live, so
+ * what the founder is told a job can do is what the runtime will really offer.
+ */
+export function notYet(g: Pick<Grant, "fields" | "purpose">, row: { record?: unknown; level?: unknown; guard?: unknown }, conversation: boolean): boolean {
+  if (row.level === "update" || (row.level === "read" && !!g.fields?.read)) return true;
+  if (row.record !== "message" && row.record !== "call") return false;
+  return !(conversation && row.record === "message" && row.level === "add" && g.purpose === "reply" && row.guard === "email");
 }
 
 // ---------- the same thing in words an owner can read ----------

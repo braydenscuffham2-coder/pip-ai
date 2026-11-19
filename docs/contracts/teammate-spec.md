@@ -25,8 +25,10 @@ Only claim what the "live" column says.
 | The shape of a job, the checker, the permission check as a function, the plain-words text | In this repo, tested. Called by `pip-turn` on every customer turn and every job run. |
 | A customer turn (`POST /turn`) held to the job that answers that channel: only tools its permissions cover are offered, and the permission check is asked again before anything is run | Built and tested with fakes (`tests/pip-turn/limits.test.mjs`). **Not live** until this version of `pip-turn` is deployed and proven on TEST Fork. Until then the deployed `pip-turn` ignores `jobs` and runs every teammate the old way. |
 | A spec with a broken job list, or a message on a channel no job lists | No job, so the model is not called: holding reply, and the owner is told. Built and tested, **not live** yet. |
-| A tool the owner connected beyond the setup steps | **Off by default.** Nothing in it is found or opened automatically, and older teammates get nothing there. It opens one action at a time: a reviewed `tool_catalog` row with `record` and `level`, for a job that lists `kit:<toolkit>`. Built and tested, **not live** yet. |
+| A tool the owner connected beyond the setup steps | **Off by default.** Nothing in it is found or opened automatically, and older teammates get nothing there. It opens one action at a time: a reviewed `tool_catalog` row with `record` and `level`, for a job that lists `kit:<toolkit>`, and only while answering a customer. A job that starts on its own cannot use one at all: the runner never looks at these tools, and a job that needs one stops as blocked. Built and tested, **not live** yet. |
+| What the Forge tells the founder a job can do (`forge-check.ts`, `canRun`) | The same answer `pip-turn` gives: one shared function (`notYet`) for what is not built, and a test that runs both on the same catalog (`pip-turn/forge-agree.test.mjs`). |
 | A money product behind a building block (a job says `pos`, the business connected Square) | **Refused for every teammate**, on a customer turn and in a job run. Built and tested, **not live** yet. |
+| A product that is not a money tool but has a money word in its name ("pay", "bank", "wave", "wise", "ramp", "adp" and the rest of the list, anywhere in the name) | **Refused as if it were a money tool**, by name or behind a building block. The list is matched as part of a name on purpose, so nothing slips through. The fix is an explicit list of products, **not built**. |
 | A customer turn sending a text or placing a call, or sending an email that is not a `reply` | **Refused.** The rules for who may be reached (`purpose`) are not built yet. The one send that is open on a turn is an email `reply`, where code checks the address was typed by the customer. |
 | A customer turn updating a record, or reading with `fields.read` listed | **Refused**, the same as in a job run: no tool has a field map, and nothing can cut an answer down to listed fields. |
 | A job's own limits (`per_run`, `per_day`, `each`) on a customer turn | **Not applied yet.** Every turn has the same fixed limit: 6 tool calls and 5 rounds. |
@@ -139,7 +141,7 @@ Pip sends `lead_added`, `missed_call` and `conversation_ended`. A box sends `cou
 **`tool`** is one of:
 
 - a building block from the `primitives` table, like `calendar`, `email`, `sms`, `sheets`, `crm`, `pos`, `booking_app`. The job says "the customer list"; which product that is (HubSpot, Jobber) is settled when the owner connects it.
-- `kit:<name>` for one named product, like `kit:airtable`. This is the only way a tool the owner connected beyond the setup steps is opened. It also needs a reviewed `tool_catalog` row (block `any_tool`) whose `record` and `level` match the permission. Nothing there is opened automatically.
+- `kit:<name>` for one named product, like `kit:airtable`. This is the only way a tool the owner connected beyond the setup steps is opened. It also needs a reviewed `tool_catalog` row (block `any_tool`) whose `record` and `level` match the permission. Nothing there is opened automatically. Today it works only in a job that answers customers; a job that starts on its own gets nothing from it.
 - `pip` for Pip's own actions (below).
 
 The job does not choose how the tool is reached. A connected sign-in, a key, the password-only browser route or an on-site box all enforce the same permission.
@@ -272,6 +274,7 @@ jobsOf(spec, manifest)     // the jobs to run, including the implied one for old
 allows(job, { tool, records, level, fields }, passedPolicies)   // { ok } or { ok: false, why, say }
 plainWords(job, { crm: "HubSpot" })   // { starts, can, cannot, limits, pauses } as owner-ready sentences
 isMoneyTool("stripe")      // true: the same list pip-turn uses
+notYet(grant, row, onATurn) // true: closed whatever the job lists, because its check is not built (updates, calls, most messages)
 ```
 
 `allows` never throws. An ask it does not understand (a tool that is not text, fields that are not a list of names, a missing level) gets a no. Pass `fields` whenever you know which fields the action touches: for an update always, and for a read or an add whenever the job lists fields for that level, or the answer is no.

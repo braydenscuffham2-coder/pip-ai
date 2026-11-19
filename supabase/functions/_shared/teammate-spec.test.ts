@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
-import { allows, CEILING, checkSpec, jobForMessage, jobsOf, MONEY_RECORDS, plainWords, runsPerDay } from "./teammate-spec.ts";
+import { allows, CEILING, checkSpec, jobForMessage, jobsOf, MONEY_RECORDS, notYet, plainWords, runsPerDay } from "./teammate-spec.ts";
 import * as contract from "./teammate-spec.ts";
 
 const DIR = new URL("../../../docs/contracts/examples/", import.meta.url);
@@ -374,4 +374,21 @@ test("smaller b: the same schedule listed twice in one job is an error", () => {
   bad(spec((j) => (j.triggers = [daily, { at: "09:00", every: "day", type: "schedule" }, { type: "owner", on: "run_now" }])), /same schedule/);
   bad(spec((j) => (j.triggers = [{ type: "schedule", every: "week", on: ["mon", "thu"], at: "07:30" }, { type: "schedule", every: "week", on: ["thu", "mon"], at: "07:30" }])), /same schedule/);
   assert.ok(checkSpec(spec((j) => (j.triggers = [daily, { ...daily, at: "17:00" }]))).ok, "two different schedules are fine");
+});
+
+test("what stays shut until its check is built: updates, narrowed reads, calls, and every message but an email reply in a conversation", () => {
+  const row = (record: string, level: string, guard?: string) => ({ record, level, guard });
+  for (const turn of [true, false]) {
+    assert.equal(notYet({}, row("contact", "add"), turn), false);
+    assert.equal(notYet({}, row("contact", "read"), turn), false);
+    assert.equal(notYet({ fields: { add: ["name"] } }, row("contact", "add"), turn), false, "a field list for add is checked on every call, so it is open");
+    assert.equal(notYet({ fields: { update: ["name"] } }, row("contact", "update"), turn), true, "no field map yet");
+    assert.equal(notYet({ fields: { read: ["name"] } }, row("contact", "read"), turn), true, "nothing can narrow an answer yet");
+    for (const purpose of ["reply", "transactional", "marketing", undefined]) for (const guard of ["email", undefined]) {
+      assert.equal(notYet({ purpose }, row("call", "add", guard), turn), true, "a call");
+      assert.equal(notYet({ purpose }, row("message", "read", guard), turn), true, "reading messages");
+      // The one send that is open: a reply, by the reviewed email tool, while answering a customer.
+      assert.equal(notYet({ purpose }, row("message", "add", guard), turn), !(turn && purpose === "reply" && guard === "email"), `message, ${purpose}, ${guard}, turn ${turn}`);
+    }
+  }
 });

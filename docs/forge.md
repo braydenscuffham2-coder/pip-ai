@@ -124,9 +124,9 @@ The Portal's Resume also sets `live` (from `paused`). It is lane 03 and 06's cod
 | Its name | `manifest.teammate`, or `brain.agent.teammate.name` | `spec.name` |
 | Real actions or test mode | `skill_specs.status` is `live`, or the business is on the TEST list | the same |
 
-From that list of tools, a teammate really gets: Pip's five own actions (alert the owner, save a lead, ask for a booking, hand off, draft for approval), and outside tools only where an enabled `tool_catalog` row exists for that building block and the owner's connection is working. Today that is the calendar, email and the Pip sheet. Any other tool the owner connected gets "add one new record" and nothing more.
+From that list of tools, a teammate really gets: Pip's five own actions (alert the owner, save a lead, ask for a booking, hand off, draft for approval), and outside tools only where an enabled `tool_catalog` row exists for that building block and the owner's connection is working. Today that is the calendar, email and the Pip sheet. Any other tool the owner connected gets nothing until an action in it has been reviewed and a job lists it as `kit:<name>`.
 
-`spec.jobs` is read by `pip-jobs` and `pip-turn` `POST /job` (jobs that start on their own; merged, not switched on). `POST /turn` does not read jobs yet. That is lane 01's next pull request.
+`spec.jobs` is read by `pip-jobs` and `pip-turn` `POST /job` (jobs that start on their own; merged, not switched on). `POST /turn` reads jobs too, in the code on `main` once lane 01's turn-permissions pull request is merged; it is not deployed yet (see the status table in `docs/contracts/teammate-spec.md`).
 
 ## Where a build can claim an ability with nothing behind it
 
@@ -170,10 +170,10 @@ The rules are in [`contracts/teammate-spec.md`](contracts/teammate-spec.md) and 
 | A setup step with a reviewed tool for this kind of record and level | ready, once the owner has connected it |
 | A setup step with reviewed tools, but not for this | "Pip can ... there. Pip cannot ... there yet." |
 | A setup step with no reviewed tool (booking, point of sale, accounting and the rest of `connection_catalog`) | "Booking software: Pip cannot act there yet" |
-| An extra product, `kit:<name>` | add one new record while answering a customer, and nothing else |
+| An extra product, `kit:<name>` | nothing until an action in it has been reviewed (an enabled `tool_catalog` row with block `any_tool`, that toolkit, and the same kind of record and level); then that action, while answering a customer only. A job that starts on its own cannot use an extra product at all |
 | Anything else | "Pip does not know this tool" |
 
-Two things have a reviewed tool and are still reported as gaps, because code refuses them today: anything to do with money, and, for a job that starts on its own, sending a message, changing a record, or reading with a field list. "Reviewed" means an enabled `tool_catalog` row that says which kind of record it touches and how, matched to the job's tool name the same way `pip-turn`'s runner does it. A test fails if the runner's lines change.
+Some things have a reviewed tool and are still reported as gaps, because code refuses them today: anything to do with money (a reviewed row for a money product does not count either); changing a record, reading with a field list, placing a call, and sending any message except an email reply while answering a customer; and, for a job that starts on its own, that email reply too. "Reviewed" means an enabled `tool_catalog` row that says which kind of record it touches and how, matched to the job's tool name the same way `pip-turn` does it. What is not built yet is one function both use (`notYet` in `teammate-spec.ts`), and a test runs the Forge's answer and `pip-turn` side by side on the same catalog and fails if they differ (`pip-turn/forge-agree.test.mjs`).
 
 Gaps never stop a save. **A required tool with nothing behind it stops go-live.** Mark a tool `"required": false` when the job is still worth running without it, and write the gap for the owner.
 

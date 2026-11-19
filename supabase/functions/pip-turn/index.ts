@@ -27,7 +27,7 @@
 // Callers: the site (x-pip-secret), pip-run and pip-jobs (service bearer), or a short-lived founder test ticket.
 // Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ANTHROPIC_API_KEY, COMPOSIO_API_KEY. Optional: PIP_FAST_MODEL.
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { allows, type Ask, type Grant, isMoneyTool, type Job, jobForMessage, jobsOf, PIP_RECORDS, type Verdict } from "../_shared/teammate-spec.ts";
+import { allows, type Ask, type Grant, isMoneyTool, type Job, jobForMessage, jobsOf, notYet, PIP_RECORDS, type Verdict } from "../_shared/teammate-spec.ts";
 import { type ExecResult, runJob, type State, type Tool } from "../_shared/job-engine.ts";
 import { localDay } from "../_shared/schedule.ts";
 
@@ -174,23 +174,13 @@ function addOnly(toolkit: string, t: J): boolean {
 
 // ---------- what a job may touch ----------
 // Used by a customer turn (POST /turn) and by a job that started on its own (POST /job), so the two cannot drift.
+// What stays shut whatever a job lists (an update, a text, a call, a narrowed read) is notYet() in the contract file,
+// because the Forge's check (../_shared/forge-check.ts) must give the founder the same answer before go-live.
 /** Owner policies that have been checked and passed for this action. None can pass yet: lane 08's buying check does not exist. */
 const PASSED: string[] = [];
 /** The permission in this job that covers a catalog row, if there is one: the tool by one of its names, the same kind of record, and the level. */
 function grantFor(job: Job, names: string[], row: J): Grant | undefined {
   return job.tools.find((x) => names.includes(x.tool) && x.records === row.record && (x.can as string[]).includes(row.level));
-}
-/**
- * What stays shut whatever a job lists, because the check that would make it safe is not built yet:
- *   - an update: no tool has a field map, so nothing can say which fields a call would change
- *   - a read for a job that lists what it may see: nothing can cut a tool's answer down to those fields
- *   - a call, and a message. The one message that is open is a reply by email inside a customer conversation, where
- *     the rule that an address must have been typed by the customer is the check on who it reaches.
- */
-function notYet(g: Grant, row: J, conversation: boolean): boolean {
-  if (row.level === "update" || (row.level === "read" && !!g.fields?.read)) return true;
-  if (!["message", "call"].includes(row.record)) return false;
-  return !(conversation && row.record === "message" && row.level === "add" && g.purpose === "reply" && row.guard === "email");
 }
 /**
  * The money question, asked again once the real product is known. allows() can only see the name a job uses ("pos",
@@ -379,9 +369,9 @@ async function turn(body: J, trace: boolean) {
     const kits = new Set(job.tools.filter((g) => g.tool.startsWith("kit:")).map((g) => g.tool.slice(4)));
     if (kits.size) {
       const { data: more } = await db.from("client_connections").select("toolkit,connected_account_id,created_at").eq("business_id", c.biz.id).eq("status", "active").not("connected_account_id", "is", null).order("created_at", { ascending: false }).limit(40);
-      const stepTools = new Set((conns ?? []).map((x: J) => x.choice).filter(Boolean)), seenKit = new Set<string>();
+      const seenKit = new Set<string>();
       for (const x of more ?? []) {
-        if (!kits.has(x.toolkit) || stepTools.has(x.toolkit) || seenKit.has(x.toolkit) || paused.has(x.toolkit)) continue;
+        if (!kits.has(x.toolkit) || seenKit.has(x.toolkit) || paused.has(x.toolkit)) continue;
         seenKit.add(x.toolkit);
         for (const row of (catalog ?? []).filter((r: J) => r.block === "any_tool" && r.toolkit === x.toolkit)) {
           const g = grantFor(job, [`kit:${x.toolkit}`], row);
@@ -659,7 +649,7 @@ async function jobRun(body: J) {
       const g = grantFor(job, names, row);
       if (!g) continue;
       const kind = `${g.tool}/${g.records}`;
-      // Not open to jobs yet: sending, updates, and a read for a job that lists what it may see (see notYet).
+      // Not open to jobs yet: sending, updates, and a read for a job that lists what it may see.
       if (notYet(g, row, false)) continue;
       const conn = (conns ?? []).find((x: J) => x.slot === slot.slot);
       if (!c.biz.composio_user_id || !conn || conn.status !== "active" || conn.choice !== row.toolkit || !conn.connected_account_id || paused.has(slot.label)) { gone.add(kind); continue; }

@@ -11,7 +11,7 @@
 //
 // The Forge prepares; Brayden switches on. Nothing here presses go-live, sets a price or sends anything.
 // Its one import is the contract beside it, so pip-forge, pip-forge-mcp and the tests all use the same copy.
-import { ADD_ONE_RECORDS, checkSpec, CONTRACT, isMoneyTool, type Job, type Level, MONEY_RECORDS } from "./teammate-spec.ts";
+import { checkSpec, CONTRACT, isMoneyTool, type Job, type Level, MONEY_RECORDS, notYet } from "./teammate-spec.ts";
 
 // deno-lint-ignore no-explicit-any
 type J = any;
@@ -21,11 +21,12 @@ const isObj = (v: unknown): v is Record<string, J> => !!v && typeof v === "objec
  * What exists today, read from the database by the caller.
  *   steps  connection_catalog: the setup steps an owner sees (Calendar, Email, Booking software, ...).
  *   tools  enabled tool_catalog rows. Only a row that says which kind of record it touches and how (record, level)
- *          counts as reviewed; that is the same test pip-turn uses before it gives a tool to a job.
+ *          counts as reviewed; that is the same test pip-turn uses before it gives a tool to a job. `toolkit` is the
+ *          product the row belongs to, and `guard` marks the reviewed email sender; pip-turn reads both.
  */
 export type Catalog = {
   steps: { slot: string; label?: string | null; blocks?: string[] | null }[];
-  tools: { block: string; record?: string | null; level?: string | null }[];
+  tools: { block: string; toolkit?: string | null; record?: string | null; level?: string | null; guard?: string | null }[];
 };
 export const NO_CATALOG: Catalog = { steps: [], tools: [] };
 
@@ -44,7 +45,8 @@ export const declares = (spec: unknown): boolean => isObj(spec) && (spec.contrac
  *   ready    a setup step with a reviewed tool for everything the job asks of it
  *   part     a setup step with reviewed tools, but not for everything the job asks
  *   nothing  a setup step with no reviewed tool at all (booking software, point of sale, accounting, ...)
- *   kit      an extra product the owner connects on their own, named as "kit:<name>"
+ *   kit      an extra product the owner connects on their own, named as "kit:<name>". Off until an action in it has
+ *            been reviewed: see `missing` for what is not open.
  *   unknown  a name that is not a setup step, not Pip, and not an extra product
  */
 export type Reach = "pip" | "ready" | "part" | "nothing" | "kit" | "unknown";
@@ -57,19 +59,27 @@ const doing = (levels: readonly string[], records: string) => `${and(levels.map(
 const title = (s: string) => s.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 
 /**
- * For every tool every job lists: is anything behind it today? Matching a job's tool to a reviewed catalog row follows
- * pip-turn's POST /job exactly: a row belongs to the setup step whose blocks include the row's block, and the job may
- * name that block, the step, or any of the step's blocks.
+ * For every tool every job lists: is anything behind it today? It answers the way pip-turn decides at run time.
  *
- * Two things have a reviewed tool and are still closed, so they are reported as gaps:
- *   - money (a money kind of record, or any record in a money tool): refused for everyone until the buying check exists
- *   - for a job that starts on its own (a schedule, an event, the owner): sending a message, placing a call, changing a
- *     record, and reading with a field list. pip-turn's runner does not open those yet (the contract's status table).
- * A test in forge-check.test.ts fails if the runner's own lines for that second rule change, so the two stay in step.
+ * A setup step: a reviewed catalog row belongs to the step whose blocks include the row's block, and the job may name
+ * that block, the step, or any of the step's blocks (pip-turn's POST /turn and POST /job both match this way).
+ *
+ * An extra product, "kit:<name>": off by default. Behind it only where an enabled catalog row with block "any_tool",
+ * that toolkit, and the same kind of record and level exists, and only while answering a customer. A job that starts
+ * on its own (a schedule, an event, the owner) cannot use an extra product at all: pip-turn's POST /job never looks at
+ * the tools an owner connected beyond the setup steps.
+ *
+ * Three things have a reviewed tool and are still closed, so they are reported as gaps:
+ *   - money: a money kind of record, any record in a money tool, and a reviewed row that belongs to a money product
+ *     (pip-turn refuses the product even behind a building block). Closed for everyone until the buying check exists.
+ *   - what notYet() in the contract file says is not built: an update, a read with a field list, a call, and every
+ *     message except an email reply while answering a customer. It is the same function pip-turn asks.
+ *   - anything open only while answering a customer, for a job that can also start on its own.
+ * Tests in forge-check.test.ts and pip-turn/forge-agree.test.mjs fail if pip-turn's own answer differs.
  */
 export function canRun(jobs: Job[], catalog: Catalog): ToolLine[] {
   const steps = Array.isArray(catalog?.steps) ? catalog.steps.filter(isObj) : [];
-  const reviewed = (Array.isArray(catalog?.tools) ? catalog.tools.filter(isObj) : []).filter((r) => typeof r.block === "string" && typeof r.record === "string" && typeof r.level === "string");
+  const reviewed = (Array.isArray(catalog?.tools) ? catalog.tools.filter(isObj) : []).filter((r) => typeof r.block === "string" && typeof r.record === "string" && typeof r.level === "string" && !isMoneyTool(r.toolkit));
   const stepOfBlock = (block: string) => steps.find((s) => (s.blocks ?? []).includes(block));
   const out: ToolLine[] = [];
   for (const job of jobs) {
@@ -85,22 +95,36 @@ export function canRun(jobs: Job[], catalog: Catalog): ToolLine[] {
         line(kit ? "kit" : step ? "nothing" : "unknown", [...g.can], `${name}: Pip cannot ${doing(g.can, g.records)} there yet. Nothing that touches money is open until the buying check exists.`);
         continue;
       }
+      if (!kit && !step) { line("unknown", [...g.can], `"${g.tool}": Pip does not know this tool, so nothing is behind it (the job wants to ${doing(g.can, g.records)}).`); continue; }
+      // The reviewed rows that could do this job's work in this tool.
+      const mine = kit
+        ? reviewed.filter((r) => r.block === "any_tool" && r.toolkit === g.tool.slice(4))
+        : reviewed.filter((r) => { const s = stepOfBlock(r.block); return !!s && [r.block, s.slot, ...(s.blocks ?? [])].includes(g.tool); });
+      const rowsFor = (l: Level) => mine.filter((r) => r.record === g.records && r.level === l);
+      /** A reviewed row exists, and every one of them is something pip-turn does not open yet in this way of starting. */
+      const shutIn = (conversation: boolean) => g.can.filter((l) => rowsFor(l).length > 0 && rowsFor(l).every((r) => notYet(g, r, conversation)));
+      const none = g.can.filter((l) => !rowsFor(l).length);
       if (kit) {
-        // An extra product gets pip-turn's add-one rule and nothing else, and only while answering a customer.
-        const ok = (l: Level) => l === "add" && answers && (ADD_ONE_RECORDS as readonly string[]).includes(g.records);
-        const missing = g.can.filter((l) => !ok(l));
-        line("kit", missing, missing.length
-          ? `${name}: an extra product the owner connects. Pip cannot ${doing(missing, g.records)} there yet${alone && !answers ? ", and a job that starts on its own cannot use an extra product at all" : ""}.`
-          : `${name}: an extra product the owner connects. While answering a customer, Pip can add one new ${g.records.replace(/_/g, " ")} there and nothing else.`);
+        // A job that can start on its own gets nothing from an extra product, so for such a job every level is missing.
+        const shut = shutIn(true), missing = alone ? [...g.can] : g.can.filter((l) => none.includes(l) || shut.includes(l)), can = g.can.filter((l) => !none.includes(l) && !shut.includes(l));
+        const why = [
+          can.length ? `While answering a customer, Pip can ${doing(can, g.records)} there${missing.length ? "" : " once the owner has connected it"}.` : "",
+          none.length ? `Pip cannot ${doing(none, g.records)} there yet: an extra product does nothing until that action has been reviewed and switched on.` : "",
+          shut.length ? `Pip cannot ${doing(shut, g.records)} there yet: the check that makes that safe is not built.` : "",
+          alone ? "A job that starts on its own cannot use an extra product at all." : "",
+        ].filter(Boolean).join(" ");
+        line("kit", missing, `${name}: an extra product the owner connects. ${why}`);
         continue;
       }
-      if (!step) { line("unknown", [...g.can], `"${g.tool}": Pip does not know this tool, so nothing is behind it (the job wants to ${doing(g.can, g.records)}).`); continue; }
-      const mine = reviewed.filter((r) => { const s = stepOfBlock(r.block); return !!s && [r.block, s.slot, ...(s.blocks ?? [])].includes(g.tool); });
       if (!mine.length) { line("nothing", [...g.can], `${name}: Pip cannot act there yet (the job wants to ${doing(g.can, g.records)}).`); continue; }
-      const none = g.can.filter((l) => !mine.some((r) => r.record === g.records && r.level === l));
-      const closed = !alone ? [] : g.can.filter((l) => !none.includes(l) && (["message", "call"].includes(g.records) || l === "update" || (l === "read" && !!g.fields?.read)));
-      const missing = g.can.filter((l) => none.includes(l) || closed.includes(l)), can = g.can.filter((l) => !missing.includes(l));
-      const why = [none.length ? `Pip cannot ${doing(none, g.records)} there yet.` : "", closed.length ? `A job that starts on its own cannot ${doing(closed, g.records)} there yet.` : ""].filter(Boolean).join(" ");
+      // Closed however the job starts, and closed only when it starts on its own (an email reply, today).
+      const shut = answers ? shutIn(true) : [], closed = !alone ? [] : shutIn(false).filter((l) => !shut.includes(l));
+      const missing = g.can.filter((l) => none.includes(l) || shut.includes(l) || closed.includes(l)), can = g.can.filter((l) => !missing.includes(l));
+      const why = [
+        none.length ? `Pip cannot ${doing(none, g.records)} there yet.` : "",
+        shut.length ? `Pip cannot ${doing(shut, g.records)} there yet: the check that makes that safe is not built.` : "",
+        closed.length ? `A job that starts on its own cannot ${doing(closed, g.records)} there yet.` : "",
+      ].filter(Boolean).join(" ");
       if (!missing.length) line("ready", [], `${name}: ready. Pip can ${doing(g.can, g.records)} there once the owner has connected it.`);
       else line("part", missing, `${name}: ${can.length ? `Pip can ${doing(can, g.records)} there. ` : ""}${why}`);
     }

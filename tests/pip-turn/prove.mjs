@@ -56,12 +56,13 @@ const BREAKS = [
   ["a kind of record the job was not given is opened", [["names.includes(x.tool) && x.records === row.record &&", "names.includes(x.tool) &&"], [ASK, NO_ASK]]],
   ["extra connected tools are opened for a job that does not list them", [
     ["if (kits.size) {", "{"],
-    ["if (!kits.has(x.toolkit) || stepTools.has(x.toolkit)", "if (stepTools.has(x.toolkit)"],
+    ["if (!kits.has(x.toolkit) || seenKit.has(x.toolkit)", "if (seenKit.has(x.toolkit)"],
     ["const g = grantFor(job, [`kit:${x.toolkit}`], row);\n          if (!g || notYet(g, row, true) ||", "const g = grantFor(job, [`kit:${x.toolkit}`], row) ?? ({ tool: `kit:${x.toolkit}`, records: row.record, can: [row.level], required: false } as Grant);\n          if (notYet(g, row, true) ||"],
     [ASK, NO_ASK]]],
-  ["texts, calls and updates are opened before the checks they need exist", "function notYet(g: Grant, row: J, conversation: boolean): boolean {", "function notYet(g: Grant, row: J, conversation: boolean): boolean {\n  return false;"],
-  ["an email that is not a reply is opened", 'g.purpose === "reply" && row.guard === "email"', 'row.guard === "email"'],
-  ["a message is opened through a tool with no check on who it reaches", 'g.purpose === "reply" && row.guard === "email"', 'g.purpose === "reply"'],
+  // notYet() itself lives in the contract file (its own cases are in teammate-spec.test.ts). Here: pip-turn stops asking it.
+  ["texts, calls, updates and emails that are not a reply are opened before the checks they need exist", [
+    ["if (!g || notYet(g, row, true)) continue;", "if (!g) continue;"],
+    ["if (!g || notYet(g, row, true) || tools.length >= 24) continue;", "if (!g || tools.length >= 24) continue;"]]],
   ["a row that adds, filed as a read, skips the email-address limit", ' || meta.row.level !== "read";', ";"],
   ["a money product behind a building block is opened on a turn", "return v.ok ? allowsProduct(job!, ask, products, PASSED) : v;", "return v;"],
   ["a money product behind a building block is opened in a job that started on its own", "[row.toolkit, conn.choice], PASSED).ok) { shut.add(kind); continue; }", "[], PASSED).ok) { shut.add(kind); continue; }"],
