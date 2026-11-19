@@ -4,7 +4,7 @@
 //   checkSpec(spec)            is this spec's job list valid? Returns every problem in plain words, and the jobs
 //                              with defaults filled in.
 //   jobsOf(spec, manifest?)    the jobs a teammate has. A teammate built before this contract gets one job,
-//                              "conversation", that covers what pip-turn lets it do today and nothing wider.
+//                              "conversation", that covers what pip-turn let it do before and nothing wider.
 //   jobForMessage(jobs, ch)    which job answers a customer message on a channel. Decided here, never by a model.
 //   allows(job, ask)           may this job do this to this kind of record? The one permission check. It answers
 //                              no to anything it does not understand; it never throws.
@@ -50,12 +50,6 @@ export const POLICY_OPENS: Record<string, Record<string, readonly string[]>> = {
 export const MONEY_TOOLS = /(stripe|square|paypal|quickbooks|xero|shopify|braintree|freshbooks|wave|plaid|brex|ramp|gusto|chargebee|recurly|paddle|venmo|coinbase|wise|adp|payroll|bank|billing|invoice|pay)/;
 /** Is this tool name a money tool? Callers that turn a building block into a real product must ask again with the product's name. */
 export const isMoneyTool = (tool: unknown): boolean => typeof tool === "string" && MONEY_TOOLS.test(tool.toLowerCase());
-/**
- * The kinds of record pip-turn's "add one record" rule covers in a tool the owner connected on their own (its ADD_ONE
- * pattern: lead, contact/customer/client/person/company, deal/opportunity, task, ticket, note, job/request, record/row).
- * The implied job for older teammates gets exactly these, add only. Never a message, a call or a file.
- */
-export const ADD_ONE_RECORDS = ["lead", "contact", "deal", "task", "ticket", "note", "job", "row"] as const;
 export const PURPOSES = ["reply", "transactional", "marketing"] as const;
 export const EVENTS = ["record_added", "record_changed", "lead_added", "missed_call", "conversation_ended", "count_changed"] as const;
 export const DECISIONS = ["booking_request", "draft"] as const;
@@ -373,10 +367,9 @@ export function checkSpec(spec: unknown): { ok: boolean; errors: string[]; jobs:
 /**
  * The jobs a teammate has. With `contract: "teammate/1"` they are the checked list (none, if the list is invalid:
  * a broken spec does not run). Without it, the teammate was built before the contract and gets one job,
- * "conversation", with what pip-turn already allows and nothing wider: Pip's own actions it was designed with, busy
- * times and a hold on the calendar, an email to the customer, a row on the Pip sheet, and one new record of the kinds
- * in ADD_ONE_RECORDS in any other connected tool that is not a money tool. It cannot send a message, place a call or
- * add a file through such a tool, because pip-turn's add-one rule does not cover those.
+ * "conversation", with what pip-turn already allowed and nothing wider: Pip's own actions it was designed with, busy
+ * times and a hold on the calendar, an email to the customer, and a row on the Pip sheet. It gets nothing in a tool
+ * the owner connected on their own: such a tool is opened only by a job that lists it by name, as "kit:<name>".
  */
 export function jobsOf(spec: unknown, manifest?: unknown, brain?: unknown): { jobs: Job[]; legacy: boolean; errors: string[]; notes: string[] } {
   const s = (isObj(spec) ? spec : {}) as J, notes: string[] = [];
@@ -391,9 +384,6 @@ export function jobsOf(spec: unknown, manifest?: unknown, brain?: unknown): { jo
   if (has("calendar")) tools.push({ tool: "calendar", records: "busy_time", can: ["read"], required: false }, { tool: "calendar", records: "appointment", can: ["add"], required: false });
   if (has("email")) tools.push({ tool: "email", records: "message", can: ["add"], required: false, purpose: "reply" });
   if (has("data_sink") || has("sheets")) tools.push({ tool: "sheets", records: "row", can: ["add"], required: false });
-  // "kit:*" is any tool the owner connected on their own. Only allows() reads it, only for this implied job, and it
-  // still refuses a money tool there because no policy is named.
-  for (const rec of ADD_ONE_RECORDS) tools.push({ tool: "kit:*", records: rec, can: ["add"], required: false });
   if (classic && Array.isArray(s.triggers) && s.triggers.some((t: J) => t !== "inbound_message")) notes.push(`It was designed to start from: ${s.triggers.join(", ")}. Nothing starts it that way yet; it needs real jobs from the Forge.`);
   return {
     legacy: true, errors: [], notes,
@@ -436,7 +426,7 @@ export function allows(job: Job, ask: Ask, passed: string[] = []): Verdict {
   if (a.fields !== undefined && !(Array.isArray(a.fields) && a.fields.every((f: J) => typeof f === "string"))) return { ok: false, why: "field", say: "The fields an action touches must be given as a list of field names." };
   const tool: string = a.tool, records: string = a.records;
   const grants: J[] = isObj(jb) && Array.isArray(jb.tools) ? jb.tools : [];
-  const g = grants.find((x) => isObj(x) && (x.tool === tool || (jb.legacy === true && x.tool === "kit:*" && tool.startsWith("kit:"))) && x.records === records);
+  const g = grants.find((x) => isObj(x) && x.tool === tool && x.records === records);
   if (!g || !Array.isArray(g.can) || !g.can.includes(level)) return { ok: false, why: "not_granted", say: `This job may not ${level} ${records.slice(0, 40)} in ${tool.slice(0, 70)}.` };
   if (money(records) || isMoneyTool(tool)) {
     const what = money(records) ? `${records} is a money record` : `${tool.slice(0, 70)} is a money tool`;
@@ -474,7 +464,7 @@ const CHANNEL_WORDS: Record<string, string> = { web_chat: "website chat", sms: "
 const DAY_WORDS: Record<string, string> = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
 const list = (a: string[]) => (a.length < 2 ? a.join("") : `${a.slice(0, -1).join(", ")} and ${a[a.length - 1]}`);
 const clock = (t: string) => { const h = Number(t.slice(0, 2)); return `${h % 12 || 12}:${t.slice(3)} ${h < 12 ? "am" : "pm"}`; };
-const where = (tool: string, names: Record<string, string>) => at(names, tool) ?? at(TOOL_WORDS, tool) ?? (tool.startsWith("kit:") ? (tool === "kit:*" ? "any other tool you connect" : tool.slice(4)) : `your ${tool.replace(/_/g, " ")}`);
+const where = (tool: string, names: Record<string, string>) => at(names, tool) ?? at(TOOL_WORDS, tool) ?? (tool.startsWith("kit:") ? tool.slice(4) : `your ${tool.replace(/_/g, " ")}`);
 
 function startWords(t: Trigger, names: Record<string, string>): string {
   if (t.type === "message") return `When a customer reaches out by ${list(t.channels.map((c) => at(CHANNEL_WORDS, c) ?? c))}.`;
@@ -503,10 +493,8 @@ function startWords(t: Trigger, names: Record<string, string>): string {
  */
 export function plainWords(job: Job, toolNames: Record<string, string> = {}): { starts: string[]; can: string[]; cannot: string[]; limits: string[]; pauses: string[] } {
   const can: string[] = [], cannot: string[] = ["Delete anything, anywhere."];
-  const anyTool = job.tools.filter((g) => g.tool === "kit:*" && g.can.includes("add")).map((g) => g.records.replace(/_/g, " "));
   for (const g of job.tools) {
     if (g.tool === "pip") { can.push(at(PIP_WORDS, g.records) ?? ""); continue; }
-    if (g.tool === "kit:*") continue;
     const what = g.records === "*" ? "records" : at(PLURAL, g.records) ?? g.records, place = where(g.tool, toolNames);
     const gate = g.policy ? `, only inside the ${g.policy} rules you set` : "";
     if (g.can.includes("read")) can.push(g.fields?.read ? `See these details of ${what} in ${place}: ${list(g.fields.read.map((f) => f.replace(/[_.]/g, " ")))}.` : `See ${what} in ${place}.`);
@@ -514,10 +502,6 @@ export function plainWords(job: Job, toolNames: Record<string, string> = {}): { 
     if (g.can.includes("update")) { can.push(`Change only these details of ${what} in ${place}: ${list(g.fields!.update!.map((f) => f.replace(/[_.]/g, " ")))}${gate}.`); cannot.push(`Change anything else about ${what} in ${place}.`); }
     if (!g.can.includes("read") && g.records !== "message" && g.records !== "call") cannot.push(`Look at ${what} already in ${place}.`);
     if (!g.can.includes("add") && !g.can.includes("update") && !(READ_ONLY_RECORDS as readonly string[]).includes(g.records)) cannot.push(`Change ${what} in ${place}.`);
-  }
-  if (anyTool.length) {
-    can.push(`Add one new ${anyTool.length < 2 ? anyTool.join("") : `${anyTool.slice(0, -1).join(", ")} or ${anyTool[anyTool.length - 1]}`} in any other tool you connect. Never in a money tool.`);
-    cannot.push("See, change or send anything in those other tools.");
   }
   if (!job.tools.some((g) => g.policy)) cannot.push("Move money, place orders, or change prices.");
   cannot.push("Use any tool or any kind of record not listed here.");

@@ -154,7 +154,7 @@ const BOARD = { board: { seats: { gate: { system_prompt: "You are Hallie." } } }
 const BOARD_MANIFEST = { uses: ["ai_disclosure", "calendar", "capture_lead", "consent_ledger", "data_sink", "draft_for_approval", "email", "embed_search", "forms", "inbound_message", "knowledge", "notify_owner", "request_booking", "web_chat"] };
 const CLASSIC = { name: "Monday Catch-Up", goal: "Brief the team", agent: { persona: "You are Paige.", tools: ["pii_scrub", "weekly_report", "owner_alerts"] }, triggers: ["schedule"], channels: ["web_chat"] };
 
-test("teammates built before the contract keep exactly what pip-turn gives them today", () => {
+test("teammates built before the contract keep what pip-turn gave them, and nothing in a tool the owner connected on their own", () => {
   const b = jobsOf(BOARD, BOARD_MANIFEST);
   assert.equal(b.legacy, true); assert.deepEqual(b.errors, []); assert.equal(b.jobs.length, 1);
   const job = b.jobs[0];
@@ -166,8 +166,8 @@ test("teammates built before the contract keep exactly what pip-turn gives them 
   no("pip", "handoff", "add"); // Hallie was not designed with handoff
   yes("calendar", "busy_time", "read"); yes("calendar", "appointment", "add"); no("calendar", "appointment", "read"); no("calendar", "appointment", "update");
   yes("email", "message", "add"); yes("sheets", "row", "add"); no("sheets", "row", "read");
-  yes("kit:airtable", "row", "add"); no("kit:airtable", "row", "read"); no("kit:airtable", "row", "update"); no("kit:airtable", "row", "delete");
-  no("kit:stripe", "payment", "add"); no("kit:quickbooks", "invoice", "add"); // money stays shut even through the wildcard
+  no("kit:airtable", "row", "add"); no("kit:airtable", "row", "read"); no("kit:airtable", "row", "update"); no("kit:airtable", "row", "delete"); // extra tools are off by default
+  no("kit:stripe", "payment", "add"); no("kit:quickbooks", "invoice", "add");
   assert.deepEqual(job.limits, { per_run: { steps: 6, actions: 6 }, per_day: null, each: [] });
 
   const c = jobsOf(CLASSIC);
@@ -185,11 +185,15 @@ test("a spec that names the contract but is invalid has no jobs: it does not fal
   assert.equal(half.jobs.length, 0); assert.match(half.errors.join(" "), /contract must be/);
 });
 
-test("the wildcard works only inside the implied job", () => {
+test("there is no wildcard: a permission on one named tool never stretches to another, in any job", () => {
   const forged = spec((j) => { j.tools = [{ tool: "kit:hubspot", records: "contact", can: ["add"] }]; });
   const [job] = checkSpec(forged).jobs;
+  assert.deepEqual(allows(job, { tool: "kit:hubspot", records: "contact", level: "add" }), { ok: true });
   assert.equal(allows(job, { tool: "kit:salesforce", records: "contact", level: "add" }).ok, false);
   assert.equal(allows({ ...job, tools: [{ tool: "kit:*", records: "*", can: ["add"], required: false }] }, { tool: "kit:salesforce", records: "contact", level: "add" }).ok, false);
+  // Not for the implied job either, even if one were handed "kit:*" by a bug.
+  const implied = jobsOf(BOARD, BOARD_MANIFEST).jobs[0];
+  assert.equal(allows({ ...implied, tools: [...implied.tools, { tool: "kit:*", records: "contact", can: ["add"], required: false }] }, { tool: "kit:salesforce", records: "contact", level: "add" }).ok, false);
   bad({ contract: "teammate/1", jobs: [{ ...spec().jobs[0], legacy: true }] }, /not part of the contract/);
 });
 
@@ -283,23 +287,18 @@ test("hold 2: the contract's money-tool list is the one pip-turn uses", () => {
   assert.equal((contract as J).MONEY_TOOLS?.source, m[1]);
 });
 
-test("hold 3: the implied job for older teammates adds only what pip-turn's add-one rule covers", () => {
+test("hold 3: the implied job for older teammates gets nothing in a tool the owner connected on their own", () => {
   const job = jobsOf(BOARD, BOARD_MANIFEST).jobs[0];
   const ok = (tool: string, records: string, level = "add") => allows(job, { tool, records, level }).ok;
+  // "Add one record" used to be given in any connected tool. In a tool billed per use that can cost money or reach
+  // people (a text, a phone number), so extra tools are off until a job lists one by name.
   const addOne = ["lead", "contact", "deal", "task", "ticket", "note", "job", "row"];
-  for (const r of addOne) assert.equal(ok("kit:hubspot", r), true, `add ${r}`);
-  // The four from the review.
-  assert.equal(ok("kit:stripe", "contact"), false, "a contact in a money tool");
-  assert.equal(ok("kit:slack", "message"), false, "a message through any connected tool");
-  assert.equal(ok("kit:twilio", "call"), false, "a call through any connected tool");
-  assert.equal(ok("kit:dropbox", "file"), false, "a file in any connected tool");
-  for (const r of ["message", "call", "file", "appointment", "item", "review", "post", "busy_time", "count", ...MONEY_RECORDS, "*", "secret"]) assert.equal(ok("kit:hubspot", r), false, `add ${r}`);
-  for (const kit of ["kit:stripe", "kit:square", "kit:paypal", "kit:quickbooks", "kit:xero", "kit:shopify", "kit:gusto"]) for (const r of addOne) assert.equal(ok(kit, r), false, `${kit}/${r}`);
-  for (const level of ["read", "update", "delete"]) for (const r of addOne) assert.equal(ok("kit:hubspot", r, level), false, `${level} ${r}`);
-  assert.ok(!job.tools.some((g) => g.records === "*"), "no wildcard kind of record is left in the implied job");
+  for (const kit of ["kit:hubspot", "kit:airtable", "kit:twilio", "kit:slack", "kit:dropbox", "kit:stripe", "kit:square", "kit:paypal", "kit:quickbooks", "kit:xero", "kit:shopify", "kit:gusto", "kit:*"])
+    for (const level of ["read", "add", "update", "delete"]) for (const r of [...addOne, "message", "call", "file", "appointment", "item", "review", "post", "busy_time", "count", ...MONEY_RECORDS, "*", "secret"]) assert.equal(ok(kit, r, level), false, `${level} ${r} in ${kit}`);
+  assert.ok(!job.tools.some((g) => g.tool.startsWith("kit:") || g.records === "*"), "no extra tool and no wildcard is left in the implied job");
   const w = plainWords(job);
-  assert.ok(w.can.includes("Add one new lead, contact, deal, task, ticket, note, job or row in any other tool you connect. Never in a money tool."), w.can.join(" | "));
-  assert.ok(w.cannot.includes("See, change or send anything in those other tools."));
+  assert.ok(!w.can.some((s) => /any other tool/.test(s)), w.can.join(" | "));
+  assert.ok(w.cannot.includes("Use any tool or any kind of record not listed here."));
   for (const part of Object.values(w)) for (const s of part) assert.ok(s && !/undefined|\[object|\*/.test(s), s);
 });
 

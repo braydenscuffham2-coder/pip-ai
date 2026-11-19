@@ -22,15 +22,22 @@ Only claim what the "live" column says.
 
 | Part | Status |
 | --- | --- |
-| The shape of a job, the checker, the permission check as a function, the plain-words text | In this repo, tested. Not yet called by anything that runs. |
-| `pip-turn` reading `jobs` and refusing what a job does not allow | **Not live.** Lane 01, pull request 3. Until then `pip-turn` ignores `jobs` and runs every teammate the old way. |
+| The shape of a job, the checker, the permission check as a function, the plain-words text | In this repo, tested. Called by `pip-turn` on every customer turn and every job run. |
+| A customer turn (`POST /turn`) held to the job that answers that channel: only tools its permissions cover are offered, and the permission check is asked again before anything is run | Built and tested with fakes (`tests/pip-turn/limits.test.mjs`). **Not live** until this version of `pip-turn` is deployed and proven on TEST Fork. Until then the deployed `pip-turn` ignores `jobs` and runs every teammate the old way. |
+| A spec with a broken job list, or a message on a channel no job lists | No job, so the model is not called: holding reply, and the owner is told. Built and tested, **not live** yet. |
+| A tool the owner connected beyond the setup steps | **Off by default.** Nothing in it is found or opened automatically, and older teammates get nothing there. It opens one action at a time: a reviewed `tool_catalog` row with `record` and `level`, for a job that lists `kit:<toolkit>`. Built and tested, **not live** yet. |
+| A money product behind a building block (a job says `pos`, the business connected Square) | **Refused for every teammate**, on a customer turn and in a job run. Built and tested, **not live** yet. |
+| A customer turn sending a text or placing a call, or sending an email that is not a `reply` | **Refused.** The rules for who may be reached (`purpose`) are not built yet. The one send that is open on a turn is an email `reply`, where code checks the address was typed by the customer. |
+| A customer turn updating a record, or reading with `fields.read` listed | **Refused**, the same as in a job run: no tool has a field map, and nothing can cut an answer down to listed fields. |
+| A job's own limits (`per_run`, `per_day`, `each`) on a customer turn | **Not applied yet.** Every turn has the same fixed limit: 6 tool calls and 5 rounds. |
+| A pause on one job (`job:<id>`) stopping that job's customer turns | **Not built yet.** A tool that loses access is still paused by name, as before. |
 | Jobs that start on a schedule, on an event, or from "Run now" | Built and tested with fakes in pull request 2 (`pip-jobs`, and `POST /job` in `pip-turn`). **Not live** until that is merged, deployed and proven on TEST Fork. |
 | Jobs that start from an owner's decision | **Not live.** Comes after the runner, with lane 04. |
 | Retry safety, per-run and per-day limits, three-failures pause, dead ends to the supervisor | Same as the runner: built and tested, **not live** yet. |
-| A job that started on its own sending a message or placing a call | **Refused.** The rules for who may be reached (`purpose`) are not built yet. Pull request 3. |
-| A job that started on its own updating a record | **Refused.** No tool has a field map yet. Pull request 3. |
+| A job that started on its own sending a message or placing a call | **Refused.** The rules for who may be reached (`purpose`) are not built yet. |
+| A job that started on its own updating a record | **Refused.** No tool has a field map yet. |
 | A job that started on its own and lists `fields.add` | Held to the list on every call, in the runner (`POST /job`): a call that fills in anything else is refused and logged. Until field maps exist the names are the tool's own argument names, or the column names on the Pip sheet. Built and tested, **not live** yet. |
-| A job that started on its own reading with `fields.read` listed | **Not offered.** Nothing can cut a tool's answer down to the listed fields yet. Pull request 3. |
+| A job that started on its own reading with `fields.read` listed | **Not offered.** Nothing can cut a tool's answer down to the listed fields yet. |
 | Long tasks | **Not live.** Pull request 4. |
 | Money records, and any record in a money tool | **Refused for everyone** until lane 08's buying check exists. |
 
@@ -51,9 +58,9 @@ Both of today's shapes keep their own keys untouched. A Board build keeps `board
 
 Because jobs are part of the spec, they change only the way a spec changes: through the Forge and Brayden's go-live (handbook rule 9). No teammate, owner message or tool result can edit them.
 
-**A teammate with no `contract` key works exactly as it does today.** The code gives it one implied job called `conversation`: it answers messages on any channel and may do what `pip-turn` already allows and nothing wider: Pip's own actions it was designed with, busy times and a hold on the calendar, an email to the customer, a row on the Pip sheet, and one new record in any other connected tool. `POST /turn` does not change.
+**A teammate with no `contract` key keeps what it had, with one exception.** The code gives it one implied job called `conversation`: it answers messages on any channel and may do what `pip-turn` allowed before the contract and nothing wider: Pip's own actions it was designed with, busy times and a hold on the calendar, an email to the customer, and a row on the Pip sheet.
 
-"One new record in any other connected tool" means exactly what `pip-turn`'s add-one rule covers: a new **lead, contact, deal, task, ticket, note, job or row**. The implied job cannot send a message, place a call or add a file through such a tool, cannot read or change anything there, and gets nothing at all in a money tool.
+The exception is a tool the owner connected on their own, beyond the setup steps. Older teammates used to get "add one new record" there automatically. In a tool billed per use that can cost money or reach people (in Twilio, "create message" sends a text and "create incoming phone number" buys a number), so it is gone. The implied job gets **nothing** in such a tool. There is no wildcard anywhere in the contract: an extra tool is opened only by a job that lists it by name, as `kit:<name>` (see "Tools" below).
 
 **A spec that has `contract` or `jobs` but fails the check has no jobs at all.** It does not fall back to the old behaviour. A broken build must not run.
 
@@ -81,7 +88,7 @@ Any key not in this page is refused. Up to 12 jobs per teammate.
 { "type": "message", "channels": ["web_chat", "sms", "voice", "email"] }
 ```
 
-One job answers each channel. Two jobs claiming the same channel is an error, so which job replies is decided by code, never guessed by a model. A message on a channel no job claims gets the plain holding reply and the owner is told.
+One job answers each channel. Two jobs claiming the same channel is an error, so which job replies is decided by code, never guessed by a model. A message on a channel no job claims gets the plain holding reply and the owner is told. On a customer turn the job's `instructions`, and its `pause.when` sentences, are added to the teammate's own prompt as guidance; what it may actually do is decided by its `tools`, in code.
 
 **A schedule**, always in the business's own time zone
 
@@ -132,7 +139,7 @@ Pip sends `lead_added`, `missed_call` and `conversation_ended`. A box sends `cou
 **`tool`** is one of:
 
 - a building block from the `primitives` table, like `calendar`, `email`, `sms`, `sheets`, `crm`, `pos`, `booking_app`. The job says "the customer list"; which product that is (HubSpot, Jobber) is settled when the owner connects it.
-- `kit:<name>` for one named product, like `kit:airtable`.
+- `kit:<name>` for one named product, like `kit:airtable`. This is the only way a tool the owner connected beyond the setup steps is opened. It also needs a reviewed `tool_catalog` row (block `any_tool`) whose `record` and `level` match the permission. Nothing there is opened automatically.
 - `pip` for Pip's own actions (below).
 
 The job does not choose how the tool is reached. A connected sign-in, a key, the password-only browser route or an on-site box all enforce the same permission.
@@ -169,7 +176,7 @@ An outbound call is never a `reply`, and always needs a stored consent record (h
 **Money.** Two things count as money, and both are refused unless an owner policy opens them:
 
 - a money kind of record (the list above), in any tool
-- **any kind of record in a money tool**, at any level, even reading a contact. A money tool is one whose name matches the list `pip-turn` already uses to keep its add-one rule away from payment, accounting and payroll products (Stripe, Square, PayPal, QuickBooks, Xero, Shopify, Gusto, ADP, anything with "pay", "bank", "billing", "invoice" or "payroll" in its name, and the rest of that list). The contract carries the same list, and a test fails if the two ever differ.
+- **any kind of record in a money tool**, at any level, even reading a contact. A money tool is one whose name matches the list `pip-turn` keeps of payment, accounting and payroll products (Stripe, Square, PayPal, QuickBooks, Xero, Shopify, Gusto, ADP, anything with "pay", "bank", "billing", "invoice" or "payroll" in its name, and the rest of that list). The contract carries the same list, and a test fails if the two ever differ.
 
 Which policy may open what is a fixed table in the code. There is one policy today:
 
@@ -181,7 +188,7 @@ So `payment`, `refund`, `payout`, `payroll`, `discount` and `estimate`, changing
 
 A permission the table does open must carry `"policy": "buying"`, and the permission check still refuses it unless code has checked that policy and it passed for this exact action. That check is lane 08's `pip-buy`. Until it exists, money is refused for everyone. A spec may declare it so the Forge can report an honest "not yet".
 
-The contract can only see the name a job uses. When a building block such as `pos` or `accounting` turns out to be a money product for one business, the code that makes that match (`pip-turn`, pull request 3) must ask `isMoneyTool` again with the product's own name before it offers the tool.
+The contract can only see the name a job uses. When a building block such as `pos` or `accounting` turns out to be a money product for one business, `pip-turn` asks again under the product's own name (the catalog row's `toolkit` and the connection's `choice`) before it offers the tool and again before it runs it, on a customer turn and in a job run. The answer is the same as for any money tool: no, unless a policy that has passed opens that kind of record at that level. Any other code that matches a building block to a product must do the same.
 
 **Pip's own actions** are records of the tool `pip`, add only:
 
@@ -284,7 +291,7 @@ The second is the attack: it breaks every worked example in about 9,400 ways and
 
 **04 inbox.** Mail in is the `email` channel of a message trigger: call `POST /turn` with `channel: "email"`. The follow-up loop is a job with `{ "type": "owner", "on": "decision", ... }` and a `transactional` send; see `examples/front-desk.json`. Lane 01 starts that job when the owner decides. You own delivery, and "once and only once" comes from the runner's retry key.
 
-**05 forge.** Write `contract` and `jobs` at the top of `skill_specs.spec`, beside `board` or `agent`. Run `checkSpec` on every build; any error means not ready. Match each tool against what is really possible and report the rest as gaps. Do not write a permission you could not also explain to the owner in one sentence. Until pull request 3 is live, jobs are stored but not enforced, so no teammate may go live on the strength of them.
+**05 forge.** Write `contract` and `jobs` at the top of `skill_specs.spec`, beside `board` or `agent`. Run `checkSpec` on every build; any error means not ready. Match each tool against what is really possible and report the rest as gaps. Do not write a permission you could not also explain to the owner in one sentence. Until the status table at the top says the customer-turn check is live, jobs are stored but not enforced on the deployed `pip-turn`, so no teammate may go live on the strength of them. A tool beyond the setup steps does nothing for a teammate unless a job lists it as `kit:<toolkit>`, so report each one you leave out as a gap.
 
 **06 portal.** "What this teammate can and cannot do" is `plainWords(job, toolNames)`, generated, never hand-written. You own how it reads on screen; if a sentence is wrong, change it in the code file through a pull request named for lane 01 so every screen changes together.
 

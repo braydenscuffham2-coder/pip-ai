@@ -16,7 +16,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
-import { ADD_ONE_RECORDS, allows, CEILING, checkSpec, isMoneyTool, jobsOf, LEVELS, MONEY_RECORDS, PIP_RECORDS, plainWords, POLICIES, POLICY_OPENS, PURPOSES, READ_ONLY_RECORDS, RECORDS, runsPerDay } from "./teammate-spec.ts";
+import { allows, CEILING, checkSpec, isMoneyTool, jobsOf, LEVELS, MONEY_RECORDS, PIP_RECORDS, plainWords, POLICIES, POLICY_OPENS, PURPOSES, READ_ONLY_RECORDS, RECORDS, runsPerDay } from "./teammate-spec.ts";
 
 // deno-lint-ignore no-explicit-any
 type J = any;
@@ -77,7 +77,7 @@ function safe(job: J): string[] {
 function mayDo(job: J, ask: J, passed: J): boolean {
   if (!isObj(ask) || !has(LEVELS, ask.level) || typeof ask.tool !== "string" || typeof ask.records !== "string") return false;
   if (ask.fields !== undefined && !(Array.isArray(ask.fields) && ask.fields.every((f: J) => typeof f === "string"))) return false;
-  const g = (job.tools as J[]).find((x) => (x.tool === ask.tool || (job.legacy === true && x.tool === "kit:*" && ask.tool.startsWith("kit:"))) && x.records === ask.records);
+  const g = (job.tools as J[]).find((x) => x.tool === ask.tool && x.records === ask.records);
   if (!g || !g.can.includes(ask.level)) return false;
   if ((isMoney(ask.records) || isMoneyTool(ask.tool)) && !(Array.isArray(passed) && passed.includes(g.policy) && opened(g.policy, ask.records, ask.level))) return false;
   if (has(READ_ONLY_RECORDS, ask.records) && ask.level !== "read") return false;
@@ -206,12 +206,11 @@ test("attack: no broken version of an example crashes the checker or comes out v
   assert.ok(refused > tried / 2 && stillValid > 100, "the attack must both break specs and leave some valid, or it proves nothing");
 });
 
-test("attack: the implied job for older teammates never opens more than pip-turn's add-one rule", (t) => {
+test("attack: the implied job for older teammates never opens a tool the owner connected on their own", (t) => {
   const NAMES = [...Object.values(PIP_RECORDS), "calendar", "email", "data_sink", "sheets", "web_chat", "kit:*", "*", "delete", "stripe", "payroll", "constructor", "__proto__"];
   const lists: J[] = [[], NAMES, ...NAMES.map((n) => [n]), null, "all", 7, {}, [null, {}, 5, ["calendar"]], NAMES.map((n) => n.toUpperCase())];
   const tools = ["pip", "calendar", "email", "sheets", "crm", "sms", "kit:*", "kit:hubspot", "kit:airtable", "kit:slack", "kit:twilio", "kit:dropbox", "kit:stripe", "kit:quickbooks", "kit:square", "kit:shopify", "kit:gusto", "kit:paypal", "payroll"];
   const records = [...RECORDS, ...MONEY_RECORDS, ...Object.keys(PIP_RECORDS), "*", "secret"];
-  const addOne: readonly string[] = ADD_ONE_RECORDS;
   let shapes = 0, asked = 0;
   for (const uses of lists) for (const shape of [{ spec: { board: { seats: { gate: { system_prompt: "You are Hallie." } } } }, manifest: { uses } }, { spec: { board: { seats: { gate: { system_prompt: "x" } } } }, manifest: { manifest: { uses } } }, { spec: { agent: { persona: "You are Paige.", tools: uses }, triggers: ["schedule"] }, manifest: undefined }] as J[]) {
     shapes++;
@@ -227,10 +226,13 @@ test("attack: the implied job for older teammates never opens more than pip-turn
       if (!v.ok) continue;
       assert.ok(level === "add" || (level === "read" && tool === "calendar" && rec === "busy_time"), `the implied job may ${level} ${rec} in ${tool}`);
       assert.ok(!isMoneyTool(tool) && !isMoney(rec), `the implied job reached money: ${tool}/${rec}`);
-      if (tool.startsWith("kit:")) assert.ok(addOne.includes(rec) && tool !== "kit:*" || (tool === "kit:*" && addOne.includes(rec)), `the implied job may add ${rec} in ${tool}`);
+      assert.ok(!tool.startsWith("kit:"), `the implied job may ${level} ${rec} in ${tool}`);
       if (["message", "call", "file"].includes(rec)) assert.ok(tool === "email" && rec === "message", `the implied job may send a ${rec} through ${tool}`);
     }
     for (const ask of HOSTILE_ASKS) { asked++; assert.equal(allows(job, ask).ok, false, JSON.stringify(ask)); }
+    // There is no wildcard. Even an implied job that somehow carried "kit:*" opens no real tool with it.
+    const wild: J = { ...job, tools: [...job.tools, ...["lead", "contact", "row", "*"].map((records) => ({ tool: "kit:*", records, can: ["read", "add"], required: false }))] };
+    for (const tool of ["kit:hubspot", "kit:twilio", "kit:stripe"]) for (const rec of ["lead", "contact", "row", "message", "*"]) for (const level of LEVELS) { asked++; assert.equal(allows(wild, { tool, records: rec, level }).ok, false, `a wildcard opened ${level} ${rec} in ${tool}`); }
   }
   t.diagnostic(`${shapes} older teammate shapes, ${asked} permission questions.`);
 });
