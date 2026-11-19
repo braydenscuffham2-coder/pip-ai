@@ -37,8 +37,14 @@ export default function AboutPage() {
       <p>A teammate is AI, and AI can make mistakes. Every teammate says it is an AI in its first message.</p>
 
       <h2 id="google">How Pip uses your Google account</h2>
-      <p>If you connect your Google account, Pip asks Google for three things.</p>
+      <p>If you connect your Google account, Pip asks Google for four things.</p>
       <ul className="pub-perms">
+        <li>
+          <h3>Your Google account&apos;s email address</h3>
+          <p className="pub-scopes"><code>userinfo.email</code></p>
+          <p>Pip uses it to show you which account is connected.</p>
+          <p className="pub-no">Pip sees nothing else from your profile.</p>
+        </li>
         <li>
           <h3>Send email on your behalf</h3>
           <p className="pub-scopes"><code>gmail.send</code></p>
@@ -67,6 +73,12 @@ export default function AboutPage() {
         <li>Pip does not use it for ads.</li>
         <li>Pip does not use it to train AI models.</li>
       </ul>
+
+      <p>
+        Pip&apos;s use and transfer of information received from Google APIs to any other app will adhere to the{' '}
+        <a href="https://developers.google.com/terms/api-services-user-data-policy" rel="noopener noreferrer">Google API Services User Data Policy</a>,
+        including the Limited Use requirements.
+      </p>
 
       <h3>You can disconnect at any time</h3>
       <p>

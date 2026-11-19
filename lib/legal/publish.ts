@@ -2,8 +2,8 @@
 // The legal files are drafts with working notes in them. Two rules keep those notes off the website:
 //   1. publicText() takes out the furniture that is never public: the draft banner under the title,
 //      a "Sources for the legal points" footer, and source tags like [S12].
-//   2. blanks() lists everything that is still open. While that list is not empty, the page shows a
-//      holding notice and none of the draft (see components/legal/LegalDocPage.tsx).
+//   2. blanks() lists everything that is still open. While that list is not empty, or the lawyer's switch for
+//      the document is off, the page shows a holding notice and none of the draft (see components/legal/LegalDocPage.tsx).
 // Keep this file free of imports so the tests can load it directly.
 
 export type BlankKind =
@@ -169,16 +169,22 @@ export function blanks(md: string): Blank[] {
 }
 
 export interface PublicDocument {
-  /** True when nothing is open and the document may be shown. */
+  /** True only when nothing is open AND the lawyer's switch for this document is on. */
   ready: boolean;
   blanks: Blank[];
+  /** The lawyer's switch that was passed in (LAWYER_SIGNED_OFF in lib/legal/facts.ts). */
+  signedOff: boolean;
   /** The text to show. Empty while the document is not ready, so a caller cannot show a draft by mistake. */
   body: string;
 }
 
-/** The one call a page needs: is the document ready, and if so what text to show. */
-export function publicDocument(md: string): PublicDocument {
+/**
+ * The one call a page needs: may the document be shown, and if so what text to show.
+ * Two things must both be true: the document has no blanks left, and `signedOff` is exactly true.
+ */
+export function publicDocument(md: string, signedOff: boolean): PublicDocument {
   const open = blanks(md);
-  const ready = open.length === 0;
-  return { ready, blanks: open, body: ready ? showStatusLabels(publicText(md)) : '' };
+  const ok = signedOff === true;
+  const ready = ok && open.length === 0;
+  return { ready, blanks: open, signedOff: ok, body: ready ? showStatusLabels(publicText(md)) : '' };
 }

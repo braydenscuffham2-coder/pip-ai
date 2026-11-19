@@ -1,7 +1,7 @@
 // The public pages (/about, /privacy, /terms). Three promises are checked here:
 //   1. The markdown reader shows what the legal files use and never lets an unsafe link through.
 //   2. Working notes never reach the public: publicText() strips the furniture, blanks() finds everything still
-//      open, and a document with anything open gives the page no text to show.
+//      open, and a document with anything open, or without the lawyer's switch on, gives the page no text to show.
 //   3. The About page says what it must for Google's review and nothing it must not.
 // No browser and no network. The check that renders real HTML skips itself when React or TypeScript is not installed.
 import { test } from "node:test";
@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseMarkdown, parseInline, safeHref, inlineText } from "../../lib/legal/markdown-parse.ts";
 import { publicText, blanks, publicDocument, showStatusLabels } from "../../lib/legal/publish.ts";
-import { CONTACT_EMAIL, FOUNDER_FACTS } from "../../lib/legal/facts.ts";
+import { CONTACT_EMAIL, FOUNDER_FACTS, LAWYER_SIGNED_OFF } from "../../lib/legal/facts.ts";
 
 const file = (rel) => fileURLToPath(new URL(`../../${rel}`, import.meta.url));
 const read = (rel) => readFileSync(file(rel), "utf8");
@@ -181,7 +181,7 @@ const texts = (list) => list.map((b) => b.text);
 
 test("blanks() finds every blank in today's Privacy Policy", () => {
   const found = blanks(PRIVACY);
-  assert.equal(found.length, 17);
+  assert.equal(found.length, 13);
   assert.deepEqual(texts(found).map((t) => (t.length > 44 ? t.slice(0, 44) + "..." : t)), [
     "[date the lawyer approves]",
     "[Brayden Scuffham, an individual doing busin...",
@@ -189,10 +189,6 @@ test("blanks() finds every blank in today's Privacy Policy", () => {
     "[privacy@hirepip.com]",
     "[BRAYDEN: this address must exist and be rea...",
     "[business mailing address]",
-    "[LANE 02 TO CONFIRM BEFORE PUBLISHING: wheth...",
-    "[LANE 04 TO CONFIRM BEFORE PUBLISHING.]",
-    "[BRAYDEN AND LAWYER: confirm which pages loa...",
-    "[NOTE BEFORE PUBLISHING: this section descri...",
     "[LAWYER: confirm each vendor's contract supp...",
     "[PROPOSED: 13 months after the conversation,...",
     "[LAWYER: confirm 4 years matches the claim p...",
@@ -203,8 +199,17 @@ test("blanks() finds every blank in today's Privacy Policy", () => {
   ]);
   assert.deepEqual(found.filter((b) => b.kind === "internal-notes").map((b) => b.text), ["## Notes for the lawyer and for Brayden (not part of the published policy)"]);
   assert.equal(found.filter((b) => b.kind === "placeholder").length, 7);
-  assert.equal(found.filter((b) => b.kind === "note").length, 9);
+  assert.equal(found.filter((b) => b.kind === "note").length, 5);
   assert.equal(found.find((b) => b.text === "[business mailing address]").line, 21, "line numbers are those of the file");
+});
+
+test("the Privacy Policy's Google section names the five permissions Pip asks for, and no stale note", () => {
+  const section = PRIVACY.slice(PRIVACY.indexOf("## 4. Google user data"), PRIVACY.indexOf("## 5. Text messages"));
+  const named = [...section.matchAll(/\(`([a-z.]+)`\)/g)].map((m) => m[1]).sort();
+  assert.deepEqual(named, ["calendar.calendars.readonly", "calendar.events", "drive.file", "gmail.send", "userinfo.email"]);
+  assert.deepEqual(blanks(section), [], "section 4 has no blanks left");
+  assert.ok(!/full mailbox|NOTE BEFORE PUBLISHING/.test(PRIVACY));
+  assert.match(section, /held by our connection provider, Composio/);
 });
 
 test("blanks() finds every blank in today's Terms of Service", () => {
@@ -261,28 +266,52 @@ Pip follows the [Google API Services User Data Policy](https://developers.google
 **Sources for the legal points** are in \`legal/sources.md\` [S12].
 `;
 
-test("a filled document has no blanks and is ready to show", () => {
+test("a filled document has no blanks, and with the lawyer's switch on it is ready to show", () => {
   assert.deepEqual(blanks(FILLED), []);
-  const doc = publicDocument(FILLED);
+  const doc = publicDocument(FILLED, true);
   assert.equal(doc.ready, true);
   assert.ok(doc.body.includes("Call a business's Pip number (not live yet)"));
   assert.ok(!/\[not live yet\]|DRAFT|Lane 10|Sources for the legal points|\[S12\]/.test(doc.body));
   assert.equal(showStatusLabels("x [not live yet] y [NOT OFFERED YET]"), "x (not live yet) y (not offered yet)");
 });
 
-test("THE GATE: a document with anything open gives the page no text at all", () => {
+test("THE GATE: a document with anything open gives the page no text at all, even with the lawyer's switch on", () => {
   for (const md of [PRIVACY, TERMS, FILLED + "\nMail: [mailing address]\n", FILLED + "\n## Notes for the lawyer (not part of the published policy)\n\nx\n"]) {
-    const doc = publicDocument(md);
+    const doc = publicDocument(md, true);
     assert.equal(doc.ready, false);
     assert.equal(doc.body, "");
     assert.ok(doc.blanks.length > 0);
   }
 });
 
+test("THE GATE: a document with no blanks stays hidden until the lawyer's switch is on", () => {
+  for (const off of [false, undefined, null, 0, "", "true", 1, "yes", {}]) {
+    const doc = publicDocument(FILLED, off);
+    assert.equal(doc.ready, false, String(off));
+    assert.equal(doc.body, "", String(off));
+    assert.equal(doc.signedOff, false, String(off));
+    assert.deepEqual(doc.blanks, []);
+  }
+  assert.equal(publicDocument(FILLED, true).ready, true);
+  assert.equal(publicDocument(PRIVACY, false).body, "");
+});
+
+test("THE GATE: each document has its own switch, and a switch is never on for a document that still has blanks", () => {
+  assert.deepEqual(Object.keys(LAWYER_SIGNED_OFF).sort(), ["privacy", "terms"]);
+  for (const [which, md] of [["privacy", PRIVACY], ["terms", TERMS]]) {
+    assert.equal(typeof LAWYER_SIGNED_OFF[which], "boolean", which);
+    if (LAWYER_SIGNED_OFF[which]) assert.deepEqual(texts(blanks(md)), [], `${which} is marked signed off but still has blanks`);
+  }
+  // The pages take the switch from facts.ts, by document, and from nowhere else.
+  assert.match(read("lib/legal/load.ts"), /publicDocument\(readFileSync\([^\n]*\), LAWYER_SIGNED_OFF\[which\]\)/);
+});
+
 test("THE GATE: the page shows the holding notice and asks not to be indexed unless the document is ready", () => {
   const page = read("components/legal/LegalDocPage.tsx");
   assert.match(page, /doc\.ready \? \(\s*<article/);
-  assert.match(page, /This page is being finalized\. Questions: use the contact on the <a href="\/about">About page<\/a>\./);
+  assert.match(page, /<p>This page is being finalized\.<\/p>\s*<p><a href="\/about">Back to About Pip<\/a><\/p>/);
+  assert.match(page, /\{CONTACT_EMAIL \? \(\s*<p>\s*Questions: /, "the Questions line shows only when an address is set");
+  assert.equal(page.match(/Questions:/g).length, 1);
   assert.match(page, /robots: ready \? undefined : \{ index: false/);
   // The pages read the documents through the gate and nowhere else.
   for (const p of ["app/privacy/page.tsx", "app/terms/page.tsx"]) {
@@ -291,18 +320,18 @@ test("THE GATE: the page shows the holding notice and asks not to be indexed unl
     assert.match(src, /export const dynamic = 'force-static'/);
     assert.ok(!/readFileSync|legal\/.*\.md'/.test(src), `${p} must not read the file itself`);
   }
-  assert.match(read("lib/legal/load.ts"), /publicDocument\(readFileSync\(/);
 });
 
 test("once its blanks are filled, the whole Privacy Policy reads cleanly, big tables included", () => {
   // Fill a copy in memory the way the founder would in the file: every blank gets a value or is deleted, and the notes section goes.
   let md = PRIVACY.slice(0, PRIVACY.indexOf("\n---\n\n## Notes for the lawyer"));
   for (const b of blanks(md)) md = md.replace(b.text, b.kind === "note" ? "" : b.text.includes("@") ? "privacy@example.com" : "EXAMPLE VALUE");
-  const doc = publicDocument(md);
+  assert.equal(publicDocument(md, false).body, "", "still hidden without the lawyer's switch");
+  const doc = publicDocument(md, true);
   assert.deepEqual(doc.blanks, []);
   const blocks = parseMarkdown(doc.body);
   const tables = blocks.filter((b) => b.type === "table");
-  assert.deepEqual(tables.map((t) => [t.head.length, t.rows.length]), [[3, 7], [3, 3], [3, 10], [2, 6]]);
+  assert.deepEqual(tables.map((t) => [t.head.length, t.rows.length]), [[3, 7], [3, 5], [3, 10], [2, 6]]);
   for (const t of tables) for (const row of t.rows) assert.equal(row.length, t.head.length);
   assert.equal(blocks.filter((b) => b.type === "heading" && b.level === 2).length, 16);
   assert.equal(blocks.filter((b) => b.type === "blockquote").length, 0);
@@ -315,15 +344,29 @@ test("once its blanks are filled, the whole Privacy Policy reads cleanly, big ta
 
 // ---------- the About page and the founder's facts ----------
 
-test("the About page links to the policies and names the three Google permissions", () => {
+test("the About page links to the policies and names the Google permissions", () => {
   const src = read("app/about/page.tsx");
   for (const href of ['href="/privacy"', 'href="/terms"', 'href="/"', 'href="/portal.html"']) assert.ok(src.includes(href), href);
   assert.ok(src.includes("How Pip uses your Google account"));
-  for (const scope of ["gmail.send", "calendar.events", "calendar.calendars.readonly", "drive.file"]) assert.ok(src.includes(`<code>${scope}</code>`), scope);
+  assert.ok(src.includes("Pip asks Google for four things"));
+  for (const scope of ["userinfo.email", "gmail.send", "calendar.events", "calendar.calendars.readonly", "drive.file"]) assert.ok(src.includes(`<code>${scope}</code>`), scope);
+  assert.equal(src.match(/<li>\s*<h3>/g).length, 4, "four things, one card each");
+  assert.ok(src.indexOf("userinfo.email") < src.indexOf("gmail.send"), "the email address comes first");
   assert.ok(src.includes("See Pip work on your business") && src.includes("Owner sign-in"));
+  assert.ok(src.includes("the Pip sheet"));
   // Only the permissions Pip asks for are named. A broader one here would be a false statement to Google.
   const named = [...src.matchAll(/<code>([^<]+)<\/code>/g)].map((m) => m[1]).sort();
-  assert.deepEqual(named, ["calendar.calendars.readonly", "calendar.events", "drive.file", "gmail.send"]);
+  assert.deepEqual(named, ["calendar.calendars.readonly", "calendar.events", "drive.file", "gmail.send", "userinfo.email"]);
+});
+
+test("the About page carries Google's Limited Use sentence, word for word as in the Privacy Policy", () => {
+  const line = PRIVACY.split("\n").find((l) => l.startsWith("Pip's use and transfer of information received from Google APIs"));
+  assert.ok(line && line.endsWith("including the Limited Use requirements."));
+  const link = /\[([^\]]+)\]\((https:[^)]+)\)/.exec(line);
+  const src = read("app/about/page.tsx");
+  const words = src.replace(/\{' '\}/g, " ").replace(/<[^>]+>/g, "").replace(/&apos;/g, "'").replace(/\s+/g, " ");
+  assert.ok(words.includes(line.replace(link[0], link[1])), "same words");
+  assert.ok(src.includes(`<a href="${link[2]}" rel="noopener noreferrer">${link[1]}</a>`), "same link");
 });
 
 test("the About page makes none of the claims it must not make", () => {

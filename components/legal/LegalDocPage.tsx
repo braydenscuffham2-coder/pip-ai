@@ -1,6 +1,8 @@
-// A legal document as a public page, behind one gate: while the document still has blanks or working notes,
-// the page shows a short holding notice and none of the draft, and asks search engines not to list it.
+// A legal document as a public page, behind one gate. The full text shows only when the document has no blanks or
+// working notes left AND the lawyer's switch for it is on (LAWYER_SIGNED_OFF in lib/legal/facts.ts). Otherwise the
+// page shows a short holding notice and none of the draft, and asks search engines not to list it.
 import type { Metadata } from 'next';
+import { CONTACT_EMAIL } from '@/lib/legal/facts';
 import { loadLegal, type LegalDoc } from '@/lib/legal/load';
 import { Markdown } from '@/lib/legal/markdown';
 import { PublicShell } from './PublicShell';
@@ -25,7 +27,13 @@ export function LegalDocPage({ which, title }: { which: LegalDoc; title: string 
       ) : (
         <section className="pub-hold">
           <h1>{title}</h1>
-          <p>This page is being finalized. Questions: use the contact on the <a href="/about">About page</a>.</p>
+          <p>This page is being finalized.</p>
+          <p><a href="/about">Back to About Pip</a></p>
+          {CONTACT_EMAIL ? (
+            <p>
+              Questions: <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+            </p>
+          ) : null}
         </section>
       )}
     </PublicShell>

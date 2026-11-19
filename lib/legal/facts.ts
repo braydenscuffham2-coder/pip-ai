@@ -7,6 +7,18 @@
  */
 export const CONTACT_EMAIL: string | null = null;
 
+/**
+ * The lawyer's switch, one per document. A document is shown in full only when it has no blanks left AND its
+ * switch here is true. Turn a switch on only after a lawyer has approved the exact text in legal/ and Brayden
+ * has said to publish it. Until then the page shows the holding notice.
+ */
+export const LAWYER_SIGNED_OFF: { privacy: boolean; terms: boolean } = {
+  /** legal/privacy-policy.md, shown at /privacy. */
+  privacy: false,
+  /** legal/terms-of-service.md, shown at /terms. */
+  terms: false,
+};
+
 export interface FounderFacts {
   /** The legal name of whoever operates Pip (a person doing business as Pip, or the company once it is formed). */
   operatorLegalName: string | null;

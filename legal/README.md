@@ -37,7 +37,7 @@ Found while checking every factual statement against `main` (commit `edf9024`) a
 | 3 | Every teammate says it is an AI | Enforced in code in `pip-turn`. Not found in the older path (`lib/skills/runtime.ts` via `/api/runtime/chat`). | 01 core |
 | 4 | "Reply HELP for help" | `pip-run` returns nothing for HELP, and sends no STOP or START confirmation. Twilio's defaults may cover it; the wording will not name the business unless configured. | 02 voice |
 | 5 | Texts respect quiet hours | Hours are judged in the business's time zone, not the recipient's. | 02 voice, after the lawyer answers |
-| 6 | Google access is send mail, calendar events, files Pip made | Sign-ins still use Composio's Google app with full mailbox and full calendar access. | 03 connections |
+| 6 | Google access is send mail, calendar events, files Pip made | Closed November 18, 2026. Since November 17 to 18, 2026 sign-ins go through Pip's own Google app (Google Cloud project `pip-ai`). It asks for exactly: the account's email address, send mail, calendar events, calendar name and time zone, and files Pip made. Composio still runs the sign-in and holds it for Pip. Before that date, sign-ins used Composio's Google app with full mailbox and full calendar access. | 03 connections |
 | 7 | Conversations are kept for a stated time | No automatic deletion of conversations, leads or booking requests. | Brayden and lawyer to set; then 09 guard |
 | 8 | `jurisdiction_rules` has a source per row | Only the US and Idaho rows have any source. Six corrections are listed in `state-table.md`, not applied. | Brayden and lawyer |
 | 9 | Preview policy: "We do not set tracking cookies" | `app/layout.tsx` and `public/app.html` load Google Analytics 4. | Brayden |

@@ -1,4 +1,4 @@
-// /privacy: legal/privacy-policy.md, shown only once it has no blanks left (see components/legal/LegalDocPage.tsx).
+// /privacy: legal/privacy-policy.md, shown only once it has no blanks left and the lawyer's switch is on (see components/legal/LegalDocPage.tsx).
 import type { Metadata } from 'next';
 import { LegalDocPage, legalMetadata } from '@/components/legal/LegalDocPage';
 

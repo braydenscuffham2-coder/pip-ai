@@ -6,19 +6,19 @@
 ## 1. Where things stand
 
 - Decision (handbook, November 17): Pip's own Google app in project `pip-ai`, asking only for send mail, calendar events and files Pip made.
-- Since November 17 to 18, 2026: sign-ins go through Pip's own Google app (project `pip-ai`). It asks for five permissions and no others: `gmail.send`, `calendar.events`, `calendar.calendars.readonly`, `drive.file` and `userinfo.email`. The old sign-in through Composio's Google app, which asked for the full mailbox and full calendar, is no longer used. Full-mailbox access is a "restricted" permission. **Pip's own app must not request it**, or Google will require a security assessment.
+- Since November 17 to 18, 2026: sign-ins go through Pip's own Google app (project `pip-ai`). It asks for five permissions and no others: `gmail.send`, `calendar.events`, `calendar.calendars.readonly`, `drive.file` and `userinfo.email`. Composio's own Google app, which asked for the full mailbox and full calendar, is no longer used. Composio (a vendor) still runs the sign-in and stores the Google sign-in for Pip; Pip's own servers and the AI model never see it. Google sends the owner back through `https://www.hirepip.com/api/connect/callback`, so the screen names Pip's domain. Full-mailbox access is a "restricted" permission. **Pip's own app must not request it**, or Google will require a security assessment.
 - November 18, 2026: ownership of hirepip.com was verified in Google Search Console.
-- The pages Google will read are on hirepip.com: `/about` (the application home page), `/privacy` and `/terms`. `/privacy` and `/terms` show a short holding notice, not the draft, until `legal/privacy-policy.md` and `legal/terms-of-service.md` have no blanks left.
-- The Privacy Policy draft, section 4, was written for Pip's own app, but it lists three permissions and still carries a note about the old sign-in. It needs `calendar.calendars.readonly` and the account's email address added, and that note closed, before it is published.
+- The pages Google will read are on hirepip.com: `/about` (the application home page), `/privacy` and `/terms`. `/privacy` and `/terms` show a short holding notice, not the draft. Each shows its document in full only when the file in `legal/` has no blanks left and the lawyer's switch for it is on (`LAWYER_SIGNED_OFF` in `lib/legal/facts.ts`). These pages are built on branch `10-public-pages` and are not live until it is merged and deployed.
+- The Privacy Policy draft, section 4, lists all five permissions as of November 18, 2026, and the note about the old sign-in is closed. It is still a draft: it has blanks and no lawyer has reviewed it.
 
 ## 2. What Google will look for
 
 | Requirement | Status | Who |
 | --- | --- | --- |
-| Home page on a domain Pip owns and has verified, that explains what the app does | hirepip.com exists; needs a plain description of teammates and Google use | Brayden / lane 06 |
-| Privacy policy linked from the home page, on the same domain, matching the link on the consent screen | Draft ready; needs a lawyer and a public page | Lane 10, lawyer, Brayden |
-| The policy says what Google data is accessed, how it is used, stored and shared | Section 4 of the draft | Lane 10 |
-| Limited Use statement | In section 4, in Google's expected form | Lane 10 |
+| Home page on a domain Pip owns and has verified, that explains what the app does | hirepip.com verified November 18, 2026. `/about` is built: what a teammate does, the four things Pip asks Google for, the Limited Use statement, and links to `/privacy` and `/terms`. Give Google `https://www.hirepip.com/about` as the application home page once it is deployed. | Lane 10 built; Brayden to deploy |
+| Privacy policy linked from the home page, on the same domain, matching the link on the consent screen | Page built at `/privacy` and linked from `/about`. It shows a holding notice until the draft has no blanks and the lawyer has signed off. Google will need the full policy there. | Lawyer, Brayden |
+| The policy says what Google data is accessed, how it is used, stored and shared | Section 4 of the draft, with all five permissions | Lane 10 |
+| Limited Use statement | In section 4, in Google's expected form. The same sentence is on `/about`. | Lane 10 |
 | Only the permissions the features need, each justified | Section 3 below | Lane 03 |
 | A demo video showing the consent screen and each permission in use | Not made | Lane 03 with Brayden |
 | A support email on the domain | Not set up | Brayden |
@@ -27,6 +27,12 @@
 ## 3. Permission justifications
 
 Paste-ready. One feature per permission, in Google's "My app will use … to …" form.
+
+**`https://www.googleapis.com/auth/userinfo.email`** (non-sensitive)
+
+Google's form normally asks for a justification only for sensitive and restricted permissions. If it asks for a line here, use:
+
+> My app will use userinfo.email to show the business owner which Google account is connected to Pip. Nothing else from the profile is requested.
 
 **`https://www.googleapis.com/auth/gmail.send`** (sensitive)
 
@@ -44,11 +50,11 @@ Paste-ready. One feature per permission, in Google's "My app will use … to …
 
 > My app will use drive.file to create one spreadsheet named "Pip: [business name]" in the business's Drive and add a row when a customer leaves details, so the owner has a record. The app can only open files it created and cannot see any other file.
 
-[LANE 03: the handbook asks you to "find the smallest extra calendar permission that lets a hold be created". If the final permission set differs from the four above, tell lane 10 so this page and the Privacy Policy change together. If `calendar.events` cannot be made to work and the full `calendar` permission is needed, the second justification must be rewritten and it remains a sensitive permission.]
+[LANE 03: the handbook asks you to "find the smallest extra calendar permission that lets a hold be created". If the final permission set differs from the five here, tell lane 10 so this page and the Privacy Policy change together. If `calendar.events` cannot be made to work and the full `calendar` permission is needed, the second justification must be rewritten and it remains a sensitive permission.]
 
 [LANE 03: two things to confirm before pasting the `calendar.calendars.readonly` text. (1) Google's list of Calendar permissions, read November 18, 2026 (https://developers.google.com/workspace/calendar/api/auth), describes this one as seeing the title, description, default time zone and other properties of calendars. Seeing the list of calendars an account is subscribed to is a different permission (`calendar.calendarlist.readonly`). If the code asks Google for that list, this permission may not cover it. (2) That page does not say whether the permission is sensitive. Use the label the Google Cloud console shows.]
 
-[LANE 10: `userinfo.email` is also requested. It gives Pip the email address of the Google account that was connected. No justification text is written for it here. The Privacy Policy, section 4, does not mention it yet.]
+The sheet's name was checked in the code on November 18, 2026: `pip-turn/index.ts` creates it with the title "Pip: " followed by the business's name. The Portal and the About page call it "the Pip sheet".
 
 ## 4. Limited Use: how Pip meets each rule
 
@@ -67,16 +73,18 @@ Paste-ready. One feature per permission, in Google's "My app will use … to …
 Before the owner taps "Connect Google", the Portal shows:
 
 > **What {teammate} will be able to do in your Google account**
+> - See the email address of the Google account you connect. Nothing else from your profile.
 > - Send email from your address. It cannot read your email.
 > - See when you're busy and add events to your calendar. It does not see what your events are.
-> - Create one spreadsheet and add rows to it. It cannot open your other files.
+> - Read your calendar's name and time zone, so a hold lands on the right calendar at the right time.
+> - Create one spreadsheet, the Pip sheet, and add rows to it. It cannot open your other files.
 >
 > You can disconnect at any time. [Privacy Policy]
 
 ## 6. Demo video outline (for lane 03)
 
-1. hirepip.com home page and the privacy policy link.
-2. Portal: the connect screen above, then Google's consent screen showing the app name "Pip" and the three permissions. The web address bar must be visible.
+1. `https://www.hirepip.com/about` (the application home page) and its privacy policy link.
+2. Portal: the connect screen above, then Google's consent screen showing the app name "Pip" and the five permissions (the account's email address, send mail, calendar events, calendar name and time zone, files Pip made). The web address bar must be visible.
 3. A customer chat on TEST Fork: asks for a time, the teammate checks the calendar (show busy times only), takes a booking, sends a confirmation email, adds a sheet row.
 4. The owner's Gmail sent folder, calendar and the sheet showing the results.
 5. Disconnecting in the Portal.

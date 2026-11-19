@@ -36,15 +36,15 @@ Contact: [privacy@hirepip.com] [BRAYDEN: this address must exist and be read bef
 | Text a business's Pip number | Your phone number and your messages. | The conversation text. In our own records your number is kept as a one-way code plus its last four digits. Our phone carrier, Twilio, holds the full number so texts can be delivered. |
 | Give your details | Whatever you choose to give: name, phone, email, what you need, the time you want. | Kept so the business can follow up. The business sees it in its Pip Portal. |
 | Opt out or opt in | That you said STOP, or agreed to be contacted, on which channel and when. | Kept as a one-way code plus the last four digits, with the date and how it happened. We keep opt-out records even after a business leaves Pip, so the opt-out keeps working. |
-| Call a business's Pip number [not live yet] | Your phone number and what is said on the call. | [LANE 02 TO CONFIRM BEFORE PUBLISHING: whether calls are recorded, whether a written transcript is kept, and for how long. The teammate says at the start of the call if it is recorded.] |
-| Email a business's Pip address [not live yet] | Your email address and the text of your message. Attachments and images are dropped. | [LANE 04 TO CONFIRM BEFORE PUBLISHING.] |
+| Call a business's Pip number [not live yet] | Your phone number and what is said on the call. | This feature is not switched on. This row will be completed before it is. |
+| Email a business's Pip address [not live yet] | Your email address and the text of your message. Attachments and images are dropped. | This feature is not switched on. This row will be completed before it is. |
 | Visit a place with a Pip counting box [not live yet] | A camera on site counts people. The count is made inside a box at the business. | Counts and times only. No faces, no identities, no video and no sound leave the building or are stored. |
 
 Please do not send card numbers, passwords, government ID numbers or health details to a teammate. Teammates are told never to ask for them.
 
 To stop abuse, the website turns each visitor's internet address into a scrambled code and counts requests by hour. The address itself is not stored. These counts are deleted after two days.
 
-The hirepip.com website uses Google Analytics to count visits and see which pages are used. It sets cookies and receives your internet address and device details. The chat window a business puts on its own website does not load Google Analytics. [BRAYDEN AND LAWYER: confirm which pages load it, and whether to keep it on the Portal.]
+The public pages of the hirepip.com website use Google Analytics to count visits and see which pages are used: the home page, the earlier preview at /classic, and the About, Privacy and Terms pages. It sets cookies and receives your internet address and device details. The Pip Portal does not load Google Analytics. Neither does the chat window a business puts on its own website.
 
 ### From business owners and staff
 
@@ -66,8 +66,10 @@ When a business connects Google, Pip asks only for what its teammates need:
 
 | Permission | What a teammate does with it | What it cannot do |
 | --- | --- | --- |
+| The Google account's email address (`userinfo.email`) | Pip shows the business which Google account is connected. | See anything else from the Google profile. |
 | Send email (`gmail.send`) | Sends an email from the business's address when its job calls for it. Every email says it was sent by an AI assistant. | Read, search or delete any email. |
 | Calendar events (`calendar.events`) | Checks when the business is busy and adds events. | Share calendars or change calendar settings. |
+| Calendar name and time zone (`calendar.calendars.readonly`) | Reads a calendar's name and time zone, so a hold lands on the right calendar at the right time. | Change calendar settings. |
 | Files Pip created (`drive.file`) | Creates one spreadsheet for the business and adds rows to it. | Open any other file in the business's Drive. |
 
 How we treat that data:
@@ -75,6 +77,7 @@ How we treat that data:
 - We use it only to do the job the business set up for its teammate.
 - When a teammate checks a calendar, Pip's server receives the events from Google, strips them down to busy and free times, and passes only those times to the AI model. Event titles, guests and notes are not shown to the AI model or to the customer, and are not stored.
 - We do not store email content from Google. The teammate writes the email, and it is sent.
+- The sign-in a business gives Google is run and held by our connection provider, Composio. Pip's own servers and the AI models never see it.
 - We do not sell Google user data, use it for advertising, or use it to work out creditworthiness or for lending.
 - We do not use Google user data to develop, improve or train generalized AI or machine learning models, and our AI provider is barred by contract from doing so.
 - No person at Pip reads Google user data unless the business asks us to (for example, to fix a problem), it is needed for security or to comply with the law, or the data has been combined and stripped of identity for internal operations.
@@ -83,8 +86,6 @@ How we treat that data:
 Pip's use and transfer of information received from Google APIs to any other app will adhere to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements.
 
 A business can disconnect Google at any time in the Pip Portal or in its Google account's permissions page.
-
-[NOTE BEFORE PUBLISHING: this section describes Pip's own Google app. On November 17, 2026 owner sign-ins still go through Composio's Google app, which asks Google for full mailbox and full calendar access and relies on Pip's limits to restrict use. This section must not be published until lane 03 has switched to Pip's own app. See the lawyer memo, item 6.]
 
 ## 5. Text messages
 
@@ -194,7 +195,7 @@ If we change this policy in a way that matters, we will post the new version wit
 
 **Things that are true in this draft only if work in other lanes is finished.** Do not publish before these are closed. Each is also in `legal/README.md`.
 
-1. Section 4 assumes Pip's own Google app (lane 03).
+1. Closed November 18, 2026. Section 4 assumes Pip's own Google app (lane 03). Since November 17 to 18, 2026 owner sign-ins go through Pip's own Google app (Google Cloud project `pip-ai`), which asks for exactly the five permissions in the section 4 table. Composio still runs the sign-in and holds it for Pip.
 2. Section 5 says "Reply HELP for help." Today `pip-run` sends nothing back to HELP and leaves it to Twilio's default. The HELP reply needs the business name and a contact (lane 02).
 3. Section 9 proposes a 13-month limit on conversations. No such limit exists in the database today.
 4. Calls, email in and camera rows are placeholders until lanes 02, 04 and 11 confirm what is stored.
