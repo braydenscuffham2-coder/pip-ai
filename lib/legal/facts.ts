@@ -16,8 +16,10 @@ export const LAWYER_SIGNED_OFF: { privacy: boolean; terms: boolean } = {
   /** legal/privacy-policy.md, shown at /privacy. On since November 19, 2026: Brayden said to publish it. */
   privacy: true,
   /**
-   * legal/terms-of-service.md, shown at /terms. Still off: section 2 says the Portal shows what a teammate can and
-   * cannot do before go-live, and that screen is not built yet. Turn on in the pull request that builds it.
+   * legal/terms-of-service.md, shown at /terms. Still off. The Portal screen section 2 promises now exists (each
+   * teammate's "What X can and cannot do"). What is left before turning this on: check what the billing code does
+   * when a business disconnects against section 8 ("billing stops at the end of the paid month"), then remove the
+   * last bracketed note and the notes section from the file.
    */
   terms: false,
 };
