@@ -258,10 +258,15 @@ async function load(specId: string) {
   const { data: man } = await db.from("agent_manifests").select("manifest").eq("spec_id", specId).maybeSingle();
   const board = s.spec?.board?.seats?.gate?.system_prompt;
   const classic = !!s.spec?.agent;
-  if (!board && !classic) return { s, biz, runnable: false as const };
+  // A teammate with declared jobs and no chat instructions (a counter, a nightly report) can still do its jobs: each
+  // job carries its own instructions. It cannot answer a customer, because nothing says how it should talk to one.
+  const jobsOnly = !board && !classic && (s.spec?.contract !== undefined || s.spec?.jobs !== undefined);
+  if (!board && !classic && !jobsOnly) return { s, biz, runnable: false as const };
   const teammate = cut(man?.manifest?.teammate ?? s.brain?.agent?.teammate?.name ?? s.spec?.name ?? "the assistant", 60);
   const name = cut(biz?.name ?? s.business ?? "the business", 160);
-  return { s, biz, man, runnable: true as const, classic, teammate, name, system: board ? String(board) : classicSystem(s.spec, name) };
+  const system = board ? String(board) : classic ? classicSystem(s.spec, name)
+    : `You are ${teammate}, an AI teammate for ${name}. You do one job at a time, exactly as that job's instructions say, using only the tools you are given. You are not talking to a customer in this run. If you cannot finish, say plainly what stopped you.`;
+  return { s, biz, man, runnable: true as const, chat: !jobsOnly, classic, teammate, name, system };
 }
 
 // ---------- one turn ----------
@@ -272,7 +277,7 @@ async function turn(body: J, trace: boolean) {
   if (!/^[0-9a-f-]{36}$/i.test(id) || !message) return json({ error: "bad_request" }, 400);
   const c = await load(id);
   if (!c || !["live", "approved", "sandbox"].includes(c.s.status)) return json({ error: "not_found" }, 404);
-  if (!c.runnable) return json({ error: "not_runnable" }, 409);
+  if (!c.runnable || !c.chat) return json({ error: "not_runnable" }, 409);
   if (c.biz && ["disconnected", "cancelled"].includes(c.biz.status)) return json({ error: "not_found" }, 404);
 
   // conversation and history
