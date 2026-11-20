@@ -1,8 +1,8 @@
 # Pip Acceptable Use Policy
 
-> **DRAFT. Not legal advice. Not reviewed by a lawyer. Not published.** Lane 10, November 17, 2026.
+Effective date: November 20, 2026
 
-This policy is part of the Pip Terms of Service. It says what a Pip teammate may not be used for. We may pause a teammate that breaks it.
+This policy is part of the [Pip Terms of Service](/terms). It says what a Pip teammate may not be used for. We may pause a teammate that breaks it.
 
 ## A teammate must never
 
@@ -24,7 +24,6 @@ This policy is part of the Pip Terms of Service. It says what a Pip teammate may
 ## Businesses Pip does not serve without a separate signed agreement
 
 - Health care providers and anyone handling protected health information.
-- [LAWYER: add others? Debt collection, firearms, adult services, gambling, cannabis, lending.]
 
 ## You must not
 
@@ -32,8 +31,4 @@ This policy is part of the Pip Terms of Service. It says what a Pip teammate may
 - Give us contact lists you have no right to use.
 - Resell Pip without our written agreement.
 
-Report a problem: [abuse@hirepip.com]
-
----
-
-**Notes (not part of the policy).** Items 6 and 7 match the "never" list every teammate is built with (`pip-forge`). Items 1 and 2 are enforced in code for the main teammate kind and for texts; item 3 has no code yet because calls are not live; items 12 to 14 describe features not yet built.
+Report a problem: support@hirepip.com

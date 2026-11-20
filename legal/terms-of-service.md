@@ -1,9 +1,6 @@
 # Pip Terms of Service for businesses
 
-> **DRAFT. Not legal advice. Not reviewed by a lawyer. Not published.**
-> Lane 10 draft, November 17, 2026. Text in [square brackets] is a blank or a question for the lawyer.
-
-Effective date: not yet in effect · Version: 2026-11
+Effective date: November 20, 2026 · Version: 2026-11
 
 ## The short version
 
@@ -16,7 +13,7 @@ Effective date: not yet in effect · Version: 2026-11
 
 These Terms are between Brayden Scuffham, an individual doing business as Pip ("Pip", "we") and the business that accepts them in the Pip Portal ("you"). The person who accepts must have authority to bind the business. Pip is offered only to businesses in the United States.
 
-Your **Order** is the list of teammates and the price shown in your Portal, which you accept there. The Order, these Terms, the Privacy Policy, the Acceptable Use Policy and the Data Processing Addendum are the whole agreement. If they conflict, the Order wins, then these Terms.
+Your **Order** is the list of teammates and the price shown in your Portal, which you accept there. The Order, these Terms, the [Privacy Policy](/privacy) and the [Acceptable Use Policy](/acceptable-use) are the whole agreement. If they conflict, the Order wins, then these Terms. If your business needs a separate data processing agreement, ask us at legal@hirepip.com before you accept.
 
 ## 2. What Pip does
 
@@ -24,7 +21,7 @@ A teammate is software that uses an AI model to answer your customers and do rou
 
 **Teammates are autopilot.** After setup they act without asking you first, following the instructions and limits agreed at setup. Before a teammate goes live, the Portal shows you in plain words what it can and cannot do. Going live means you have read that list and approve it.
 
-**What our software enforces today.** [LAWYER AND LANE 01: this list must match the code on the day of publishing.]
+**What our software enforces today.**
 
 - Every first message says the teammate is an AI assistant.
 - A teammate can only use the tools it was built with, and only the connections that are working.
@@ -108,7 +105,7 @@ We will defend and cover you against third-party claims that Pip's software infr
 
 ## 13. Your data and ours
 
-Your business information and your customers' conversations are yours. We use them only to provide the service, as the Privacy Policy and Data Processing Addendum say. We do not use them to train AI models.
+Your business information and your customers' conversations are yours. We use them only to provide the service, as the Privacy Policy says. We do not use them to train AI models.
 
 Pip's software, teammate designs and prompts are ours. We may keep the design of a tested teammate as a pattern for others, with all names, contact details and your business's facts removed.
 
@@ -125,14 +122,3 @@ Talk to us first: email legal@hirepip.com and give us 30 days to resolve it. If 
 We may update these Terms with 30 days' notice by email; continuing to use Pip after that means you accept them. Neither party may assign this agreement without consent, except to a successor of its business (including Pip's move into a company formed to run it). If part of these Terms is unenforceable, the rest stands.
 
 Contact: legal@hirepip.com · Pip, 2767 E Rockhampton Dr, Meridian, ID 83642
-
----
-
-## Notes for the lawyer and Brayden (not part of the Terms)
-
-- **Checked against code and database on November 17, 2026:** usage rates, 40% included, $100 early-invoice threshold and 7-day grace (`forge_settings.billing_defaults`); billing starts at go-live and usage never pauses a client (`pip-run` header, `portal_billing_tick`); the section 2 limits (`pip-turn/index.ts`); delete flow (`portal_api_cancel`).
-- Section 8's "billing stops at the end of the paid month" is a proposed term. What the billing code does on disconnect was not checked.
-- **The Portal does not ask for agreement to terms today.** It only shows the tick-box when a terms link is set, and none is set. Set it to the approved Terms before the first client.
-- "A teammate can only use the tools it was built with" is enforced for the main teammate kind.
-- Section 5's "we may submit registration for you" assumes the answer to memo item 3 on who registers.
-- The older preview Terms say teammates are covered "only under a separate written agreement that we both sign." Acceptance in the Portal is recorded with email, time and version (`business_agreements`, `compliance_events`). Confirm that counts.

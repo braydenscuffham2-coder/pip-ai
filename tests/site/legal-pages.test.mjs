@@ -18,6 +18,7 @@ const file = (rel) => fileURLToPath(new URL(`../../${rel}`, import.meta.url));
 const read = (rel) => readFileSync(file(rel), "utf8");
 const PRIVACY = read("legal/privacy-policy.md");
 const TERMS = read("legal/terms-of-service.md");
+const AUP = read("legal/acceptable-use-policy.md");
 
 // ---------- the markdown reader ----------
 
@@ -152,7 +153,7 @@ test("publicText takes out the draft banner under the title", () => {
   assert.ok(!/^> /m.test(PRIVACY), "the published policy has no quoted note at all");
   for (const md of [PRIVACY, TERMS]) {
     const text = publicText(md);
-    if (md === TERMS) assert.ok(/\bDRAFT\b/.test(md) && /Lane 10 draft/.test(md));
+    assert.ok(!/^> /m.test(md), "a published document has no quoted note at all");
     assert.ok(!/DRAFT|Not legal advice|Lane 10|square brackets/.test(text.split("\n## ")[0]), "the top of the document has no banner");
     assert.match(text, /^# Pip (Privacy Policy|Terms of Service for businesses)\n\nEffective date: /);
   }
@@ -204,11 +205,22 @@ test("the Privacy Policy's Google section names the five permissions Pip asks fo
   assert.match(section, /held by our connection provider, Composio/);
 });
 
-test("the Terms of Service are still held: one open question and the internal notes", () => {
-  const found = blanks(TERMS);
-  assert.deepEqual(texts(found), ["[LAWYER AND LANE 01: this list must match the code on the day of publishing.]", "## Notes for the lawyer and Brayden (not part of the Terms)"]);
-  assert.equal(LAWYER_SIGNED_OFF.terms, false);
+test("the published Terms and Acceptable Use Policy have no blank and no internal notes, and say what was decided", () => {
+  for (const md of [TERMS, AUP]) {
+    assert.deepEqual(texts(blanks(md)), []);
+    assert.ok(!/Notes for the lawyer|Notes \(not part|LAWYER|BRAYDEN:|PROPOSED|DRAFT/.test(md));
+    assert.match(md, new RegExp(`Effective date: ${FOUNDER_FACTS.effectiveDate}`));
+  }
+  assert.equal(LAWYER_SIGNED_OFF.terms, true);
+  assert.equal(LAWYER_SIGNED_OFF.aup, true);
   assert.match(TERMS, /We do not refund a partial month\. If we end service for a reason other than your breach of these Terms, we refund the unused part/);
+  assert.match(TERMS, /billing stops at the end of the paid month/);
+  // The Terms only lean on documents a business can actually read.
+  assert.match(TERMS, /\[Privacy Policy\]\(\/privacy\) and the \[Acceptable Use Policy\]\(\/acceptable-use\) are the whole agreement/);
+  assert.ok(!/Data Processing Addendum/.test(TERMS), "the addendum is still a draft, so the Terms do not make it part of the agreement");
+  assert.ok(TERMS.includes("legal@hirepip.com") && TERMS.includes(FOUNDER_FACTS.mailingAddress));
+  assert.ok(AUP.includes(FOUNDER_FACTS.supportEmail) && !AUP.includes("abuse@"));
+  for (const md of [TERMS, AUP]) assert.equal(publicDocument(md, true).ready, true);
 });
 
 test("blanks() gives the same answer on the raw file and on publicText() of it", () => {
@@ -264,7 +276,7 @@ test("a filled document has no blanks, and with the lawyer's switch on it is rea
 
 test("THE GATE: a document with anything open gives the page no text at all, even with the lawyer's switch on", () => {
   assert.equal(publicDocument(PRIVACY, true).ready, true, "the published Privacy Policy is complete");
-  for (const md of [TERMS, PRIVACY + "\nMail: [mailing address]\n", FILLED + "\nMail: [mailing address]\n", FILLED + "\n## Notes for the lawyer (not part of the published policy)\n\nx\n"]) {
+  for (const md of [TERMS + "\n[LAWYER: one more question]\n", PRIVACY + "\nMail: [mailing address]\n", FILLED + "\nMail: [mailing address]\n", FILLED + "\n## Notes for the lawyer (not part of the published policy)\n\nx\n"]) {
     const doc = publicDocument(md, true);
     assert.equal(doc.ready, false);
     assert.equal(doc.body, "");
@@ -285,8 +297,8 @@ test("THE GATE: a document with no blanks stays hidden until the lawyer's switch
 });
 
 test("THE GATE: each document has its own switch, and a switch is never on for a document that still has blanks", () => {
-  assert.deepEqual(Object.keys(LAWYER_SIGNED_OFF).sort(), ["privacy", "terms"]);
-  for (const [which, md] of [["privacy", PRIVACY], ["terms", TERMS]]) {
+  assert.deepEqual(Object.keys(LAWYER_SIGNED_OFF).sort(), ["aup", "privacy", "terms"]);
+  for (const [which, md] of [["privacy", PRIVACY], ["terms", TERMS], ["aup", AUP]]) {
     assert.equal(typeof LAWYER_SIGNED_OFF[which], "boolean", which);
     if (LAWYER_SIGNED_OFF[which]) assert.deepEqual(texts(blanks(md)), [], `${which} is marked signed off but still has blanks`);
   }
