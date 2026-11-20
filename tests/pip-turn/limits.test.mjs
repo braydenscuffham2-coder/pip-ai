@@ -574,6 +574,35 @@ test("in a job that started on its own (POST /job), a building block that turns 
   assert.deepEqual(ranAt(fine), ["TOAST_LIST_ITEMS"]);
 });
 
+test("a teammate with jobs and no chat instructions can do its jobs, and still cannot answer a customer", async () => {
+  const RUN = "55555555-5555-4555-8555-555555555555";
+  const claim = (args, world) => { const r = world.tables.job_runs.find((x) => x.id === args.p_run && x.status === "queued"); if (!r) return null; r.status = "running"; r.attempts++; return structuredClone(r); };
+  const build = () => {
+    const tables = withJob(pos(baseTables(), "toast"), [], (spec) => spec.jobs.push({ id: "stock_check", name: "Stock check", does: "Looks at what is in stock and tells the owner.",
+      instructions: "Look at the items in the point of sale and say which are low. Then stop.", triggers: [{ type: "owner", on: "run_now" }], tools: [{ tool: "pos", records: "item", can: ["read"] }] }));
+    delete tables.skill_specs[0].spec.board;   // no chat instructions at all: a counter, a nightly report
+    tables.job_runs = [{ id: RUN, spec_id: IDS.spec, business_id: IDS.business, job_id: "stock_check", trigger: "manual", status: "queued", attempts: 0, input: {}, state: null }];
+    return tables;
+  };
+  const t = await boot({ tables: build(), rpc: { job_claim: claim }, composio: () => ok({ items: [] }), model: [acts(use("TOAST_LIST_ITEMS", {})), says("Nothing is low.")] });
+  const r = await t.call("/job", { run: RUN });
+  assert.equal(r.json.outcome, "done", "the job runs");
+  assert.deepEqual(ranAt(t), ["TOAST_LIST_ITEMS"]);
+  assert.match(JSON.stringify(t.world.model.calls[0].system), /not talking to a customer/, "it is told it is not in a conversation");
+  // The same teammate gets no customer turn: nothing says how it should talk to one.
+  const chat = await boot({ tables: build(), model: [says("Hello!")] });
+  const rc = await chat.turn("hi there");
+  assert.equal(rc.status, 409);
+  assert.equal(rc.json.error, "not_runnable");
+  assert.equal(chat.world.model.calls.length, 0, "the model is not called");
+  // A teammate with neither jobs nor chat instructions still cannot run anything.
+  const none = build(); delete none.skill_specs[0].spec.jobs; delete none.skill_specs[0].spec.contract;
+  const n = await boot({ tables: none, rpc: { job_claim: claim }, model: [says("x")] });
+  const rn = await n.call("/job", { run: RUN });
+  assert.equal(rn.json.outcome, "dead_end");
+  assert.equal(n.world.model.calls.length, 0);
+});
+
 // ---------- losing access pauses one job, not the teammate ----------
 test("a sign-in that stopped working pauses only that job and the customer still gets an answer", async () => {
   const t = await boot({ model: [acts(use("GOOGLECALENDAR_EVENTS_LIST", { timeMin: "x" })), says("A team member will confirm the time.")], composio: () => ({ status: 401, json: { error: "token expired" } }) });
