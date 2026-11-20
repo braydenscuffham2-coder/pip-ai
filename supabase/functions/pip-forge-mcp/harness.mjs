@@ -2,7 +2,7 @@
 // No network, no keys, no cost. The functions' code is not copied or changed: they talk to the database through
 // fetch, so a fake fetch that answers like the database's REST door is all that stands in.
 //   const f = await bootConnector(); f.world.tables = tables(); await f.tool("forge_save", {...}); f.writes("skill_specs")
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 // Made-up values. They only have to match between the fake caller and the fake function.
 export const KEY = "test_founder_key_0123456789abcdefghij";
@@ -36,12 +36,12 @@ export const tables = () => ({
   founder_keys: [{ id: 1, key_hash: createHash("sha256").update(KEY).digest("hex"), revoked_at: null, last_used_at: new Date().toISOString() }],
   build_orders: [{ id: IDS.order, code: "PIP-TEST", status: "building", engine: "board", brief: { business: "TEST Fork", agents: [{ id: "front-desk", name: "Front desk", uses: ["calendar"] }] }, board: null }],
   skill_specs: [{ id: IDS.spec, order_id: IDS.order, skill_id: "front-desk", status: "testing", forge_stage: "board:building", domain: "testfork.example", spec: { board: { seats: { gate: { system_prompt: "You are Hallie, the front desk for TEST Fork." } } } }, brain: { facts: [] } }],
-  build_jobs: [], events: [], forge_settings: [], notifications: [],
+  build_jobs: [], events: [], forge_settings: [], notifications: [], leads: [], agent_library: [], api_funds: [],
   ...catalog(),
 });
 
 const clone = (v) => (v === undefined ? v : structuredClone(v));
-const world = { tables: {}, log: [], reads: [], rpc: {}, model: null, outside: [], pending: [], refuse: {} };
+const world = { tables: {}, log: [], reads: [], rpc: {}, model: null, funds: null, outside: [], pending: [], refuse: {}, env: {} };
 
 function matcher(params) {
   const tests = [];
@@ -68,13 +68,18 @@ function pick(row, select) {
 }
 
 function install(env) {
-  globalThis.Deno = { env: { get: (k) => env[k] }, serve: (h) => { globalThis.__handler = h; } };
+  world.env = env;
+  globalThis.Deno = { env: { get: (k) => world.env[k] }, serve: (h) => { globalThis.__handler = h; } };
   globalThis.EdgeRuntime = { waitUntil: (p) => { world.pending.push(Promise.resolve(p).catch(() => {})); } };
   const reply = (status, body) => new Response(body === null ? "" : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
   globalThis.fetch = async (url, init = {}) => {
     const u = new URL(String(url)), method = init.method || "GET", body = init.body ? JSON.parse(init.body) : null;
-    if (u.hostname === "api.anthropic.com") { const text = world.model?.(body) ?? "{}"; return reply(200, { content: [{ type: "text", text }], usage: { input_tokens: 10, output_tokens: 10 } }); }
+    if (u.hostname === "api.anthropic.com") { world.asked.push(body); const text = world.model?.(body) ?? "{}"; return reply(200, { content: [{ type: "text", text }], usage: { input_tokens: 10, output_tokens: 10 } }); }
     if (u.hostname !== "test.invalid") { world.outside.push(String(url)); return reply(599, {}); }
+    if (u.pathname === "/functions/v1/pip-shelf/funds") { // the funding tracker's numbers live in pip-shelf
+      world.fundCalls.push({ body, internal: init.headers?.["x-pip-internal"] === world.env.SUPABASE_SERVICE_ROLE_KEY });
+      return world.funds ? reply(200, world.funds(body)) : reply(500, { error: "not mocked" });
+    }
     if (u.pathname.startsWith("/functions/v1/")) return reply(200, { ok: true }); // the Forge kicking its own queue
     const path = u.pathname.replace("/rest/v1/", "");
     if (path.startsWith("rpc/")) {
@@ -93,7 +98,11 @@ function install(env) {
     }
     if (method === "POST") {
       const made = (Array.isArray(body) ? body : [body]).map((r) => ({ ...clone(r) }));
-      all.push(...made);
+      const key = u.searchParams.get("on_conflict"); // "insert, or update the row that has the same value here"
+      for (const r of made) {
+        const had = key ? all.find((x) => x[key] === r[key]) : null;
+        if (had) Object.assign(had, r); else all.push(path === "agent_library" ? Object.assign(r, { id: randomUUID(), reuse_count: 0, created_at: new Date().toISOString(), ...r }) : r);
+      }
       world.log.push({ op: "insert", table: path, rows: clone(made) });
       return reply(201, clone(made));
     }
@@ -102,7 +111,7 @@ function install(env) {
 }
 
 function common() {
-  const reset = (t = tables()) => { world.tables = t; world.log = []; world.reads = []; world.rpc = {}; world.model = null; world.pending = []; world.refuse = {}; };
+  const reset = (t = tables()) => { world.tables = t; world.log = []; world.reads = []; world.rpc = {}; world.model = null; world.asked = []; world.funds = null; world.fundCalls = []; world.pending = []; world.refuse = {}; };
   reset();
   return {
     world,
@@ -131,6 +140,7 @@ export async function bootConnector() {
     /** { ok, out } for an answer, { ok: false, text } for a refusal or an error. */
     tool: async (name, args) => {
       const r = await rpc("tools/call", { name, arguments: args });
+      while (world.pending.length) await world.pending.shift(); // work the connector leaves running after it answers
       return r.isError ? { ok: false, text: r.content[0].text } : { ok: true, out: r.structuredContent };
     },
   };
