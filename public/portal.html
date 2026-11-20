@@ -717,6 +717,21 @@ dialog.sheet::backdrop{background:rgba(246,246,251,.6);-webkit-backdrop-filter:b
 
 .boot{grid-template-columns:minmax(0,1fr)!important;justify-items:center}
 .boot .si-stage{order:0}
+
+/* what a teammate can and cannot do */
+.cando{grid-column:1/-1;border-top:1px solid var(--line,rgba(20,20,40,.08));padding-top:10px;margin-top:4px}
+.cando>summary{cursor:pointer;font-weight:600;font-size:14px;list-style:none;display:flex;align-items:center;gap:8px;min-height:36px}
+.cando>summary::-webkit-details-marker{display:none}
+.cando>summary::before{content:"+";display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;border:1px solid currentColor;font-weight:500;line-height:1;opacity:.7}
+.cando[open]>summary::before{content:"\2212"}
+.cd-body{padding:6px 0 4px}
+.cd-job+.cd-job{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line,rgba(20,20,40,.1))}
+.cd-job h4{font-size:14.5px;margin:0 0 2px}
+.cd-part{margin-top:10px}
+.cd-part h5{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 4px;opacity:.7}
+.cd-part ul{margin:0;padding-left:18px;font-size:14px;line-height:1.5}
+.cd-part.yes h5{color:#0a7a4b;opacity:1}.cd-part.no h5{color:#a33;opacity:1}.cd-part.wait h5{color:#8a6100;opacity:1}
+.cd-foot{margin-top:12px}
 </style>
 </head>
 <body>
@@ -1663,6 +1678,21 @@ function priceLetter() {
       h("p", { class: "fine", style: { marginTop: "12px" } }, "Setup unlocks once you accept it.")));
 }
 
+// What this teammate can and cannot do. Every sentence comes from the server, which builds it from the teammate's own
+// job list and the same check the runtime uses. Nothing here is written by hand, so it cannot promise more than the code allows.
+function canDo(a) {
+  const ab = a.abilities;
+  if (!ab) return null;
+  const nm = mateName(a), ul = (items) => h("ul", {}, items.map((t) => h("li", {}, t)));
+  const part = (title, items, cls) => items && items.length ? h("div", { class: "cd-part" + (cls ? " " + cls : "") }, h("h5", {}, title), ul(items)) : null;
+  const body = !ab.ok ? h("p", { class: "fine" }, (ab.notes && ab.notes[0]) || "This teammate does nothing until Pip fixes its job list.")
+    : ab.jobs.map((j) => h("div", { class: "cd-job" },
+        ab.jobs.length > 1 || ab.declared ? h("h4", {}, j.name) : null,
+        ab.declared && j.does ? h("p", { class: "fine" }, j.does) : null,
+        part("Starts", j.starts), part("Can", j.can, "yes"), part("Not yet", j.notYet, "wait"), part("Cannot", j.cannot, "no"), part("Limits", (j.limits || []).concat(j.pauses || []))));
+  return h("details", { class: "cando", "data-k": "can-" + a.spec_id }, h("summary", {}, "What " + nm + " can and cannot do"), h("div", { class: "cd-body" }, body,
+    h("p", { class: "fine cd-foot" }, "This list is built from " + nm + "'s job settings. Anything not under Can is refused by Pip's software, not just discouraged.")));
+}
 function mateCard(a, i) {
   const st = AGENT[a.status] || [a.status, ""], paused = a.pauses.length > 0, building = ["draft", "testing", "needs_review"].includes(a.status);
   const f = face(mateName(a), (a.role || "") + " " + a.name, paused || a.status === "paused" ? "is-paused" + (S.sitOnce && S.sitOnce.has(a.spec_id) ? "" : " is-sit") : building ? "is-building" : "");
@@ -1679,6 +1709,7 @@ function mateCard(a, i) {
     (a.needs.length || paused) ? h("div", { class: "more" },
       a.needs.length ? h("div", { class: "needs" }, h("span", {}, "Needs"), needs) : null,
       a.pauses.map((p) => h("p", { class: "why" }, icon("alert"), h("span", {}, "Paused: " + (p.detail || ({ owner: "by an owner", staff: "by staff", founder: "by Pip", expired_access: "a sign-in stopped working", disconnect: "everything was disconnected" }[p.reason] || p.reason)))))) : null,
+    canDo(a),
     h("div", { class: "more" }, h("div", { class: "acts" + (paused ? " pri" : "") }, act)));
   card.addEventListener("pointerenter", () => hover(card, true));
   card.addEventListener("focusin", () => hover(card, true));

@@ -9,6 +9,7 @@
 // - Users, connections, the price and Disconnect everything need a sign-in from the last 15 minutes.
 // - verify_jwt is off because /signin is public; this file checks the session itself.
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { abilitiesOf } from "../_shared/abilities.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -164,6 +165,30 @@ async function me(u: User) {
   await db.from("members").update({ status: "active", user_id: u.id, updated_at: now() }).eq("email", u.email).eq("status", "invited");
   return json({ email: u.email, founder: admin, businesses: (ms || []).filter((m: any) => m.businesses).map((m: any) => ({ id: m.businesses.id, name: m.businesses.name, status: m.businesses.status, role: m.role })) });
 }
+/**
+ * Adds to each teammate what it can and cannot do, in plain words. The sentences come from the teammate's own job list
+ * and from the same check the runtime uses (see _shared/abilities.ts), never from a model. If anything goes wrong the
+ * teammate is shown without the list rather than with a guess.
+ */
+async function withAbilities(agents: any[]): Promise<any[]> {
+  const ids = agents.map((a) => a?.spec_id).filter((x) => typeof x === "string");
+  if (!ids.length) return agents;
+  try {
+    const [specs, mans, steps, tools] = await Promise.all([
+      db.from("skill_specs").select("id,spec,brain").in("id", ids),
+      db.from("agent_manifests").select("spec_id,manifest").in("spec_id", ids),
+      db.from("connection_catalog").select("slot,label,blocks"),
+      db.from("tool_catalog").select("*").eq("enabled", true),
+    ]);
+    const catalog = { steps: (steps.data as any[]) || [], tools: (tools.data as any[]) || [] };
+    return agents.map((a) => {
+      const s = ((specs.data as any[]) || []).find((x) => x.id === a.spec_id);
+      if (!s) return a;
+      const m = ((mans.data as any[]) || []).find((x) => x.spec_id === a.spec_id);
+      try { return { ...a, abilities: abilitiesOf(s.spec, m ?? null, s.brain, catalog) }; } catch { return a; }
+    });
+  } catch { return agents; }
+}
 async function business(u: User, bid: string) {
   const r = await access(u, bid);
   const { data: b } = await db.from("businesses").select("id,name,domain,industry,health_lane,state,timezone,status,quote,price_accepted_at,terms_version,terms_accepted_at,alert_prefs,created_at").eq("id", bid).maybeSingle();
@@ -181,7 +206,7 @@ async function business(u: User, bid: string) {
     setting("portal_terms_url", null),
   ]);
   return json({
-    role: r.role, business: b, checklist: cl.data || [], agents: ag.data || [], people: (people as any).data || [], issues: issues.data || [],
+    role: r.role, business: b, checklist: cl.data || [], agents: await withAbilities((ag.data as any[]) || []), people: (people as any).data || [], issues: issues.data || [],
     phone: phone.data, texting: text.data, rules: rules.data || [], health_missing: (hm as any).data || [], agreements: agr.data || [],
     extra_tools: await extraTools(bid),
     setup_unlocked: !!b.price_accepted_at, terms_url: termsUrl, terms_version: await setting("portal_terms_version", null),
