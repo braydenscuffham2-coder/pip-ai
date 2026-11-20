@@ -12,16 +12,13 @@ export const CONTACT_EMAIL: string | null = 'support@hirepip.com';
  * switch here is true. Turn a switch on only after a lawyer has approved the exact text in legal/ and Brayden
  * has said to publish it. Until then the page shows the holding notice.
  */
-export const LAWYER_SIGNED_OFF: { privacy: boolean; terms: boolean } = {
+export const LAWYER_SIGNED_OFF: { privacy: boolean; terms: boolean; aup: boolean } = {
   /** legal/privacy-policy.md, shown at /privacy. On since November 19, 2026: Brayden said to publish it. */
   privacy: true,
-  /**
-   * legal/terms-of-service.md, shown at /terms. Still off. The Portal screen section 2 promises now exists (each
-   * teammate's "What X can and cannot do"). What is left before turning this on: check what the billing code does
-   * when a business disconnects against section 8 ("billing stops at the end of the paid month"), then remove the
-   * last bracketed note and the notes section from the file.
-   */
-  terms: false,
+  /** legal/terms-of-service.md, shown at /terms. On since November 20, 2026: Brayden said yes to publishing. */
+  terms: true,
+  /** legal/acceptable-use-policy.md, shown at /acceptable-use. Part of the Terms, so it is published with them. */
+  aup: true,
 };
 
 export interface FounderFacts {

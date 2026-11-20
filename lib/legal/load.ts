@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { LAWYER_SIGNED_OFF } from './facts';
 import { publicDocument, type PublicDocument } from './publish';
 
-const FILES = { privacy: 'privacy-policy.md', terms: 'terms-of-service.md' } as const;
+const FILES = { privacy: 'privacy-policy.md', terms: 'terms-of-service.md', aup: 'acceptable-use-policy.md' } as const;
 export type LegalDoc = keyof typeof FILES;
 
 const cache = new Map<LegalDoc, PublicDocument>();

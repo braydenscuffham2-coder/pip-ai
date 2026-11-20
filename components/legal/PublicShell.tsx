@@ -1,13 +1,14 @@
-// The frame around the three public pages (/about, /privacy, /terms): a small header and a footer.
+// The frame around the public pages (/about, /privacy, /terms, /acceptable-use): a small header and a footer.
 import { Fragment, type ReactNode } from 'react';
 import './public-pages.css';
 
-type Current = 'about' | 'privacy' | 'terms';
+type Current = 'about' | 'privacy' | 'terms' | 'aup';
 
 const LINKS: { key: Current; href: string; label: string }[] = [
   { key: 'about', href: '/about', label: 'About' },
   { key: 'privacy', href: '/privacy', label: 'Privacy' },
   { key: 'terms', href: '/terms', label: 'Terms' },
+  { key: 'aup', href: '/acceptable-use', label: 'Acceptable use' },
 ];
 
 // Plain <a> on purpose: "/" is served by a static page (public/app.html), so it needs a full page load.
