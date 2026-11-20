@@ -28,13 +28,16 @@ const TODAY: Catalog = {
   tools: [
     { block: "calendar", record: "busy_time", level: "read" },
     { block: "calendar", record: "appointment", level: "add" },
-    { block: "email", record: "message", level: "add" },
+    { block: "email", toolkit: "gmail", record: "message", level: "add", guard: "email" },
     { block: "data_sink", record: "row", level: "add" },
-    { block: "any_tool" }, // found automatically for an extra product; never reviewed for jobs
+    { block: "any_tool", toolkit: "airtable" }, // found automatically for an extra product before; never reviewed, so it opens nothing
   ],
 };
 const BOARD = { board: { seats: { gate: { system_prompt: "You are Hallie." } } }, redteam: { passed: 9, total: 10 } };
 const CLASSIC = { name: "Front desk", agent: { persona: "You are the front desk.", tools: ["capture_lead"] }, guardrails: { never: ["quote prices"] } };
+
+/** The same day, after the founder reviewed two actions in an extra product: add a lead, and see leads. */
+const REVIEWED: Catalog = { ...TODAY, tools: [...TODAY.tools, { block: "any_tool", toolkit: "airtable", record: "lead", level: "add" }, { block: "any_tool", toolkit: "airtable", record: "lead", level: "read" }] };
 
 /** One valid job, changed by `edit`, wrapped as what a save brings. */
 function sent(edit: (j: J) => void = () => {}) {
@@ -218,6 +221,8 @@ test("go-live is refused when a job's required tool has nothing behind it", () =
     ["accounting", (j) => { j.tools.push({ tool: "accounting", records: "contact", can: ["read"] }); }, /Accounting: Pip cannot act there yet/],
     ["a tool Pip has never heard of", (j) => { j.tools.push({ tool: "fax_machine", records: "file", can: ["add"] }); }, /"fax_machine": Pip does not know this tool/],
     ["an extra product, read", (j) => { j.tools.push({ tool: "kit:airtable", records: "row", can: ["read"] }); }, /Airtable: an extra product the owner connects\. Pip cannot see rows there yet/],
+    ["an extra product, even to add one record", (j) => { j.tools.push({ tool: "kit:airtable", records: "lead", can: ["add"] }); }, /Airtable: an extra product the owner connects\. Pip cannot add leads there yet: an extra product does nothing until that action has been reviewed and switched on\./],
+    ["a reviewed step, but a change no check exists for", (j) => { j.tools.push({ tool: "email", records: "message", can: ["add"], purpose: "transactional" }); }, /Email: Pip cannot send messages there yet: the check that makes that safe is not built\./],
     ["a reviewed step, but not for this", (j) => { j.tools.push({ tool: "calendar", records: "appointment", can: ["add", "update"], fields: { update: ["start"] } }); }, /Calendar: Pip can add appointments there\. Pip cannot change appointments there yet/],
     ["a reviewed step, another kind of record", (j) => { j.tools.push({ tool: "email", records: "contact", can: ["read"] }); }, /Email: Pip cannot see contacts there yet/],
     ["money, even with its policy named", (j) => { j.tools.push({ tool: "kit:restaurant_depot", records: "order", can: ["add"], policy: "buying" }); }, /Restaurant depot: Pip cannot add orders there yet\. Nothing that touches money is open/],
@@ -246,11 +251,24 @@ test("go-live is refused for a job that starts on its own and needs something th
   if (!send.ok) assert.ok(send.why.some((w) => /Email: A job that starts on its own cannot send messages there yet/.test(w)));
   const narrow = goLive(alone((j) => { j.tools.push({ tool: "calendar", records: "busy_time", can: ["read"], fields: { read: ["start"] } }); }), TODAY);
   assert.equal(narrow.ok, false, "a read with a field list is not offered to a job that starts on its own");
-  const extra = goLive(alone((j) => { j.tools.push({ tool: "kit:airtable", records: "row", can: ["add"] }); }), TODAY);
+  // An extra product, even with the action reviewed: pip-turn's POST /job never looks at extra products.
+  const extra = goLive(alone((j) => { j.tools.push({ tool: "kit:airtable", records: "lead", can: ["add"] }); }), REVIEWED);
   assert.equal(extra.ok, false, "a job that starts on its own cannot use an extra product at all");
-  // The same three while answering a customer are what pip-turn already does today.
-  for (const g of [{ tool: "email", records: "message", can: ["add"], purpose: "reply" }, { tool: "calendar", records: "busy_time", can: ["read"], fields: { read: ["start"] } }, { tool: "kit:airtable", records: "row", can: ["add"] }])
-    assert.equal(goLive({ ...BOARD, ...sent((j) => { j.tools = [g]; }) }, TODAY).ok, true, JSON.stringify(g));
+  if (!extra.ok) assert.ok(extra.why.some((w) => /Airtable: an extra product the owner connects\. .*A job that starts on its own cannot use an extra product at all\./.test(w)), extra.why.join(" | "));
+  const answering = (g: J, cat = TODAY) => goLive({ ...BOARD, ...sent((j) => { j.tools = [g]; }) }, cat);
+  // While answering a customer: an email reply is open, and so is a reviewed action in an extra product.
+  assert.equal(answering({ tool: "email", records: "message", can: ["add"], purpose: "reply" }).ok, true);
+  assert.equal(answering({ tool: "kit:airtable", records: "lead", can: ["add"] }, REVIEWED).ok, true);
+  assert.equal(answering({ tool: "kit:airtable", records: "lead", can: ["add"], fields: { add: ["name"] } }, REVIEWED).ok, true, "a field list for add is checked on every call");
+  // Closed even while answering a customer, as pip-turn's POST /turn refuses them: no check exists yet.
+  assert.equal(answering({ tool: "calendar", records: "busy_time", can: ["read"], fields: { read: ["start"] } }).ok, false, "a read with a field list");
+  assert.equal(answering({ tool: "email", records: "message", can: ["add"], purpose: "marketing" }).ok, false, "an email that is not a reply");
+  assert.equal(answering({ tool: "kit:airtable", records: "lead", can: ["read"], fields: { read: ["name"] } }, REVIEWED).ok, false, "a narrowed read in an extra product");
+  assert.equal(answering({ tool: "kit:airtable", records: "lead", can: ["add"] }, TODAY).ok, false, "an extra product with nothing reviewed");
+  // A job that both answers customers and starts on its own is held to the tighter of the two.
+  const both = (g: J, cat = TODAY) => goLive({ ...BOARD, ...sent((j) => { j.triggers.push({ type: "owner", on: "run_now" }); j.tools = [g]; }) }, cat);
+  assert.equal(both({ tool: "email", records: "message", can: ["add"], purpose: "reply" }).ok, false);
+  assert.equal(both({ tool: "kit:airtable", records: "lead", can: ["add"] }, REVIEWED).ok, false);
   assert.equal(goLive(alone((j) => { j.tools.push({ tool: "sheets", records: "row", can: ["add"] }, { tool: "calendar", records: "appointment", can: ["add"] }); }), TODAY).ok, true);
 });
 
@@ -279,7 +297,7 @@ test("each tool is sorted into what is behind it today", () => {
       { tool: "telepathy", records: "note", can: ["read"], required: false },
       { tool: "calendar", records: "appointment", can: ["read", "add"], required: false },
     ];
-  }));
+  }), REVIEWED);
   assert.deepEqual(got.map((t) => [t.tool, t.records, t.reach, t.missing]), [
     ["pip", "lead", "pip", []],
     ["calendar", "busy_time", "ready", []],
@@ -294,7 +312,15 @@ test("each tool is sorted into what is behind it today", () => {
   assert.ok(got.every((t) => t.say.startsWith("Front desk: ")), "every line names the job");
   assert.equal(got[2].say, "Front desk: Spreadsheet: ready. Pip can add rows there once the owner has connected it.");
   assert.equal(got[4].say, "Front desk: Booking software: Pip cannot act there yet (the job wants to see and add appointments). The job carries on without it.");
-  assert.equal(got[5].say, "Front desk: Airtable: an extra product the owner connects. While answering a customer, Pip can add one new lead there and nothing else.");
+  assert.equal(got[5].say, "Front desk: Airtable: an extra product the owner connects. While answering a customer, Pip can add leads there once the owner has connected it.");
+  assert.equal(got[6].say, "Front desk: Airtable: an extra product the owner connects. Pip cannot add files there yet: an extra product does nothing until that action has been reviewed and switched on. The job carries on without it.");
+  // The same extra product before anything in it was reviewed: nothing, not "add one record".
+  const before = lines(sent((j) => { j.tools = [{ tool: "kit:airtable", records: "lead", can: ["read", "add"], required: false }]; }));
+  assert.deepEqual([before[0].reach, before[0].missing], ["kit", ["read", "add"]]);
+  // One level reviewed and one not, in words.
+  const mixed = lines(sent((j) => { j.tools = [{ tool: "kit:airtable", records: "lead", can: ["read", "add", "update"], fields: { update: ["status"] }, required: false }]; }), { ...REVIEWED, tools: [...REVIEWED.tools, { block: "any_tool", toolkit: "airtable", record: "lead", level: "update" }] });
+  assert.deepEqual(mixed[0].missing, ["update"]);
+  assert.equal(mixed[0].say, "Front desk: Airtable: an extra product the owner connects. While answering a customer, Pip can see and add leads there. Pip cannot change leads there yet: the check that makes that safe is not built. The job carries on without it.");
 });
 
 test("the lines an owner-facing gap is written from are plain words, never codes", () => {
@@ -310,15 +336,46 @@ test("a tool row found automatically, switched off, or without a kind of record 
   assert.equal(t.reach, "nothing");
 });
 
-test("the rules for a job that starts on its own match the lines in pip-turn's runner", () => {
-  // forge-check.ts repeats two rules from pip-turn's POST /job. If those lines change, change canRun with them.
+test("a reviewed row for another product, or for a money product, is not something behind a job", () => {
+  const item = sent((j) => { j.tools = [{ tool: "pos", records: "item", can: ["read"] }, { tool: "kit:airtable", records: "lead", can: ["add"] }]; });
+  // pip-turn refuses a money product even behind a building block, so Square's row does not make "pos" ready.
+  const square = lines(item, { steps: TODAY.steps, tools: [{ block: "pos", toolkit: "square", record: "item", level: "read" }, { block: "any_tool", toolkit: "hubspot", record: "lead", level: "add" }, { block: "crm", toolkit: "airtable", record: "lead", level: "add" }] });
+  assert.deepEqual(square.map((t) => [t.reach, t.missing]), [["nothing", ["read"]], ["kit", ["add"]]]);
+  const toast = lines(item, { steps: TODAY.steps, tools: [{ block: "pos", toolkit: "toast", record: "item", level: "read" }, { block: "any_tool", toolkit: "airtable", record: "lead", level: "add" }] });
+  assert.deepEqual(toast.map((t) => [t.reach, t.missing]), [["ready", []], ["kit", []]]);
+});
+
+test("canRun's rules are the ones pip-turn runs: the same function where it can be, the same lines where it cannot", () => {
+  // What stays shut until its check is built is one function, notYet() in the contract file. Both files must use it.
   const turn = readFileSync(new URL("supabase/functions/pip-turn/index.ts", ROOT), "utf8");
-  for (const line of [
-    'if (["message", "call"].includes(row.record) || row.level === "update") continue;',
-    'if (row.level === "read" && g.fields?.read) continue;',
-    'const names = [row.block, slot.slot, ...(slot.blocks ?? [])];',
-    'db.from("tool_catalog").select("*").eq("enabled", true).not("record", "is", null).not("level", "is", null)',
-  ]) assert.ok(turn.includes(line), `STALE: pip-turn no longer has this line, so canRun in forge-check.ts may be out of step:\n  ${line}`);
+  const forge = readFileSync(new URL("supabase/functions/_shared/forge-check.ts", ROOT), "utf8");
+  for (const [name, src] of [["pip-turn", turn], ["forge-check", forge]]) {
+    assert.match(src, /import \{[^}]*\bnotYet\b[^}]*\} from "\.\.?\/(_shared\/)?teammate-spec\.ts";/, `${name} must import notYet from the contract file`);
+    assert.doesNotMatch(src, /function notYet/, `${name} must not keep its own copy of notYet`);
+  }
+  // forge-check.ts repeats these matching rules from pip-turn. If a line changes, change canRun with it.
+  const job = turn.slice(turn.indexOf("async function jobRun("), turn.indexOf("// ---------- founder testing"));
+  const oneTurn = turn.slice(turn.indexOf("async function turn("), turn.indexOf("async function jobRun("));
+  assert.ok(job.length > 2000 && oneTurn.length > 2000, "STALE: pip-turn's turn() and jobRun() were not found where this test looks");
+  for (const [where, src, line] of [
+    // a setup step: which names a job may use for a catalog row, and that only reviewed rows count
+    ["POST /job", job, 'const names = [row.block, slot.slot, ...(slot.blocks ?? [])];'],
+    ["POST /turn", oneTurn, 'const names = [row.block, slot.slot, ...(slot.blocks ?? [])];'],
+    ["POST /job", job, 'db.from("tool_catalog").select("*").eq("enabled", true).not("record", "is", null).not("level", "is", null)'],
+    ["both", turn, 'return job.tools.find((x) => names.includes(x.tool) && x.records === row.record && (x.can as string[]).includes(row.level));'],
+    // notYet is asked with "answering a customer" on a turn and without it in a job that started on its own
+    ["POST /turn", oneTurn, 'if (!g || notYet(g, row, true)) continue;'],
+    ["POST /job", job, 'if (notYet(g, row, false)) continue;'],
+    // an extra product: a reviewed row with block any_tool for that toolkit, matched to kit:<toolkit>
+    ["POST /turn", oneTurn, '(catalog ?? []).filter((r: J) => r.block === "any_tool" && r.toolkit === x.toolkit)'],
+    ["POST /turn", oneTurn, 'const g = grantFor(job, [`kit:${x.toolkit}`], row);'],
+    // a money product behind a building block is refused on both
+    ["POST /turn", oneTurn, 'return v.ok ? allowsProduct(job!, ask, products, PASSED) : v;'],
+    ["POST /job", job, '[row.toolkit, conn.choice], PASSED).ok) { shut.add(kind); continue; }'],
+  ] as [string, string, string][]) assert.ok(src.includes(line), `STALE: pip-turn (${where}) no longer has this line, so canRun in forge-check.ts may be out of step:\n  ${line}`);
+  // "A job that starts on its own cannot use an extra product at all": POST /job never reads the tools an owner
+  // connected beyond the setup steps, and never matches a kit: name.
+  for (const word of ["client_connections", "any_tool", "kit:"]) assert.ok(!job.includes(word), `STALE: pip-turn's POST /job now mentions ${word}. If jobs that start on their own can use extra products, canRun must say so.`);
 });
 
 // ---------- the pieces around them ----------

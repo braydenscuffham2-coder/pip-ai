@@ -83,6 +83,7 @@ function fakeDb(world) {
     rpc: async (name, args) => {
       world.writes.push({ op: "rpc", name, args: clone(args) });
       if (name === "pip_ok") return { data: args.p_secret === SITE_SECRET, error: null };
+      if (world.rpc[name]) return { data: world.rpc[name](args, world), error: null };
       return { data: null, error: null };
     },
   };
@@ -112,10 +113,12 @@ export function baseTables() {
     client_connections: [],
     agent_pauses: [],
     tool_catalog: [
-      { slug: "GOOGLECALENDAR_EVENTS_LIST", block: "calendar", toolkit: "googlecalendar", access: "read", label: "checked the calendar", enabled: true,
+      // record and level say what a row touches and how (supabase/migrations/20261117_01_job_runner.sql). A row
+      // without them is covered by no permission, so no teammate is offered it.
+      { slug: "GOOGLECALENDAR_EVENTS_LIST", block: "calendar", toolkit: "googlecalendar", access: "read", label: "checked the calendar", enabled: true, record: "busy_time", level: "read",
         shape: "busy_only", hide: ["q"], fixed: { calendarId: "primary" }, schema_at: fresh(),
         schema: { description: "List events.", input: { type: "object", properties: { timeMin: { type: "string" }, timeMax: { type: "string" }, q: { type: "string" }, calendarId: { type: "string" } }, required: ["timeMin", "calendarId"] } } },
-      { slug: "GMAIL_SEND_EMAIL", block: "email", toolkit: "gmail", access: "write", label: "sent an email", enabled: true,
+      { slug: "GMAIL_SEND_EMAIL", block: "email", toolkit: "gmail", access: "write", label: "sent an email", enabled: true, record: "message", level: "add",
         guard: "email", hide: ["bcc", "from_email", "include_signature"], fixed: {}, schema_at: fresh(),
         schema: { description: "Send an email.", input: { type: "object", properties: { recipient_email: { type: "string" }, subject: { type: "string" }, body: { type: "string" }, bcc: { type: "string" } }, required: ["recipient_email", "body"] } } },
     ],
@@ -135,10 +138,11 @@ let dir = null, loads = 0;
  * Starts one isolated copy of pip-turn.
  * opts.tables: starting rows. opts.model: a list of answers (or functions of the request) the fake model gives in order.
  * opts.composio(path, body, method): returns { status, json } for a Composio call.
+ * opts.rpc: { name: (args, world) => data } stands in for database functions the fake does not know.
  */
 export async function boot(opts = {}) {
   const world = {
-    tables: opts.tables || baseTables(), writes: [], insertErrors: {}, seq: 0,
+    tables: opts.tables || baseTables(), writes: [], insertErrors: {}, seq: 0, rpc: opts.rpc || {},
     model: { script: [...(opts.model || [])], calls: [] },
     composio: { calls: [], handler: opts.composio || (() => ({ status: 404, json: { error: "not mocked" } })) },
     outside: [],

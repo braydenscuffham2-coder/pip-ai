@@ -30,7 +30,7 @@ A teammate is software that uses an AI model to answer your customers and do rou
 - A teammate can only use the tools it was built with, and only the connections that are working.
 - A teammate may only send email to an address your customer typed in that conversation.
 - Calendar checks show the teammate busy and free times only.
-- In a tool you connect beyond the setup steps, a teammate may only add one new record at a time. It cannot read, change or delete what is there.
+- A tool you connect beyond the setup steps does nothing for a teammate until Pip has reviewed that tool and switched on the specific actions the teammate may take in it.
 - A teammate never opens payment, banking, payroll or accounting tools.
 - Booking requests and drafts go to you for approval and are not final until you confirm.
 - If a connection stops working, that one job pauses and you are alerted. Other jobs keep running.
@@ -133,6 +133,6 @@ Contact: [legal@hirepip.com] · [mailing address]
 - **Checked against code and database on November 17, 2026:** usage rates, 40% included, $100 early-invoice threshold and 7-day grace (`forge_settings.billing_defaults`); billing starts at go-live and usage never pauses a client (`pip-run` header, `portal_billing_tick`); the section 2 limits (`pip-turn/index.ts`); delete flow (`portal_api_cancel`).
 - Section 8's "billing stops at the end of the paid month" is a proposed term. What the billing code does on disconnect was not checked.
 - **The Portal does not ask for agreement to terms today.** It only shows the tick-box when a terms link is set, and none is set. Set it to the approved Terms before the first client.
-- "A teammate can only use the tools it was built with" is enforced for the main teammate kind. Lane 01 is replacing "add-only" with per-job permission profiles; section 2 must be rewritten when that ships.
+- "A teammate can only use the tools it was built with" is enforced for the main teammate kind.
 - Section 5's "we may submit registration for you" assumes the answer to memo item 3 on who registers.
 - The older preview Terms say teammates are covered "only under a separate written agreement that we both sign." Acceptance in the Portal is recorded with email, time and version (`business_agreements`, `compliance_events`). Confirm that counts.

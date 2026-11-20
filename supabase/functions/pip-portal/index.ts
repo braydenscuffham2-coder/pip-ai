@@ -391,7 +391,7 @@ async function refresh(bid: string, actor: string) {
     if (st === "active") {
       await log(bid, "connection", `${x.toolkit} is connected. Pip will add it to your team.`, { actor, outcome: "ok" });
       await db.rpc("portal_notify", { p_business: bid, p_to: "founder", p_subject: `An owner connected ${x.toolkit}`, p_title: "A new tool was connected",
-        p_lines: [`Business: ${b.name}`, `Tool: ${x.toolkit}`, "Teammates can already add new records there if the tool has a plain create action (see tool_catalog, block any_tool).", "Anything more (reading, changing, sending) needs its own reviewed rows."] });
+        p_lines: [`Business: ${b.name}`, `Tool: ${x.toolkit}`, `Teammates get nothing there until it is reviewed: each action needs a tool_catalog row (block any_tool, with record and level) and a teammate job that lists kit:${x.toolkit}.`, "Anything more (reading, changing, sending) needs its own reviewed rows."] });
     }
   }
   return { changed };

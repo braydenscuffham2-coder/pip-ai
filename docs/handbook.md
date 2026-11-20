@@ -2,7 +2,7 @@
 
 Read this before touching anything. It is the shared ground for every chat building Pip. Your own brief is in `docs/lanes.md`.
 
-Last updated November 17, 2026. If something here is wrong, fix it in the same pull request as your work.
+Last updated November 18, 2026. If something here is wrong, fix it in the same pull request as your work.
 
 ## What Pip is
 
@@ -70,13 +70,18 @@ Several of these were built before this handbook and are not described here (`va
 
 ### How a teammate runs today
 
-`pip-turn` `POST /turn {skill, conversation?, message, visitor?, channel?, limited?}` runs one turn:
+`pip-turn` `POST /turn {skill, conversation?, message, visitor?, channel?, limited?}` runs one turn. This describes the code on `main`; it reaches live teammates when lane 01 next deploys `pip-turn`.
 
 - Loads the spec, the business and the manifest. Two spec shapes exist: the classic one (`spec.agent`) and Forge Board builds (`spec.board.seats.gate.system_prompt`).
+- Every turn is answered by one job, found by code (`jobForMessage`), never chosen by the model. A teammate with `contract` and `jobs` in its spec is answered by the job that lists this channel. A teammate built before the contract gets one implied job: Pip's own actions it was designed with, busy times and a hold on the calendar, an email to the customer, and a row on the Pip sheet. For the five Google tools and Pip's own actions an older teammate behaves as it did before.
+- A spec whose job list is broken, or a message on a channel no job lists, has no job. The model is not called, the customer gets the plain holding reply and the owner is told.
+- The model is offered only what that job's permissions cover, and the same permission check (`allows`) is asked again before anything is run, with the fields that call would fill in. A refusal is told to the model as "Not allowed", saved on the message as `blocked`, written to the activity log, and never run.
 - Built-in actions write to `notifications`: `notify_owner`, `capture_lead`, `request_booking`, `handoff`, `draft_for_approval`.
-- Outside tools come only from enabled rows in `tool_catalog`, for active connections. Each row can hide fields, fix fields, and carry a guard.
+- Outside tools come only from enabled rows in `tool_catalog`, for active connections. A row's `record` and `level` columns say what it touches and how; a row without them is covered by no permission and is offered to nobody. Each row can hide fields, fix fields, and carry a guard.
 - Hard limits live in code, not in the prompt: an email address in a write must have been typed by the customer; calendar reads return busy times only; at most 6 tool calls and 5 rounds a turn; real actions only when the spec is live or the business is on the TEST list (`forge_settings.act_sandbox_businesses`).
-- Tools the owner connected beyond the setup steps get add-only actions (create one lead, contact, task and so on), and money tools get none.
+- A tool the owner connected beyond the setup steps is off by default: it gives a teammate nothing, and nothing in it is found or opened automatically. To open one action, the founder adds a reviewed `tool_catalog` row (block `any_tool`, with `record` and `level`), and the teammate's job must list `kit:<toolkit>` with that kind of record and level. Older teammates list none, so they get nothing there. The Portal still tells the founder when an owner connects a tool.
+- A money product is refused for every teammate, even behind a building block: when a job says `pos` and the business connected Square, the money check is asked again under the product's own name, on `POST /turn` and on `POST /job`. No owner policy can open one yet.
+- Not open on a turn yet, even for a job that lists it: a text or a call, an email that is not a reply to the customer in the conversation, any update, and a read for a job that lists which fields it may see. A job's own per-run and per-day limits and a pause on one job (`job:<id>`) are not applied to customer turns yet; the 6 calls and 5 rounds apply to everyone.
 - Expired access pauses that job through `portal_job_pause` and alerts the business. Today the thing paused is the tool (the `job` column of `agent_pauses` holds a name like "Calendar"), not a job.
 - How a teammate declares jobs, permissions, limits and pauses is in `docs/contracts/teammate-spec.md`. Its status table says which parts are live.
 
