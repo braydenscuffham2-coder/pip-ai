@@ -62,9 +62,23 @@ async function stripeAccount() {
 
 async function billingRun() {
   if (!Deno.env.get("STRIPE_SECRET_KEY")) return { ran: false, waiting: "STRIPE_SECRET_KEY is not set" };
+  // A business that left is dealt with first: its subscription is set to end with the month already paid, and it is
+  // taken out of billing before anything below could start or re-check it. See 20261120_08_billing_stops_on_disconnect.sql.
+  let stopped = 0; const stopErrors: string[] = [];
+  const { data: stops } = await db.rpc("portal_billing_stops");
+  // deno-lint-ignore no-explicit-any
+  for (const w of (Array.isArray(stops) ? stops : []) as any[]) {
+    try {
+      const cur = await stripe("GET", `/subscriptions/${w.subscription}`).catch(() => null);
+      // Already over in Stripe (cancelled, or gone): nothing more to ask for.
+      if (cur && cur.status !== "canceled" && cur.cancel_at_period_end !== true) await stripe("POST", `/subscriptions/${w.subscription}`, { cancel_at_period_end: "true" }, `pip-stop-${w.business}`);
+      if (cur) { await db.rpc("portal_billing_stopped", { p_business: w.business }); stopped++; }
+      else stopErrors.push("stop: could not read the subscription");
+    } catch (e) { if (stopErrors.length < 5) stopErrors.push(`stop: ${String((e as Error).message).slice(0, 80)}`); }
+  }
   const { data: work, error } = await db.rpc("portal_billing_tick");
   if (error) return { ran: false, waiting: "not_ready" };
-  const out = { ran: true, started: 0, itemized: 0, checked: 0, failed: 0, errors: [] as string[], account: await stripeAccount() };
+  const out = { ran: true, stopped, started: 0, itemized: 0, checked: 0, failed: stopErrors.length, errors: stopErrors, account: await stripeAccount() };
   let product: string | null = null;
   // deno-lint-ignore no-explicit-any
   for (const w of (Array.isArray(work) ? work : []) as any[]) {
