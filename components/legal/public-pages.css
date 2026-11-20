@@ -1,0 +1,67 @@
+/* The public pages: /about, /privacy and /terms. Colors and fonts come from app/globals.css.
+   The rest of the site is a one-screen app that locks scrolling on html and body; these pages scroll like documents. */
+html:has(.pub){height:auto;overflow:visible}
+html:has(.pub) body{height:auto;min-height:100vh;min-height:100dvh;overflow:visible}
+@supports not selector(html:has(a)){.pub{position:fixed;inset:0;overflow-y:auto}}
+
+.pub{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh;font-size:17px;line-height:1.6;color:var(--ink);overflow-wrap:break-word;
+  background:radial-gradient(900px 420px at 12% -8%, rgba(var(--violet-rgb),.13), transparent 70%), radial-gradient(800px 420px at 96% 0%, rgba(var(--aqua-rgb),.16), transparent 70%), var(--bg)}
+.pub-head,.pub-main,.pub-foot{width:100%;max-width:780px;margin-inline:auto;padding-left:max(20px, env(safe-area-inset-left, 0px));padding-right:max(20px, env(safe-area-inset-right, 0px))}
+.pub-head{padding-block:20px 8px}
+.pub .pub-brand{display:inline-flex;align-items:center;gap:10px;min-height:44px;color:var(--ink);text-decoration:none}
+.pub-orb{width:28px;height:28px;flex:none;border-radius:50%;
+  background:radial-gradient(circle at 32% 28%, var(--bg) 0 12%, transparent 32%), radial-gradient(circle at 72% 76%, var(--aqua), transparent 62%), radial-gradient(circle at 28% 72%, var(--violet), transparent 66%), var(--lilac);
+  box-shadow:inset 0 0 0 1px rgba(var(--bg-rgb),.7), 0 4px 14px rgba(var(--violet-rgb),.45)}
+.pub-word{font:600 18px/1 var(--f-display);letter-spacing:-.01em}
+.pub-main{flex:1;padding-block:20px 56px;min-width:0}
+.pub-foot{padding-block:22px 34px;border-top:1px solid var(--line-2);font-size:15px;color:var(--ink-2)}
+.pub-foot nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
+.pub .pub-foot a{display:inline-flex;align-items:center;min-height:44px;color:var(--ink-2);text-decoration:none}
+.pub .pub-foot a:hover,.pub .pub-foot a[aria-current="page"]{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+.pub-foot span{color:var(--ink-3)}
+
+.pub a{color:var(--violet-ink)}
+.pub-main a{text-underline-offset:3px}
+.pub h1{font:600 clamp(26px, 1.1rem + 2.6vw, 40px)/1.15 var(--f-display);letter-spacing:-.02em;margin:10px 0 18px}
+.pub h2{font:600 clamp(19px, 1rem + .7vw, 23px)/1.25 var(--f-display);letter-spacing:-.015em;margin:44px 0 12px}
+.pub h3{font:700 18px/1.3 var(--f-body);margin:28px 0 8px}
+.pub p{margin:0 0 14px}
+.pub ul,.pub ol{margin:0 0 16px;padding-left:1.3em}
+.pub li{margin:0 0 7px}
+.pub li > ul,.pub li > ol{margin:7px 0 0}
+.pub code{font:500 .86em/1.4 var(--f-mono);padding:.12em .38em;border-radius:6px;background:rgba(var(--ink-rgb),.055);overflow-wrap:anywhere}
+.pub pre{margin:0 0 16px;padding:14px 16px;border-radius:12px;background:rgba(var(--ink-rgb),.055);overflow-x:auto}
+.pub pre code{padding:0;background:none;overflow-wrap:normal}
+.pub blockquote{margin:0 0 16px;padding:2px 0 2px 16px;border-left:3px solid var(--lilac);color:var(--ink-2)}
+.pub blockquote > :last-child{margin-bottom:0}
+.pub hr{border:0;border-top:1px solid var(--line-2);margin:36px 0}
+
+/* A table scrolls sideways inside its own box. The page itself never does. */
+.md-table{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:6px 0 20px;border:1px solid var(--line-2);border-radius:14px;background:rgba(var(--bg-rgb),.8)}
+.md-table table{width:100%;min-width:540px;border-collapse:collapse;font-size:15.5px;line-height:1.5}
+.md-table th,.md-table td{padding:10px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+.md-table th{font-weight:700;background:var(--lilac-soft);white-space:nowrap}
+.md-table tr:last-child td{border-bottom:0}
+.md-table td:first-child{font-weight:600}
+.md-table code{overflow-wrap:normal;white-space:nowrap}
+
+/* About page */
+.pub-lead{font-size:clamp(18px, 1rem + .5vw, 20px);line-height:1.55;color:var(--ink-2);max-width:40em}
+.pub-cta{display:flex;flex-wrap:wrap;gap:10px;margin:24px 0 6px}
+.pub-btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 20px;border-radius:14px;font-weight:600;font-size:16px;text-decoration:none;text-align:center}
+.pub .pub-btn.primary{color:var(--on-cta);background:linear-gradient(180deg, var(--cta-top), var(--cta-bot))}
+.pub .pub-btn.ghost{color:var(--ink);background:rgba(var(--bg-rgb),.85);box-shadow:inset 0 0 0 1px var(--line-2)}
+.pub-btn.primary:hover{filter:brightness(1.2)}
+.pub-btn.ghost:hover{box-shadow:inset 0 0 0 1px rgba(var(--violet-rgb),.7)}
+.pub .pub-perms{list-style:none;margin:18px 0 22px;padding:0;display:grid;gap:12px}
+.pub .pub-perms > li{margin:0;padding:18px 20px;border:1px solid var(--line-2);border-radius:18px;background:rgba(var(--bg-rgb),.82)}
+.pub .pub-perms h3{margin:0 0 6px}
+.pub .pub-perms p{margin:0 0 8px}
+.pub .pub-perms p:last-child{margin-bottom:0}
+.pub-scopes{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.pub .pub-scopes code{font-size:12.5px;color:var(--ink-2)}
+.pub-no{color:var(--ink-2)}
+.pub-note{font-size:15.5px;color:var(--ink-2)}
+.pub-hold{padding:8px 0 40px}
+@media (max-width:480px){.pub{font-size:16.5px}.pub-btn{flex:1 1 100%}}
+@media print{.pub{background:none}.pub-cta{display:none}.md-table{overflow:visible;border:0}.md-table table{min-width:0}}
