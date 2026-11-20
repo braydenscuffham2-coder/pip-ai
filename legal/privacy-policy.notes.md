@@ -10,7 +10,7 @@ These notes used to sit at the bottom of `privacy-policy.md`. They were moved he
 - Item 3 below (13-month limit): built. `pip_purge_conversations` runs once a day (migration `20261120_10_conversation_retention.sql`) and a test fails if the policy and the code name different periods.
 - Section 8 no longer says each company "may use the information only to provide its service to us". That was only checked for Anthropic. It now says each company gets only what it needs and handles it under its own terms.
 - The operator is Brayden Scuffham, an individual doing business as Pip. When a company is formed, change section 1.
-- privacy@hirepip.com is forwarded to the founder's inbox by ImprovMX.
+- privacy@, legal@ and support@hirepip.com are inboxes in Resend (Inboxes), read in the Resend dashboard. Tested November 19, 2026: a message to all three arrived. They do not forward anywhere yet, so they have to be checked there.
 
 
 **What was checked.** Every statement of fact above was checked on November 17, 2026 against the code on `main` (commit `edf9024`) and the live database. Where a feature is not live, the row says so.
