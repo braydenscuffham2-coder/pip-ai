@@ -148,9 +148,11 @@ test("rendered HTML: no script can get in through a link or through typed HTML",
 // ---------- what may be shown in public ----------
 
 test("publicText takes out the draft banner under the title", () => {
+  // The Privacy Policy is published and has no banner left; the Terms are still a draft and still carry one.
+  assert.ok(!/^> /m.test(PRIVACY), "the published policy has no quoted note at all");
   for (const md of [PRIVACY, TERMS]) {
     const text = publicText(md);
-    assert.ok(/\bDRAFT\b/.test(md) && /Lane 10 draft/.test(md));
+    if (md === TERMS) assert.ok(/\bDRAFT\b/.test(md) && /Lane 10 draft/.test(md));
     assert.ok(!/DRAFT|Not legal advice|Lane 10|square brackets/.test(text.split("\n## ")[0]), "the top of the document has no banner");
     assert.match(text, /^# Pip (Privacy Policy|Terms of Service for businesses)\n\nEffective date: /);
   }
@@ -158,7 +160,6 @@ test("publicText takes out the draft banner under the title", () => {
 
 test("publicText takes out the 'Sources for the legal points' footer and source tags", () => {
   const text = publicText(PRIVACY);
-  assert.ok(PRIVACY.includes("**Sources for the legal points**") && PRIVACY.includes("[S12]"));
   assert.ok(!/Sources for the legal points|legal\/sources\.md|\[S\d+\]/.test(text));
   assert.equal(publicText("# T\n\nBarred by contract [S16]. Policy [S11, S12].\n\n## Sources for the legal points\n\n- one\n\n### more\n\nx\n\n## Kept\n\nyes"),
     "# T\n\nBarred by contract. Policy.\n\n## Kept\n\nyes\n");
@@ -179,28 +180,19 @@ test("publicText removes nothing else", () => {
 
 const texts = (list) => list.map((b) => b.text);
 
-test("blanks() finds every blank in today's Privacy Policy", () => {
-  const found = blanks(PRIVACY);
-  assert.equal(found.length, 13);
-  assert.deepEqual(texts(found).map((t) => (t.length > 44 ? t.slice(0, 44) + "..." : t)), [
-    "[date the lawyer approves]",
-    "[Brayden Scuffham, an individual doing busin...",
-    "[LAWYER: replace with the LLC once formed]",
-    "[privacy@hirepip.com]",
-    "[BRAYDEN: this address must exist and be rea...",
-    "[business mailing address]",
-    "[LAWYER: confirm each vendor's contract supp...",
-    "[PROPOSED: 13 months after the conversation,...",
-    "[LAWYER: confirm 4 years matches the claim p...",
-    "[privacy@hirepip.com]",
-    "[privacy@hirepip.com]",
-    "[mailing address]",
-    "## Notes for the lawyer and for Brayden (not...",
-  ]);
-  assert.deepEqual(found.filter((b) => b.kind === "internal-notes").map((b) => b.text), ["## Notes for the lawyer and for Brayden (not part of the published policy)"]);
-  assert.equal(found.filter((b) => b.kind === "placeholder").length, 7);
-  assert.equal(found.filter((b) => b.kind === "note").length, 5);
-  assert.equal(found.find((b) => b.text === "[business mailing address]").line, 21, "line numbers are those of the file");
+test("the published Privacy Policy has no blank and no internal notes left in it", () => {
+  assert.deepEqual(texts(blanks(PRIVACY)), []);
+  assert.ok(!/Notes for the lawyer|LAWYER|BRAYDEN:|PROPOSED|DRAFT/.test(PRIVACY));
+  // The facts Brayden gave on November 19, 2026 are the ones printed.
+  assert.match(PRIVACY, /Pip is operated by Brayden Scuffham, an individual doing business as Pip/);
+  assert.match(PRIVACY, new RegExp(FOUNDER_FACTS.mailingAddress.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(PRIVACY, new RegExp(`Effective date: ${FOUNDER_FACTS.effectiveDate}`));
+  assert.ok(PRIVACY.includes(FOUNDER_FACTS.privacyEmail));
+  assert.match(PRIVACY, new RegExp(`${FOUNDER_FACTS.conversationRetentionMonths} months after the last message`));
+  // It does not claim things that are not switched on.
+  assert.match(PRIVACY, /Texts and phone calls are not switched on yet/);
+  assert.match(PRIVACY, /Texting is not switched on yet\. When it is, these rules apply/);
+  assert.ok(!/Each may use the information only to provide its service to us/.test(PRIVACY), "not checked for every vendor, so not claimed");
 });
 
 test("the Privacy Policy's Google section names the five permissions Pip asks for, and no stale note", () => {
@@ -212,16 +204,11 @@ test("the Privacy Policy's Google section names the five permissions Pip asks fo
   assert.match(section, /held by our connection provider, Composio/);
 });
 
-test("blanks() finds every blank in today's Terms of Service", () => {
+test("the Terms of Service are still held: one open question and the internal notes", () => {
   const found = blanks(TERMS);
-  assert.equal(found.length, 13);
-  for (const named of ["[date]", "[2026-11]", "[Brayden Scuffham, an individual doing business as Pip]", "[LAWYER: the LLC]", "[LAWYER: confirm notice period.]",
-    "[LAWYER AND BRAYDEN: no refunds for a partial month, or prorate?]", "[mailing address]", "## Notes for the lawyer and Brayden (not part of the Terms)"]) {
-    assert.ok(texts(found).includes(named), named);
-  }
-  assert.equal(texts(found).filter((t) => t === "[legal@hirepip.com]").length, 2);
-  assert.equal(found.filter((b) => b.kind === "placeholder").length, 6);
-  assert.equal(found.filter((b) => b.kind === "note").length, 6);
+  assert.deepEqual(texts(found), ["[LAWYER AND LANE 01: this list must match the code on the day of publishing.]", "## Notes for the lawyer and Brayden (not part of the Terms)"]);
+  assert.equal(LAWYER_SIGNED_OFF.terms, false);
+  assert.match(TERMS, /We do not refund a partial month\. If we end service for a reason other than your breach of these Terms, we refund the unused part/);
 });
 
 test("blanks() gives the same answer on the raw file and on publicText() of it", () => {
@@ -276,7 +263,8 @@ test("a filled document has no blanks, and with the lawyer's switch on it is rea
 });
 
 test("THE GATE: a document with anything open gives the page no text at all, even with the lawyer's switch on", () => {
-  for (const md of [PRIVACY, TERMS, FILLED + "\nMail: [mailing address]\n", FILLED + "\n## Notes for the lawyer (not part of the published policy)\n\nx\n"]) {
+  assert.equal(publicDocument(PRIVACY, true).ready, true, "the published Privacy Policy is complete");
+  for (const md of [TERMS, PRIVACY + "\nMail: [mailing address]\n", FILLED + "\nMail: [mailing address]\n", FILLED + "\n## Notes for the lawyer (not part of the published policy)\n\nx\n"]) {
     const doc = publicDocument(md, true);
     assert.equal(doc.ready, false);
     assert.equal(doc.body, "");
@@ -322,10 +310,8 @@ test("THE GATE: the page shows the holding notice and asks not to be indexed unl
   }
 });
 
-test("once its blanks are filled, the whole Privacy Policy reads cleanly, big tables included", () => {
-  // Fill a copy in memory the way the founder would in the file: every blank gets a value or is deleted, and the notes section goes.
-  let md = PRIVACY.slice(0, PRIVACY.indexOf("\n---\n\n## Notes for the lawyer"));
-  for (const b of blanks(md)) md = md.replace(b.text, b.kind === "note" ? "" : b.text.includes("@") ? "privacy@example.com" : "EXAMPLE VALUE");
+test("the whole Privacy Policy, as published, reads cleanly, big tables included", () => {
+  const md = PRIVACY;
   assert.equal(publicDocument(md, false).body, "", "still hidden without the lawyer's switch");
   const doc = publicDocument(md, true);
   assert.deepEqual(doc.blanks, []);

@@ -1,5 +1,8 @@
 # legal/
 
+> **Status on November 19, 2026.** The Privacy Policy is published at https://www.hirepip.com/privacy (Brayden's decision; operator, address, contact address and the 13-month period are his). Conversations are now deleted automatically 13 months after their last message (`20261120_10_conversation_retention.sql`), so the "no automatic deletion" mismatch below is closed. The Terms are filled in but still held: section 2 promises a Portal screen that is not built yet. `lawyer-memo.md` item 6 (the old Google sign-in) is out of date since November 18; Pip's own Google app asks for five narrow permissions.
+
+
 > **Everything in this folder is a DRAFT.** It was written by an AI drafting assistant (lane 10), not a lawyer. It is not legal advice. Nothing here is published, linked from the website or shown to an owner until a lawyer has signed off and Brayden says so.
 
 The same text is in one shared doc for the lawyer's comments: https://claude.ai/artifact/DQpY6t3dkGf9xcS6WESSJr

@@ -1,11 +1,11 @@
-// Facts only the founder can supply. Nothing here is guessed: every value is null until Brayden fills it in.
+// Facts only the founder can supply. Nothing here is guessed: Brayden gave these on November 19, 2026.
 // Keep this file free of imports so the tests can load it directly.
 
 /**
  * The address shown on the About page for questions. While it is null the About page shows no email line.
  * Set it only to an inbox that exists and is read.
  */
-export const CONTACT_EMAIL: string | null = null;
+export const CONTACT_EMAIL: string | null = 'support@hirepip.com';
 
 /**
  * The lawyer's switch, one per document. A document is shown in full only when it has no blanks left AND its
@@ -13,9 +13,12 @@ export const CONTACT_EMAIL: string | null = null;
  * has said to publish it. Until then the page shows the holding notice.
  */
 export const LAWYER_SIGNED_OFF: { privacy: boolean; terms: boolean } = {
-  /** legal/privacy-policy.md, shown at /privacy. */
-  privacy: false,
-  /** legal/terms-of-service.md, shown at /terms. */
+  /** legal/privacy-policy.md, shown at /privacy. On since November 19, 2026: Brayden said to publish it. */
+  privacy: true,
+  /**
+   * legal/terms-of-service.md, shown at /terms. Still off: section 2 says the Portal shows what a teammate can and
+   * cannot do before go-live, and that screen is not built yet. Turn on in the pull request that builds it.
+   */
   terms: false,
 };
 
@@ -35,10 +38,10 @@ export interface FounderFacts {
 }
 
 export const FOUNDER_FACTS: FounderFacts = {
-  operatorLegalName: null,
-  privacyEmail: null,
-  supportEmail: null,
-  mailingAddress: null,
-  effectiveDate: null,
-  conversationRetentionMonths: null,
+  operatorLegalName: 'Brayden Scuffham, an individual doing business as Pip',
+  privacyEmail: 'privacy@hirepip.com',
+  supportEmail: 'support@hirepip.com',
+  mailingAddress: 'Pip, 2767 E Rockhampton Dr, Meridian, ID 83642',
+  effectiveDate: 'November 20, 2026',
+  conversationRetentionMonths: 13,
 };

@@ -1,14 +1,12 @@
 # Pip Privacy Policy
 
-> **DRAFT. Not legal advice. Not reviewed by a lawyer. Not published.**
-> Lane 10 draft, November 17, 2026. Text in [square brackets] is a blank to fill or a question for the lawyer.
-> This policy covers the Pip Portal and the AI teammates Pip runs for businesses. The Pip preview on Claude has its own, older policy; see the lawyer memo, item 12.
+Effective date: November 20, 2026
 
-Effective date: [date the lawyer approves]
+This policy covers the Pip Portal at hirepip.com and the AI teammates Pip runs for businesses. The Pip preview, where Pip studies a business before it becomes a client, has its own policy shown inside the preview.
 
 ## The short version
 
-- Pip runs AI teammates for local businesses. They answer website chat and texts today, and phone calls once that launches.
+- Pip runs AI teammates for local businesses. They answer website chat today. Texts and phone calls are not switched on yet; this policy says how they will work when they are.
 - If you are a customer of one of those businesses, the business decides what its teammate does. Pip handles your information for that business and for nothing else.
 - Every teammate tells you it is an AI in its first message.
 - We do not sell personal information. We do not use it for advertising. We do not use it to train AI models.
@@ -16,9 +14,9 @@ Effective date: [date the lawyer approves]
 
 ## 1. Who we are
 
-Pip is operated by [Brayden Scuffham, an individual doing business as Pip] [LAWYER: replace with the LLC once formed], based in Meridian, Idaho, United States ("Pip", "we", "us").
+Pip is operated by Brayden Scuffham, an individual doing business as Pip, based in Meridian, Idaho, United States ("Pip", "we", "us").
 
-Contact: [privacy@hirepip.com] [BRAYDEN: this address must exist and be read before publishing]. Mail: [business mailing address].
+Contact: privacy@hirepip.com. Mail: Pip, 2767 E Rockhampton Dr, Meridian, ID 83642.
 
 ## 2. Who this policy is for
 
@@ -33,7 +31,7 @@ Contact: [privacy@hirepip.com] [BRAYDEN: this address must exist and be read bef
 | When you | We handle | What we keep |
 | --- | --- | --- |
 | Use website chat | The messages you type. A conversation code your browser saves so you can pick the chat back up. | The conversation text and what the teammate did (for example, "booking request sent to the owner"). |
-| Text a business's Pip number | Your phone number and your messages. | The conversation text. In our own records your number is kept as a one-way code plus its last four digits. Our phone carrier, Twilio, holds the full number so texts can be delivered. |
+| Text a business's Pip number [not live yet] | Your phone number and your messages. | The conversation text. In our own records your number is kept as a one-way code plus its last four digits. Our phone carrier, Twilio, holds the full number so texts can be delivered. |
 | Give your details | Whatever you choose to give: name, phone, email, what you need, the time you want. | Kept so the business can follow up. The business sees it in its Pip Portal. |
 | Opt out or opt in | That you said STOP, or agreed to be contacted, on which channel and when. | Kept as a one-way code plus the last four digits, with the date and how it happened. We keep opt-out records even after a business leaves Pip, so the opt-out keeps working. |
 | Call a business's Pip number [not live yet] | Your phone number and what is said on the call. | This feature is not switched on. This row will be completed before it is. |
@@ -85,9 +83,11 @@ How we treat that data:
 
 Pip's use and transfer of information received from Google APIs to any other app will adhere to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements.
 
-A business can disconnect Google at any time in the Pip Portal or in its Google account's permissions page.
+A business can disconnect at any time. "Disconnect everything" in the Pip Portal removes every tool sign-in, and Google access can also be removed on the Google account's permissions page.
 
 ## 5. Text messages
+
+Texting is not switched on yet. When it is, these rules apply:
 
 - Teammates text only people who texted the business first or who agreed to be contacted. Marketing texts go only to people with a stored consent for marketing.
 - The first reply in a text conversation says the sender is an AI assistant for the business and ends with "Reply STOP to opt out."
@@ -115,7 +115,7 @@ We do not sell personal information. We do not share it for advertising. We do n
 
 ## 8. Who receives information
 
-We use these companies to run Pip. Each may use the information only to provide its service to us.
+We use these companies to run Pip. We give each one only what it needs to do its part, and each handles it under its own terms and privacy policy.
 
 | Company | What it does for Pip | What it receives |
 | --- | --- | --- |
@@ -123,7 +123,7 @@ We use these companies to run Pip. Each may use the information only to provide 
 | Vercel | Hosts hirepip.com and the Portal | Web requests, including internet address |
 | Anthropic | The AI model | Conversation text, business facts, tool results |
 | Composio | Holds tool sign-ins and relays actions | Sign-ins and the content of each action (for example, the email being sent) |
-| Twilio | Phone numbers, texts and calls | Phone numbers, message text, call audio |
+| Twilio | Phone numbers, texts and calls [not live yet] | Phone numbers, message text, call audio |
 | ElevenLabs | The voice on calls [not live yet] | Call audio and text |
 | Stripe | Payments | Business billing details and card |
 | Resend | Sends Pip's emails to owners | Owner email address and the notice |
@@ -132,17 +132,15 @@ We use these companies to run Pip. Each may use the information only to provide 
 
 We also share information with the business whose teammate you contacted, when the law requires it, to protect people or Pip, and if Pip is sold or reorganized (including moving Pip into a company formed to run it).
 
-[LAWYER: confirm each vendor's contract supports "only to provide its service" and no training on our data. Checked so far: Anthropic. Not yet checked: Twilio, ElevenLabs, Composio, Supabase, Vercel, Resend.]
-
 ## 9. How long we keep information
 
 | Information | How long |
 | --- | --- |
-| Conversations, leads and booking requests | Until the business deletes its Pip account, or [PROPOSED: 13 months after the conversation, whichever is first. Today there is no automatic time limit; see the lawyer memo, item 5]. |
+| Conversations, and the leads and booking requests a teammate took | Until the business deletes its Pip account, or 13 months after the last message in the conversation, whichever is first. Old conversations are deleted automatically once a day. A copy the business saved in its own tools, such as its Pip sheet, is the business's to keep or delete. |
 | Visitor request counts (scrambled) | 2 days |
 | Sign-in attempt records | 30 days |
 | Emails Pip sent to owners | 90 days |
-| Opt-out and consent records, compliance log, signed agreements | Kept after a business leaves, so opt-outs keep working and we can show what was agreed. The business's name is removed 1 year after it leaves and the remaining record is deleted after 4 years. [LAWYER: confirm 4 years matches the claim period for call and text laws.] |
+| Opt-out and consent records, compliance log, signed agreements | Kept after a business leaves, so opt-outs keep working and we can show what was agreed. The business's name is removed 1 year after it leaves and the remaining record is deleted after 4 years. |
 | Billing records | As tax and accounting law requires. Held by Stripe. |
 
 When a business deletes its Pip account, we delete its teammates, their instructions, conversations, leads, activity history, connections, phone line records, sign-ins and its order. We keep only what the row above says.
@@ -150,7 +148,7 @@ When a business deletes its Pip account, we delete its teammates, their instruct
 ## 10. Your choices
 
 - **Stop texts and calls:** reply STOP, or tell the teammate on any channel. It applies to every channel for that business.
-- **See, correct or delete your information:** email [privacy@hirepip.com] or ask the business. We answer within 45 days. We may need to confirm it is you, usually by replying to the number or address you used.
+- **See, correct or delete your information:** email privacy@hirepip.com or ask the business. We answer within 45 days. We may need to confirm it is you, usually by replying to the number or address you used.
 - **Business owners:** you can disconnect Pip and delete everything from the Portal at any time.
 - **State privacy rights:** depending on where you live, you may have rights to access, correct, delete and get a copy of your information, and to appeal if we say no. We honor these requests for everyone, wherever they live. We do not sell personal information or use it for targeted advertising, so there is nothing to opt out of.
 
@@ -172,33 +170,4 @@ If we change this policy in a way that matters, we will post the new version wit
 
 ## 15. Contact
 
-[privacy@hirepip.com] · [mailing address]
-
----
-
-## Notes for the lawyer and for Brayden (not part of the published policy)
-
-**What was checked.** Every statement of fact above was checked on November 17, 2026 against the code on `main` (commit `edf9024`) and the live database. Where a feature is not live, the row says so.
-
-| Statement | Where it was checked |
-| --- | --- |
-| AI notice in the first message | `pip-turn/index.ts` adds the notice in code if the model's first reply does not contain one |
-| Phone numbers kept as one-way code plus last four | `portal_contact_hash`, `consent_ledger` (columns `contact_hash`, `contact_hint`) |
-| STOP applies to every channel | `portal_sms_in` writes a `revoked` row with channel `any` |
-| First text reply ends "Reply STOP to opt out." | `pip-run/index.ts`, `answerText` |
-| Calendar busy times only | `pip-turn/index.ts`, `busy_only` shape |
-| Emails carry an AI line | `pip-turn/index.ts`, `guard === "email"` |
-| Deletion on cancel and what is kept | `portal_api_cancel`, `portal_purge_old` |
-| 2-day, 30-day, 90-day periods | cron `pip-hits-clean`, `portal_purge_old` |
-| Sign-ins held by Composio, ids only in Pip | `business_connections`, `client_connections` table comments and columns |
-| Tax ID not stored | `texting_registrations` table comment and columns |
-
-**Things that are true in this draft only if work in other lanes is finished.** Do not publish before these are closed. Each is also in `legal/README.md`.
-
-1. Closed November 18, 2026. Section 4 assumes Pip's own Google app (lane 03). Since November 17 to 18, 2026 owner sign-ins go through Pip's own Google app (Google Cloud project `pip-ai`), which asks for exactly the five permissions in the section 4 table. Composio still runs the sign-in and holds it for Pip.
-2. Section 5 says "Reply HELP for help." Today `pip-run` sends nothing back to HELP and leaves it to Twilio's default. The HELP reply needs the business name and a contact (lane 02).
-3. Section 9 proposes a 13-month limit on conversations. No such limit exists in the database today.
-4. Calls, email in and camera rows are placeholders until lanes 02, 04 and 11 confirm what is stored.
-5. The older kind of teammate (the "Skill Spec" kind, run by `lib/skills/runtime.ts` through `/api/runtime/chat`) does not appear to have the AI notice added in code. If any client runs on that path, "every teammate tells you it is an AI" depends on the prompt alone (lane 01).
-
-**Sources for the legal points** are in `legal/sources.md`: Google's user data policy and Limited Use wording [S12], carrier registration wording [S11], Anthropic's no-training term [S16].
+privacy@hirepip.com · Pip, 2767 E Rockhampton Dr, Meridian, ID 83642
