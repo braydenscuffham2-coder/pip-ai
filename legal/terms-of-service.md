@@ -3,7 +3,7 @@
 > **DRAFT. Not legal advice. Not reviewed by a lawyer. Not published.**
 > Lane 10 draft, November 17, 2026. Text in [square brackets] is a blank or a question for the lawyer.
 
-Effective date: [date] · Version: [2026-11]
+Effective date: not yet in effect · Version: 2026-11
 
 ## The short version
 
@@ -14,7 +14,7 @@ Effective date: [date] · Version: [2026-11]
 
 ## 1. Who is agreeing
 
-These Terms are between [Brayden Scuffham, an individual doing business as Pip] [LAWYER: the LLC] ("Pip", "we") and the business that accepts them in the Pip Portal ("you"). The person who accepts must have authority to bind the business. Pip is offered only to businesses in the United States.
+These Terms are between Brayden Scuffham, an individual doing business as Pip ("Pip", "we") and the business that accepts them in the Pip Portal ("you"). The person who accepts must have authority to bind the business. Pip is offered only to businesses in the United States.
 
 Your **Order** is the list of teammates and the price shown in your Portal, which you accept there. The Order, these Terms, the Privacy Policy, the Acceptable Use Policy and the Data Processing Addendum are the whole agreement. If they conflict, the Order wins, then these Terms.
 
@@ -75,13 +75,13 @@ These features are not available until Pip says so in your Portal. When they are
 - **Usage.** Each chat is $0.15, each text $0.04 and each call minute $0.25. Usage worth 40% of your monthly price is included each month. Usage beyond that is added to your next invoice. If usage beyond your plan passes $100 in a month, we may invoice it right away.
 - **No cut-off for usage.** A busy month never pauses your teammates.
 - **Late payment.** If an invoice is unpaid 7 days after it is due, we may pause your teammates until it is paid.
-- **Changes.** We will email you at least 30 days before any price change. [LAWYER: confirm notice period.]
+- **Changes.** We will email you at least 30 days before any price change.
 - **Taxes.** Prices do not include taxes we are required to collect.
 - A card on file is required before go-live.
 
 ## 8. Ending service
 
-You can disconnect Pip in the Portal at any time. Your teammates stop and billing stops at the end of the paid month. [LAWYER AND BRAYDEN: no refunds for a partial month, or prorate?] You can then delete everything from the Portal. Deletion cannot be undone. We keep only opt-out and consent records, the compliance log and signed agreements, as the Privacy Policy explains.
+You can disconnect Pip in the Portal at any time. Your teammates stop and billing stops at the end of the paid month. We do not refund a partial month. If we end service for a reason other than your breach of these Terms, we refund the unused part of the month you paid for. You can then delete everything from the Portal. Deletion cannot be undone. We keep only opt-out and consent records, the compliance log and signed agreements, as the Privacy Policy explains.
 
 We may pause or end service if you break these Terms or the Acceptable Use Policy, if required by law or by a provider we depend on, or with 30 days' notice for any reason.
 
@@ -98,7 +98,7 @@ Pip is provided as is. We do not promise uninterrupted service, error-free answe
 
 ## 11. Limit of liability
 
-To the fullest extent the law allows: neither party is liable for indirect, special or consequential losses, or lost profits or revenue; and each party's total liability under this agreement is limited to the amounts you paid Pip in the 12 months before the claim. [LAWYER: carve-outs for payment obligations, indemnities, breach of confidentiality or data security, and anything that cannot be limited by law. Should a higher cap apply to data breaches?]
+To the fullest extent the law allows: neither party is liable for indirect, special or consequential losses, or lost profits or revenue; and each party's total liability under this agreement is limited to the amounts you paid Pip in the 12 months before the claim. These limits do not apply to what you owe us for the service, to the indemnities in section 12, or to anything the law does not allow to be limited.
 
 ## 12. Indemnities
 
@@ -118,13 +118,13 @@ Each of us will keep the other's non-public information confidential and use it 
 
 ## 15. Disputes
 
-Talk to us first: email [legal@hirepip.com] and give us 30 days to resolve it. If we cannot, disputes are resolved by binding individual arbitration under the American Arbitration Association's Commercial Arbitration Rules, in Ada County, Idaho or by video, with no class actions. Idaho law governs. [LAWYER: this mirrors the existing preview Terms. Keep, or use Idaho courts for business clients?]
+Talk to us first: email legal@hirepip.com and give us 30 days to resolve it. If we cannot, disputes are resolved by binding individual arbitration under the American Arbitration Association's Commercial Arbitration Rules, in Ada County, Idaho or by video, with no class actions. Idaho law governs.
 
 ## 16. General
 
 We may update these Terms with 30 days' notice by email; continuing to use Pip after that means you accept them. Neither party may assign this agreement without consent, except to a successor of its business (including Pip's move into a company formed to run it). If part of these Terms is unenforceable, the rest stands.
 
-Contact: [legal@hirepip.com] · [mailing address]
+Contact: legal@hirepip.com · Pip, 2767 E Rockhampton Dr, Meridian, ID 83642
 
 ---
 
