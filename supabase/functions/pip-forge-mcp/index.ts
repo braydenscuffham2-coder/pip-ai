@@ -259,7 +259,7 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
     },
   },
   forge_save: {
-    description: 'Save the Board\'s result for one teammate (agent_id) or the whole team (no agent_id) back to Pip. status is one of building, sandbox, design_only, needs_you, failed, paused. result is the Board\'s JSON for that teammate or team. For one teammate, also send its jobs: contract ("teammate/1") and jobs, beside result. ' + BUILDER_NOTE.rule + ' Jobs that fail the contract check are refused with every problem in plain words, and nothing is saved. The answer lists, for each tool a job needs, what is behind it today; a required tool with nothing behind it does not stop the save but does stop go-live. A save with no jobs still works and is recorded as having no declared jobs. The rules and worked examples: ' + BUILDER_NOTE.read.join(' and ') + '.',
+    description: 'Save the Board\'s result for one teammate (agent_id) or the whole team (no agent_id) back to Pip. status is one of building, sandbox, design_only, needs_you, failed, paused. result is the Board\'s JSON for that teammate or team. For one teammate, a save with a result replaces the stored one; a save with no result keeps what is stored and only changes the status, the note and the jobs. For one teammate, also send its jobs: contract ("teammate/1") and jobs, beside result. ' + BUILDER_NOTE.rule + ' Jobs that fail the contract check are refused with every problem in plain words, and nothing is saved. The answer lists, for each tool a job needs, what is behind it today; a required tool with nothing behind it does not stop the save but does stop go-live. A save with no jobs still works and is recorded as having no declared jobs. The rules and worked examples: ' + BUILDER_NOTE.read.join(' and ') + '.',
     inputSchema: { type: 'object', properties: {
       order_id: { type: 'string' }, agent_id: { type: 'string' }, status: { type: 'string', enum: ['building', 'sandbox', 'design_only', 'needs_you', 'failed', 'paused'] }, result: { type: 'object' }, note: { type: 'string' },
       contract: { type: 'string', enum: [BUILDER_NOTE.contract], description: 'The teammate contract these jobs are written to. Send it with jobs.' },
@@ -267,7 +267,9 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
     }, required: ['order_id'], additionalProperties: false },
     async run(a) {
       const id = uuid(a?.order_id); if (!id) throw new Error('order_id must be an order id');
-      const result = a?.result && typeof a.result === 'object' ? a.result : {};
+      // A save may leave result out: to add jobs, or to change only the status or the note. What is stored is then kept.
+      const hasResult = !!a?.result && typeof a.result === 'object';
+      const result = hasResult ? a.result : {};
       if (JSON.stringify(result).length + JSON.stringify(a?.jobs ?? null).length > 900_000) throw new Error('result too large');
       const sent = { contract: a?.contract, jobs: a?.jobs };
       if (!a?.agent_id) {
@@ -283,9 +285,12 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
       const catalog = declares({ ...(spec.spec ?? {}), ...(sent.contract !== undefined ? { contract: sent.contract } : {}), ...(sent.jobs !== undefined ? { jobs: sent.jobs } : {}) }) ? await loadCatalog(rows) : NO_CATALOG;
       const build = saveBuild(spec.spec, sent, { ready: STATUS_MAP[st] === 'sandbox', at: now() }, catalog);
       if (!build.ok) throw new Refused([build.say, ...build.errors.map((e) => `- ${e}`)].join('\n'));
+      const stored = spec.spec?.board && typeof spec.spec.board === 'object' && !Array.isArray(spec.spec.board) ? spec.spec.board : {};
       await patch('skill_specs', `id=eq.${spec.id}`, {
         status: STATUS_MAP[st] ?? 'testing', forge_stage: `board:${st}`, updated_at: now(),
-        spec: { ...build.spec, board: { ...result, status: st, saved_at: now(), note: cut(a.note, 500) || undefined } },
+        // With a result, the Board's stored work is replaced by it. Without one it is kept, and only the status, the
+        // time and the note change. (The tests and quote columns below are only written from a result.)
+        spec: { ...build.spec, board: { ...(hasResult ? result : stored), status: st, saved_at: now(), note: cut(a.note, 500) || undefined } },
         ...(result.tests ? { tests: result.tests } : {}), ...(result.integration ? { quote: { integration: result.integration } } : {}),
       });
       if (['sandbox', 'design_only', 'needs_you'].includes(st)) {
@@ -301,7 +306,7 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
       if (st === 'sandbox') later(fileLibrary(id, agent));
       const c = build.check;
       return {
-        ok: true, saved: agent, status: st, ...(st === 'sandbox' ? { library: 'filing a template in the background' } : {}),
+        ok: true, saved: agent, status: st, board: hasResult ? 'replaced with this result' : 'kept as stored', ...(st === 'sandbox' ? { library: 'filing a template in the background' } : {}),
         jobs: c.declared ? (c.ok ? 'declared and checked' : 'declared, but they no longer pass the contract check') : 'none declared',
         // What is behind each tool a job needs, today. Gaps never stop a save; a required one stops go-live.
         can_run: c.declared ? (c.ok ? c.lines : c.errors) : [OLDER_SHAPE],
