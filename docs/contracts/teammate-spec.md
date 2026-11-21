@@ -60,9 +60,13 @@ Both of today's shapes keep their own keys untouched. A Board build keeps `board
 
 Because jobs are part of the spec, they change only the way a spec changes: through the Forge and Brayden's go-live (handbook rule 9). No teammate, owner message or tool result can edit them.
 
-**A teammate with no `contract` key keeps what it had, with one exception.** The code gives it one implied job called `conversation`: it answers messages on any channel and may do what `pip-turn` allowed before the contract and nothing wider: Pip's own actions it was designed with, busy times and a hold on the calendar, an email to the customer, and a row on the Pip sheet.
+**A teammate with no `contract` key keeps what it had, with two exceptions.** The code gives it one implied job called `conversation`: it answers messages on any channel and may do what `pip-turn` allowed before the contract and nothing wider: Pip's own actions it was designed with, busy times and a hold on the calendar, an email to the customer, and a row on the Pip sheet.
 
-The exception is a tool the owner connected on their own, beyond the setup steps. Older teammates used to get "add one new record" there automatically. In a tool billed per use that can cost money or reach people (in Twilio, "create message" sends a text and "create incoming phone number" buys a number), so it is gone. The implied job gets **nothing** in such a tool. There is no wildcard anywhere in the contract: an extra tool is opened only by a job that lists it by name, as `kit:<name>` (see "Tools" below).
+The first exception is the calendar hold. **Asking the owner first means no direct add.** A teammate designed to ask the owner to confirm a booking (`request_booking`) gets busy times on the calendar and no permission to add an appointment. Its instructions already tell it to send every booking to the owner; now the permission says the same, so the hold tool is not offered to it and a call to it is refused. Its Portal card lists "Add an appointment to your calendar on its own" under cannot. An older teammate with the calendar and without `request_booking` still holds the slot itself, as before.
+
+"It answers messages on any channel" describes the code, not what is switched on. A message only arrives by text, phone or email once that channel is set up for the business, so the Portal card for an older teammate claims website chat and says the other three wait on being switched on.
+
+The second exception is a tool the owner connected on their own, beyond the setup steps. Older teammates used to get "add one new record" there automatically. In a tool billed per use that can cost money or reach people (in Twilio, "create message" sends a text and "create incoming phone number" buys a number), so it is gone. The implied job gets **nothing** in such a tool. There is no wildcard anywhere in the contract: an extra tool is opened only by a job that lists it by name, as `kit:<name>` (see "Tools" below).
 
 **A spec that has `contract` or `jobs` but fails the check has no jobs at all.** It does not fall back to the old behaviour. A broken build must not run.
 

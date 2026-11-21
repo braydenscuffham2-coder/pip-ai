@@ -9,7 +9,8 @@
 //   - every turn is answered by one job, found by code from the teammate's spec (../_shared/teammate-spec.ts). The
 //     model is offered only the tools that job's permissions cover, for connections that are active, and the same
 //     permission check is asked again before anything is run. A teammate built before the contract gets the implied
-//     job: Pip's own actions it was designed with, the calendar, an email to the customer and the Pip sheet.
+//     job: Pip's own actions it was designed with, the calendar, an email to the customer and the Pip sheet. If it
+//     was designed to ask the owner to confirm a booking, the calendar is busy times only: it cannot add a hold itself.
 //   - a write may only name an email address the customer typed in this conversation
 //   - rows go only to the one sheet Pip made for this business
 //   - the calendar is read as busy times only: titles, guests and notes never reach the model or the customer

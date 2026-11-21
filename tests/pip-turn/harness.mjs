@@ -8,7 +8,8 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 
 const SRC = process.env.PIP_TURN_SRC || fileURLToPath(new URL("../../supabase/functions/pip-turn/index.ts", import.meta.url));
-const SHARED = fileURLToPath(new URL("../../supabase/functions/_shared", import.meta.url));
+// PIP_SHARED_DIR: prove.mjs points this at a copy of _shared with one rule taken out.
+const SHARED = process.env.PIP_SHARED_DIR || fileURLToPath(new URL("../../supabase/functions/_shared", import.meta.url));
 const IMPORT_LINE = 'import { createClient } from "jsr:@supabase/supabase-js@2";';
 // Made-up values. They only have to match between the fake caller and the fake function.
 export const SERVICE = "test-service-role";
@@ -139,6 +140,8 @@ let dir = null, loads = 0;
  * opts.tables: starting rows. opts.model: a list of answers (or functions of the request) the fake model gives in order.
  * opts.composio(path, body, method): returns { status, json } for a Composio call.
  * opts.rpc: { name: (args, world) => data } stands in for database functions the fake does not know.
+ * opts.breaks: [[line, replacement], ...] takes lines out of this one copy of pip-turn on purpose, for a test that
+ *   checks a second line of defence still holds when the first is gone. A line that is no longer there is an error.
  */
 export async function boot(opts = {}) {
   const world = {
@@ -180,7 +183,12 @@ export async function boot(opts = {}) {
     if (existsSync(SHARED)) symlinkSync(SHARED, join(root, "_shared"), "dir");
   }
   const file = join(dir, `index.${++loads}.ts`);
-  writeFileSync(file, src.replace(IMPORT_LINE, "const { createClient } = globalThis.__pipTurnMock;"));
+  let code = src.replace(IMPORT_LINE, "const { createClient } = globalThis.__pipTurnMock;");
+  for (const [from, to] of opts.breaks || []) {
+    if (!code.includes(from)) throw new Error("STALE: pip-turn no longer has this line, so the test that removes it proves nothing. Update the test.\n  " + from);
+    code = code.replace(from, to);
+  }
+  writeFileSync(file, code);
   const quiet = console.error; console.error = () => {};
   await import(pathToFileURL(file).href);
   if (!handler) throw new Error("pip-turn did not call Deno.serve");

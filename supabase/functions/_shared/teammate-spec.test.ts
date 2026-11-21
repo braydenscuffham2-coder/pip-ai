@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
-import { allows, CEILING, checkSpec, jobForMessage, jobsOf, MONEY_RECORDS, notYet, plainWords, runsPerDay } from "./teammate-spec.ts";
+import { allows, CEILING, checkSpec, jobForMessage, jobsOf, MONEY_RECORDS, NO_DIRECT_BOOKING, notYet, plainWords, runsPerDay } from "./teammate-spec.ts";
 import * as contract from "./teammate-spec.ts";
 
 const DIR = new URL("../../../docs/contracts/examples/", import.meta.url);
@@ -164,7 +164,8 @@ test("teammates built before the contract keep what pip-turn gave them, and noth
   const no = (tool: string, records: string, level: string) => assert.equal(allows(job, { tool, records, level }).ok, false, `${tool}/${records}/${level}`);
   yes("pip", "lead", "add"); yes("pip", "booking_request", "add"); yes("pip", "owner_alert", "add"); yes("pip", "draft", "add");
   no("pip", "handoff", "add"); // Hallie was not designed with handoff
-  yes("calendar", "busy_time", "read"); yes("calendar", "appointment", "add"); no("calendar", "appointment", "read"); no("calendar", "appointment", "update");
+  // Hallie asks the owner to confirm a booking (request_booking), so she sees busy times and may not add to the calendar herself.
+  yes("calendar", "busy_time", "read"); no("calendar", "appointment", "add"); no("calendar", "appointment", "read"); no("calendar", "appointment", "update");
   yes("email", "message", "add"); yes("sheets", "row", "add"); no("sheets", "row", "read");
   no("kit:airtable", "row", "add"); no("kit:airtable", "row", "read"); no("kit:airtable", "row", "update"); no("kit:airtable", "row", "delete"); // extra tools are off by default
   no("kit:stripe", "payment", "add"); no("kit:quickbooks", "invoice", "add");
@@ -391,4 +392,52 @@ test("what stays shut until its check is built: updates, narrowed reads, calls, 
       assert.equal(notYet({ purpose }, row("message", "add", guard), turn), !(turn && purpose === "reply" && guard === "email"), `message, ${purpose}, ${guard}, turn ${turn}`);
     }
   }
+});
+
+test("asking the owner first means no direct add: an older teammate with request_booking gets busy times only", () => {
+  const board = (uses: J) => jobsOf(BOARD, { uses }).jobs[0];
+  const classic = (tools: J) => jobsOf({ ...CLASSIC, agent: { ...CLASSIC.agent, tools } }).jobs[0];
+  const add = (job: J) => allows(job, { tool: "calendar", records: "appointment", level: "add" }).ok;
+  const see = (job: J) => allows(job, { tool: "calendar", records: "busy_time", level: "read" }).ok;
+  for (const make of [board, classic]) {
+    const asks = make(["calendar", "request_booking", "capture_lead", "email"]), holds = make(["calendar", "capture_lead", "email"]);
+    assert.equal(add(asks), false, "with request_booking: no appointment add");
+    assert.equal(see(asks), true, "busy times are still read");
+    assert.equal(allows(asks, { tool: "pip", records: "booking_request", level: "add" }).ok, true, "and the booking still goes to the owner");
+    assert.ok(!asks.tools.some((g: J) => g.records === "appointment"), "the permission is not on the job at all");
+    assert.equal(add(holds), true, "without request_booking: as before");
+    assert.equal(see(holds), true);
+    // Nothing else moves with it.
+    const rest = (job: J) => job.tools.filter((g: J) => !(g.tool === "calendar" && g.records === "appointment") && !(g.tool === "pip" && g.records === "booking_request"));
+    assert.deepEqual(rest(asks), rest(holds));
+    // No calendar at all stays no calendar at all.
+    assert.equal(see(make(["request_booking"])), false); assert.equal(add(make(["request_booking"])), false);
+    // Only the exact name counts, the same test that decides whether request_booking itself is offered.
+    for (const near of ["Request_Booking", "request_booking ", "request-booking", ["request_booking"], null]) {
+      const job = make(["calendar", near]);
+      assert.equal(add(job), true, JSON.stringify(near));
+      assert.equal(allows(job, { tool: "pip", records: "booking_request", level: "add" }).ok, false, `${JSON.stringify(near)} does not give request_booking either`);
+    }
+  }
+  // A teammate with a declared job list is not touched by this: what its job lists is what it gets.
+  const declared = (tools: J) => checkSpec(spec((j) => { j.tools = tools; })).jobs[0];
+  assert.equal(add(declared([{ tool: "pip", records: "booking_request", can: ["add"] }, { tool: "calendar", records: "appointment", can: ["add"] }])), true);
+  assert.equal(add(declared([{ tool: "pip", records: "booking_request", can: ["add"] }, { tool: "calendar", records: "busy_time", can: ["read"] }])), false);
+});
+
+test("plain words: a job that sends bookings to the owner and cannot add to the calendar says so under cannot", () => {
+  const words = (uses: string[]) => plainWords(jobsOf(BOARD, { uses }).jobs[0]);
+  const asks = words(["calendar", "request_booking"]);
+  assert.ok(!asks.can.some((s) => /appointment/i.test(s)), asks.can.join(" | "));
+  assert.ok(asks.can.includes("See busy times in your calendar."));
+  assert.ok(asks.can.includes("Ask you to confirm a booking. It does not confirm one itself."));
+  assert.ok(asks.cannot.includes(NO_DIRECT_BOOKING));
+  const holds = words(["calendar"]);
+  assert.ok(holds.can.includes("Add new appointments in your calendar."));
+  assert.ok(!holds.cannot.includes(NO_DIRECT_BOOKING));
+  // A declared job that lists both: it can add, so the line must not appear.
+  const both = plainWords(checkSpec(spec((j) => { j.tools = [{ tool: "pip", records: "booking_request", can: ["add"] }, { tool: "calendar", records: "appointment", can: ["add"] }]; })).jobs[0]);
+  assert.ok(both.can.includes("Add new appointments in your calendar.") && !both.cannot.includes(NO_DIRECT_BOOKING));
+  // No sentence under "can" and "cannot" may contradict: never both "add appointments" and "cannot add an appointment".
+  for (const w of [asks, holds, both]) assert.ok(!(w.can.some((s) => /Add new appointments in your calendar/.test(s)) && w.cannot.includes(NO_DIRECT_BOOKING)));
 });

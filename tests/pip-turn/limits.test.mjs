@@ -359,6 +359,65 @@ test("the email-address limit also covers extra connected tools", async () => {
   assert.equal(t.executed().length, 0);
 });
 
+// ---------- asking the owner first means no direct add ----------
+// An older teammate (no job list) that was designed to ask the owner to confirm a booking is told never to put one on
+// the calendar itself. The permission says the same, so it is not left to the prompt: it sees busy times and that is all.
+const HOLD = "GOOGLECALENDAR_CREATE_EVENT";
+const withHold = (tables = baseTables()) => {
+  tables.tool_catalog.push({ slug: HOLD, block: "calendar", toolkit: "googlecalendar", access: "write", label: "added a calendar hold", enabled: true, record: "appointment", level: "add",
+    hide: ["attendees"], fixed: { calendar_id: "primary" }, schema_at: new Date().toISOString(),
+    schema: { description: "Create an event.", input: { type: "object", properties: { summary: { type: "string" }, start_datetime: { type: "string" }, attendees: { type: "array" }, calendar_id: { type: "string" } }, required: ["start_datetime", "calendar_id"] } } });
+  return tables;
+};
+const hold = () => use(HOLD, { summary: "Table for Sam", start_datetime: "2026-11-21T19:00:00" });
+
+test("an older teammate that asks the owner to confirm a booking is not given the tool that adds to the calendar, and cannot run it", async () => {
+  // The base teammate is Hallie-shaped: it uses calendar and request_booking.
+  const t = await boot({ tables: withHold(), composio: () => ok({ items: [] }), model: [acts(hold(), use("request_booking", { when: "Saturday 7pm" })), says("I have asked the owner to confirm.")] });
+  const r = await t.turn("Book me Saturday at 7pm");
+  assert.ok(!offeredTo(t).includes(HOLD), "the hold is not offered");
+  assert.ok(offeredTo(t).includes("GOOGLECALENDAR_EVENTS_LIST") && offeredTo(t).includes("request_booking"), "busy times and the request to the owner still are");
+  assert.deepEqual(r.json.actions, [{ tool: "request_booking", status: "waiting_for_owner" }]);
+  assert.equal(t.executed().length, 0, "nothing reached the calendar");
+  assert.equal(t.toolResults()[0].is_error, true);
+  assert.equal(t.inserts("notifications")[0].kind, "request_booking");
+});
+
+test("an older teammate that does not ask the owner first keeps the calendar hold it always had", async () => {
+  const tables = withHold();
+  tables.agent_manifests[0].manifest.uses = tables.agent_manifests[0].manifest.uses.filter((u) => u !== "request_booking");
+  const t = await boot({ tables, composio: () => ok({ id: "evt_1" }), model: [acts(hold()), says("I am an AI assistant. You are on the calendar.")] });
+  const r = await t.turn("Book me Saturday at 7pm");
+  assert.ok(offeredTo(t).includes(HOLD) && !offeredTo(t).includes("request_booking"));
+  assert.deepEqual(r.json.actions, [{ tool: HOLD, status: "done" }]);
+  assert.deepEqual(t.executed()[0].body.arguments, { summary: "Table for Sam", start_datetime: "2026-11-21T19:00:00", calendar_id: "primary" });
+});
+
+test("a teammate with jobs that lists adding appointments is not affected by the older teammates' rule", async () => {
+  // Its job asks the owner about some bookings and holds others itself. What the job lists is what it gets.
+  const tables = withJob(withHold(), [{ tool: "pip", records: "booking_request", can: ["add"] }, { tool: "calendar", records: "busy_time", can: ["read"] }, { tool: "calendar", records: "appointment", can: ["add"] }]);
+  const t = await boot({ tables, composio: () => ok({ id: "evt_1" }), model: [acts(hold()), says("I am an AI assistant. You are on the calendar.")] });
+  const r = await t.turn("Book me Saturday at 7pm");
+  assert.deepEqual(offeredTo(t).sort(), ["GOOGLECALENDAR_EVENTS_LIST", HOLD, "request_booking"].sort());
+  assert.deepEqual(r.json.actions, [{ tool: HOLD, status: "done" }]);
+  assert.equal(t.executed().length, 1);
+});
+
+test("if the hold were ever offered to that older teammate by mistake, the check before running it still refuses", async () => {
+  // Two lines are taken out of this copy of pip-turn so the tool is wrongly shown to the model. The permission check
+  // that runs before every action is left in, and it must say no.
+  const t = await boot({ tables: withHold(), composio: () => ok({ id: "evt_1" }), model: [acts(hold()), says("A team member will confirm.")], breaks: [
+    ["const g = grantFor(job, names, row);\n      if (!g || notYet(g, row, true)) continue;", 'const g = grantFor(job, names, row) ?? ({ tool: row.block, records: row.record, can: [row.level], required: false, purpose: "reply" } as Grant);\n      if (notYet(g, row, true)) continue;'],
+    ["meta.products).ok ? meta : null;", "meta.products).ok || true ? meta : null;"],
+  ] });
+  const r = await t.turn("Book me Saturday at 7pm");
+  assert.ok(offeredTo(t).includes(HOLD), "this copy is broken on purpose: the hold is shown to the model");
+  assert.deepEqual(r.json.actions, [{ tool: HOLD, status: "blocked" }]);
+  assert.match(t.toolResults()[0].content, /^Not allowed: This job may not add appointment in calendar\./);
+  assert.equal(t.executed().length, 0, "and nothing reached the calendar");
+  assert.equal(t.rpcs("portal_log").filter((x) => /may not do/.test(x.args.p_summary)).length, 1, "the refusal is in the activity log");
+});
+
 // ---------- a teammate with jobs: only what the job that answers this channel lists ----------
 /** A setup step for the customer list, connected to a product, with two reviewed tools: see contacts, and add one. */
 const crm = (tables, toolkit = "hubspot") => {

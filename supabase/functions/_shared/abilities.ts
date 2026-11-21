@@ -6,7 +6,11 @@
 //   - "can" lists only what a job is allowed to do AND what has a reviewed tool behind it right now
 //   - "notYet" lists what the job was designed to do that Pip cannot do yet, with the reason
 //   - "cannot" is what the runtime refuses for this job whatever anyone asks
-// A teammate built before the contract gets the one job the runtime gives it ("conversation"), described the same way.
+// A teammate built before the contract gets the one job the runtime gives it ("conversation"), described the same way,
+// with one difference in what starts it. That job answers on any channel a message arrives on, but a message only
+// arrives by text, phone or email once that channel has been set up for the business, and nothing handed to this file
+// says whether it has. So the card claims website chat, which every teammate has, and says plainly that the others
+// wait on being switched on. It never lists a channel the code may not be able to deliver.
 import { type Job, jobsOf, plainWords } from "./teammate-spec.ts";
 import { canRun, type Catalog } from "./forge-check.ts";
 
@@ -33,6 +37,10 @@ export type Abilities = {
 };
 
 const TAIL = / This job cannot run without it, so it blocks go-live\.$| The job carries on without it\.$/;
+/** The one channel every teammate that answers customers has today. */
+const ALWAYS_ON = "web_chat";
+/** Said for a teammate built before job lists, in place of naming channels that may not be switched on. True either way. */
+export const OTHER_CHANNELS = "By text, the phone or email: only once Pip has switched that on for your business.";
 
 export function abilitiesOf(spec: unknown, manifest: unknown, brain: unknown, catalog: Catalog): Abilities {
   const found = jobsOf(spec, manifest, brain);
@@ -48,7 +56,10 @@ export function abilitiesOf(spec: unknown, manifest: unknown, brain: unknown, ca
       const can = g.can.filter((level) => !(line?.missing ?? []).includes(level));
       return can.length ? [{ ...g, can }] : [];
     });
-    const words = plainWords({ ...job, tools } as Job);
+    // An older teammate: name only the channel it certainly has, then say the rest wait on being switched on.
+    const older = job.legacy === true && job.triggers.some((t) => t.type === "message" && t.channels.some((c) => c !== ALWAYS_ON));
+    const words = plainWords({ ...job, tools, ...(older ? { triggers: [{ type: "message", channels: [ALWAYS_ON] }] } : {}) } as Job);
+    if (older) words.starts.push(OTHER_CHANNELS);
     const notYet = mine.filter((l) => l.missing.length).map((l) => {
       const say = l.say.startsWith(`${job.name}: `) ? l.say.slice(job.name.length + 2) : l.say;
       return say.replace(TAIL, "");
