@@ -26,13 +26,14 @@ Covered today, each matching a line in `docs/handbook.md`:
 - a tool the teammate was not given cannot be run
 - a teammate with jobs gets only what the job that answers the channel lists: no tool, level or field outside it; a broken job list or a channel no job lists gets the holding reply
 - extra connected tools are off by default: nothing for an older teammate, and for a teammate with jobs only what a `kit:` permission and a reviewed catalog row both say
+- an older teammate that asks the owner to confirm a booking cannot add to the calendar itself; one that does not ask first still can
 - texts, calls, updates and emails that are not a reply stay shut until their checks exist
 - a money product behind a building block is refused, on a turn and in a job run
 - lost access pauses one job; the rest keep working
 - the first reply and every outgoing email say it is an AI
 - no key appears in anything the model sees or the caller gets back
 
-`prove.mjs` takes each limit out of a temporary copy of pip-turn, one at a time, and checks the tests fail. If you add a limit, add a test and a line in `prove.mjs`. Where two separate things each hold a limit, the entry lists both edits, because taking out one alone changes nothing.
+`prove.mjs` takes each limit out of a temporary copy of pip-turn, one at a time, and checks the tests fail. If you add a limit, add a test and a line in `prove.mjs`. Where two separate things each hold a limit, the entry lists both edits, because taking out one alone changes nothing. A limit that is decided in the shared contract code (`supabase/functions/_shared/`) is taken out of a copy of that folder: give the edit a third part naming the file.
 
 ## What these tests do not show
 

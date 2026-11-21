@@ -2,20 +2,25 @@
 // Proves the suite is not asleep. For each hard limit, this makes a copy of pip-turn with that one limit taken out
 // and checks that the tests then FAIL. If a broken copy passes, the tests have a hole and this script exits 1.
 // Nothing in the repo is changed; the copies live in a temp folder.
-import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
+import { cpSync, readFileSync, writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const src = readFileSync(fileURLToPath(new URL("../../supabase/functions/pip-turn/index.ts", import.meta.url)), "utf8");
+// Some limits are decided in the shared contract code that pip-turn imports. An edit with a third part names the file
+// under supabase/functions/_shared/ it is made in; the tests then run against a copy of that folder.
+const sharedDir = fileURLToPath(new URL("../../supabase/functions/_shared", import.meta.url));
+const textOf = (file) => (file ? readFileSync(join(sharedDir, file), "utf8") : src);
 const suite = fileURLToPath(new URL("./limits.test.mjs", import.meta.url));
 
 // The one permission check on a turn, and the same line with the check taken out.
 const ASK = "const v = allows(job!, ask, PASSED);", NO_ASK = "const v: Verdict = { ok: true };";
 
 // Each entry: what is broken, then either one line and its replacement, or a list of [line, replacement] pairs when
-// two separate things each hold the limit and both have to go before it is really gone.
+// two separate things each hold the limit and both have to go before it is really gone. A pair may name a third
+// part, a file under _shared/, when the line to take out lives in the shared contract code and not in pip-turn.
 const BREAKS = [
   ["anyone may call", "if (!who) return", "if (false) return"],
   ["the website may use /diag", 'path === "/diag" && who !== "site"', 'path === "/diag"'],
@@ -65,6 +70,14 @@ const BREAKS = [
     ["if (!g || notYet(g, row, true) || tools.length >= 24) continue;", "if (!g || tools.length >= 24) continue;"]]],
   ["a row that adds, filed as a read, skips the email-address limit", ' || meta.row.level !== "read";', ";"],
   ["a money product behind a building block is opened on a turn", "return v.ok ? allowsProduct(job!, ask, products, PASSED) : v;", "return v;"],
+  // ---- asking the owner first means no direct add (the default permissions of a teammate with no job list) ----
+  ["an older teammate that asks the owner to confirm a booking can add to the calendar itself", [['if (has("calendar") && !has("request_booking")) tools.push(', 'if (has("calendar")) tools.push(', "teammate-spec.ts"]]],
+  ["an older teammate with no request_booking loses the calendar hold it had", [['if (has("calendar") && !has("request_booking")) tools.push(', 'if (false) tools.push(', "teammate-spec.ts"]]],
+  // The tool is wrongly offered (two edits) and the check before running it is gone too: only then would the hold be made.
+  ["a calendar hold the job does not allow is run when asked for", [
+    ["const g = grantFor(job, names, row);\n      if (!g || notYet(g, row, true)) continue;", 'const g = grantFor(job, names, row) ?? ({ tool: row.block, records: row.record, can: [row.level], required: false, purpose: "reply" } as Grant);\n      if (notYet(g, row, true)) continue;'],
+    ["meta.products).ok ? meta : null;", "meta.products).ok || true ? meta : null;"],
+    ['if (!v.ok) {\n      actions.push({ tool: name, status: "blocked" });', 'if (false) {\n      actions.push({ tool: name, status: "blocked" });']]],
   ["a money product behind a building block is opened in a job that started on its own", "[row.toolkit, conn.choice], PASSED).ok) { shut.add(kind); continue; }", "[], PASSED).ok) { shut.add(kind); continue; }"],
 ];
 
@@ -72,10 +85,16 @@ const dir = mkdtempSync(join(tmpdir(), "pip-turn-prove-"));
 let holes = 0;
 for (const [what, from, to] of BREAKS) {
   const edits = Array.isArray(from) ? from : [[from, to]];
-  if (edits.some(([a]) => !src.includes(a))) { console.log(`STALE  ${what}: that line is no longer in pip-turn. Update tests/pip-turn/prove.mjs.`); holes++; continue; }
-  const file = join(dir, `broken-${BREAKS.findIndex((b) => b[0] === what)}.ts`);
-  writeFileSync(file, edits.reduce((code, [a, b]) => code.replace(a, b), src));
-  const r = spawnSync(process.execPath, ["--test", suite], { env: { ...process.env, PIP_TURN_SRC: file }, encoding: "utf8" });
+  if (edits.some(([a, , where]) => !textOf(where).includes(a))) { console.log(`STALE  ${what}: that line is no longer in ${edits.find(([a, , where]) => !textOf(where).includes(a))[2] ?? "pip-turn"}. Update tests/pip-turn/prove.mjs.`); holes++; continue; }
+  const n = BREAKS.findIndex((b) => b[0] === what), file = join(dir, `broken-${n}.ts`), env = { ...process.env, PIP_TURN_SRC: file };
+  writeFileSync(file, edits.filter(([, , where]) => !where).reduce((code, [a, b]) => code.replace(a, b), src));
+  const sharedFiles = [...new Set(edits.map(([, , where]) => where).filter(Boolean))];
+  if (sharedFiles.length) {
+    env.PIP_SHARED_DIR = join(dir, `shared-${n}`);
+    cpSync(sharedDir, env.PIP_SHARED_DIR, { recursive: true });
+    for (const f of sharedFiles) writeFileSync(join(env.PIP_SHARED_DIR, f), edits.filter(([, , where]) => where === f).reduce((code, [a, b]) => code.replace(a, b), textOf(f)));
+  }
+  const r = spawnSync(process.execPath, ["--test", suite], { env, encoding: "utf8" });
   if (r.status === 0) { console.log(`HOLE   ${what}: the tests still passed`); holes++; } else console.log(`caught ${what}`);
 }
 console.log(holes ? `\n${holes} problem(s). The suite would miss these.` : `\nAll ${BREAKS.length} planted breaks were caught.`);

@@ -3,9 +3,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { abilitiesOf } from "./abilities.ts";
+import { abilitiesOf, OTHER_CHANNELS } from "./abilities.ts";
 import { canRun, type Catalog } from "./forge-check.ts";
-import { checkSpec } from "./teammate-spec.ts";
+import { CHANNELS, checkSpec, NO_DIRECT_BOOKING } from "./teammate-spec.ts";
 
 const example = (name: string) => JSON.parse(readFileSync(fileURLToPath(new URL(`../../../docs/contracts/examples/${name}.json`, import.meta.url)), "utf8"));
 // The live catalog on November 19, 2026: calendar (see busy times, add), email (send), the Pip sheet (add a row).
@@ -76,4 +76,67 @@ test("a broken job list is shown as doing nothing, never as the older behaviour"
   const a = abilitiesOf({ contract: "teammate/1", jobs: [{ id: "x" }] }, OLDER.man, {}, LIVE);
   assert.deepEqual({ declared: a.declared, ok: a.ok, jobs: a.jobs }, { declared: true, ok: false, jobs: [] });
   assert.match(a.notes[0], /does nothing until Pip fixes it/);
+});
+
+// ---------- asking the owner first means no direct add ----------
+const HOLDS = "Add new appointments in your calendar.", ASKS = "Ask you to confirm a booking. It does not confirm one itself.";
+const older = (uses: string[]) => abilitiesOf(OLDER.spec, { manifest: { teammate: "Hallie", uses } }, {}, LIVE).jobs[0];
+
+test("an older teammate that asks you to confirm a booking is not said to add appointments; the card says it cannot", () => {
+  const j = older(OLDER.man.manifest.uses);
+  assert.ok(!j.can.includes(HOLDS), j.can.join(" | "));
+  assert.ok(!j.can.some((l) => /appointment/i.test(l)), "nothing under 'can' mentions appointments");
+  assert.ok(j.can.includes("See busy times in your calendar."));
+  assert.ok(j.can.includes(ASKS), "it still says it asks you to confirm a booking");
+  assert.ok(j.cannot.includes(NO_DIRECT_BOOKING));
+  assert.deepEqual(j.notYet, [], "this is not a gap waiting on Pip; it is how the teammate is meant to work");
+});
+
+test("an older teammate that does not ask you first is still said to add appointments", () => {
+  const j = older(["notify_owner", "capture_lead", "calendar", "email"]);
+  assert.ok(j.can.includes(HOLDS) && j.can.includes("See busy times in your calendar."));
+  assert.ok(!j.can.includes(ASKS) && !j.cannot.includes(NO_DIRECT_BOOKING));
+  // And when nothing is behind the calendar's add, it is not claimed either way.
+  const none = abilitiesOf(OLDER.spec, { manifest: { uses: ["calendar"] } }, {}, { ...LIVE, tools: LIVE.tools.filter((t) => t.record !== "appointment") }).jobs[0];
+  assert.ok(!none.can.includes(HOLDS));
+});
+
+test("a teammate with a job list that includes adding appointments is described as before", () => {
+  const spec = example("front-desk");
+  const chat = spec.jobs.find((j: any) => j.triggers.some((t: any) => t.type === "message"));
+  chat.tools.push({ tool: "calendar", records: "appointment", can: ["add"], required: false });
+  assert.deepEqual(checkSpec(spec).errors, []);
+  const j = abilitiesOf(spec, null, {}, LIVE).jobs.find((x) => x.id === chat.id)!;
+  assert.ok(j.can.includes(HOLDS) && j.can.includes(ASKS), j.can.join(" | "));
+  assert.ok(!j.cannot.includes(NO_DIRECT_BOOKING));
+  // The same job as the example ships it (it asks you, and lists no calendar add) says it cannot.
+  const asIs = abilitiesOf(example("front-desk"), null, {}, LIVE).jobs.find((x) => x.id === chat.id)!;
+  assert.ok(!asIs.can.includes(HOLDS) && asIs.cannot.includes(NO_DIRECT_BOOKING));
+});
+
+// ---------- what starts an older teammate ----------
+test("an older teammate's card claims website chat only, and says the other channels wait on being switched on", () => {
+  for (const uses of [OLDER.man.manifest.uses, ["calendar"], []]) {
+    const j = older(uses);
+    assert.deepEqual(j.starts, ["When a customer reaches out by website chat.", OTHER_CHANNELS]);
+    assert.ok(!/text|phone|email/i.test(j.starts[0]), "the line that says what starts it names no channel that may be off");
+  }
+  // The second line names every channel the first leaves out, and promises none of them.
+  assert.equal(CHANNELS.length, 4, "a channel was added to the contract: say where it stands in OTHER_CHANNELS");
+  for (const word of ["text", "the phone", "email"]) assert.ok(OTHER_CHANNELS.includes(word), word);
+  assert.match(OTHER_CHANNELS, /only once Pip has switched that on/);
+  // An older Skill Spec teammate is described the same way.
+  const classic = abilitiesOf({ name: "Front desk", agent: { persona: "You are the front desk.", tools: ["capture_lead"] } }, null, {}, LIVE).jobs[0];
+  assert.deepEqual(classic.starts, ["When a customer reaches out by website chat.", OTHER_CHANNELS]);
+  // Limits still read as a job that answers customers.
+  assert.ok(older(["calendar"]).pauses.every((l) => !/failed tr/.test(l)));
+});
+
+test("a teammate with a job list is said to start from exactly the channels its job lists", () => {
+  const a = abilitiesOf(example("front-desk"), null, {}, LIVE);
+  const declared = checkSpec(example("front-desk")).jobs;
+  for (const j of a.jobs) {
+    assert.ok(!j.starts.includes(OTHER_CHANNELS), j.id);
+    assert.equal(j.starts.length, declared.find((d) => d.id === j.id)!.triggers.length);
+  }
 });

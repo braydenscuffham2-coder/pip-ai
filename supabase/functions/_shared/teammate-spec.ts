@@ -372,6 +372,10 @@ export function checkSpec(spec: unknown): { ok: boolean; errors: string[]; jobs:
  * "conversation", with what pip-turn already allowed and nothing wider: Pip's own actions it was designed with, busy
  * times and a hold on the calendar, an email to the customer, and a row on the Pip sheet. It gets nothing in a tool
  * the owner connected on their own: such a tool is opened only by a job that lists it by name, as "kit:<name>".
+ *
+ * One of those is narrower than it was. A teammate designed to ask the owner to confirm a booking (request_booking)
+ * may see busy times and may NOT add to the calendar itself. It is told to send every booking to the owner, so the
+ * permission says the same: asking first means no direct add, in code and not only in its instructions.
  */
 export function jobsOf(spec: unknown, manifest?: unknown, brain?: unknown): { jobs: Job[]; legacy: boolean; errors: string[]; notes: string[] } {
   const s = (isObj(spec) ? spec : {}) as J, notes: string[] = [];
@@ -383,7 +387,9 @@ export function jobsOf(spec: unknown, manifest?: unknown, brain?: unknown): { jo
   const has = (k: string) => Array.isArray(uses) && uses.includes(k);
   const tools: Grant[] = [];
   for (const [rec, name] of Object.entries(PIP_RECORDS)) if (has(name)) tools.push({ tool: "pip", records: rec, can: ["add"], required: false });
-  if (has("calendar")) tools.push({ tool: "calendar", records: "busy_time", can: ["read"], required: false }, { tool: "calendar", records: "appointment", can: ["add"], required: false });
+  if (has("calendar")) tools.push({ tool: "calendar", records: "busy_time", can: ["read"], required: false });
+  // Asking the owner first means no direct add: with request_booking, the calendar is read as busy times and nothing more.
+  if (has("calendar") && !has("request_booking")) tools.push({ tool: "calendar", records: "appointment", can: ["add"], required: false });
   if (has("email")) tools.push({ tool: "email", records: "message", can: ["add"], required: false, purpose: "reply" });
   if (has("data_sink") || has("sheets")) tools.push({ tool: "sheets", records: "row", can: ["add"], required: false });
   if (classic && Array.isArray(s.triggers) && s.triggers.some((t: J) => t !== "inbound_message")) notes.push(`It was designed to start from: ${s.triggers.join(", ")}. Nothing starts it that way yet; it needs real jobs from the Forge.`);
@@ -479,6 +485,8 @@ const PIP_WORDS: Record<string, string> = {
   owner_alert: "Alert you when something needs a person.", lead: "Save a lead for you.", booking_request: "Ask you to confirm a booking. It does not confirm one itself.",
   handoff: "Hand a conversation to a person.", draft: "Write a draft for you to approve before anything is sent.",
 };
+/** Said under "cannot" for a job that asks the owner to confirm a booking and may not add to the calendar itself. */
+export const NO_DIRECT_BOOKING = "Add an appointment to your calendar on its own. It sends the booking to you to confirm instead.";
 const CHANNEL_WORDS: Record<string, string> = { web_chat: "website chat", sms: "text", voice: "the phone", email: "email" };
 const DAY_WORDS: Record<string, string> = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
 const list = (a: string[]) => (a.length < 2 ? a.join("") : `${a.slice(0, -1).join(", ")} and ${a[a.length - 1]}`);
@@ -522,6 +530,9 @@ export function plainWords(job: Job, toolNames: Record<string, string> = {}): { 
     if (!g.can.includes("read") && g.records !== "message" && g.records !== "call") cannot.push(`Look at ${what} already in ${place}.`);
     if (!g.can.includes("add") && !g.can.includes("update") && !(READ_ONLY_RECORDS as readonly string[]).includes(g.records)) cannot.push(`Change ${what} in ${place}.`);
   }
+  // A job that sends bookings to the owner and has no permission to add to the calendar: say so in as many words.
+  if (job.tools.some((g) => g.tool === "pip" && g.records === "booking_request") && !job.tools.some((g) => g.tool === "calendar" && g.records === "appointment" && g.can.includes("add")))
+    cannot.push(NO_DIRECT_BOOKING);
   if (!job.tools.some((g) => g.policy)) cannot.push("Move money, place orders, or change prices.");
   cannot.push("Use any tool or any kind of record not listed here.");
   const L = job.limits, limits = [`Each time it runs: at most ${L.per_run.steps} steps and ${L.per_run.actions} changes.`];
