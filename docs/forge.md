@@ -7,7 +7,7 @@ Code: `supabase/functions/pip-forge/` (`index.ts` and the bundled `forge.js`), `
 ## What is in this repo, and what is not
 
 - **The connector's source is now here.** Until November 18 the deployed "Pip Forge" connector was newer than the repo: the agent library and the funding tracker existed only on the live function. `pip-forge-mcp/index.ts` is now the deployed source (version 17, read from Supabase) with the contract check on top. A test (`pip-forge-mcp/tools.test.mjs`) fails if any of its 20 tools disappears.
-- **`pip-shelf` is still behind.** The funding tools call `pip-shelf/funds`. The `pip-shelf` in this repo has no such route, so the deployed one is newer. **Do not deploy `pip-shelf` from `main`** until its deployed source is brought in the same way.
+- **`pip-shelf`'s source is now here too.** `pip-shelf/index.ts` is the deployed function (version 13, read from Supabase on November 18 and unchanged on November 20), which adds the funding tracker to the Shelf's alert. Supabase's tool returned it as text on screen, so it was copied by hand rather than by a program: before the first deploy from `main`, run `supabase functions download pip-shelf` and compare. A test (`pip-shelf/routes.test.mjs`) pins its two routes and who may call them.
 - **The deployed `pip-forge`** matched the repo's `index.ts` on reading, except that it loads `forge.js` from jsDelivr at commit `37cdccf`. That commit is not on `main` (it is on four older branches), but its `forge.js` is the same file as `main`'s.
 - **The Forge Board itself** (the page Brayden builds on, in his Claude plan) is not in this repo. What follows describes only what the Board sends and what Pip stores.
 - **Much of the database side has no migration here.** Its rules below were read from the live catalog on November 18 (definitions only, no rows). The list is at the end of this page.
@@ -97,10 +97,21 @@ The Shelf answers "does Pip own this service". It does not answer "can a teammat
 
 ## The funding tracker
 
-How much money is behind each paid service. The numbers are worked out in `pip-shelf` (`POST pip-shelf/funds`, whose source is not in this repo yet); the connector only asks for them, signed with the project's own service key, and passes them on.
+How much money is behind each paid service. The numbers are worked out in `pip-shelf`; the connector only asks for them and passes them on.
 
-- `shelf_funds` shows one row per provider (balance, burn per day, days left, a status and a link to add funds), or a budget summary, or 30 days of readings. It never returns a key.
-- `funds_set` is for providers with no balance to read (its description names Anthropic, Resend, Google Cloud and Microlink): Brayden records what the billing page shows, or a top-up, and when to be warned. It only accepts a provider that already has a row in `api_funds`.
+`pip-shelf` answers two calls and nothing else, both `POST`: `/notify` and `/funds`. Anything else gets "not found". Two things open them: the token the database sends with its own knocks (`x-pip-alert`, checked by the database function `lead_alert_token_ok`), or the header described below.
+
+- **`/funds`** returns one row per active provider in `api_funds`: balance or credits left, burn per day, days left, a status (`ok`, `low`, `empty`, `unknown`, `error`, `not_set_up`) and a link to add funds. It has three views: `providers`, `budget` (one summary row) and `history` (30 days). Each provider is read with its own key from Supabase secrets: DataForSEO, ElevenLabs, Composio, Twilio and Firecrawl give a live number; Anthropic gives live spend with an admin key, counted down from the balance Brayden last read off the billing page; the rest show that last reading. A reading is reused for one minute, and saved to `api_fund_snaps` at most every 25 minutes. A key value is never in an answer, an email or the database.
+- **`/notify`** is the database's knock (a trigger on new `api_needs` and a 30-minute timer, through `ping_pip_shelf`). It notes which keys exist by name, closes needs that are now covered, emails one digest of what to fund, and emails once a day while any provider is low or empty.
+- In the connector, `shelf_funds` shows these rows and `funds_set` is for providers with no balance to read (its description names Anthropic, Resend, Google Cloud and Microlink): Brayden records what the billing page shows, or a top-up, and when to be warned. It only accepts a provider that already has a row in `api_funds`.
+
+### The `x-pip-internal` header
+
+- **Who sends it:** one place, `shelfFunds` in `pip-forge-mcp`, each time `shelf_funds` or `funds_set` runs. It posts to `pip-shelf/funds` on the same project and puts the project's service key in a header named `x-pip-internal`.
+- **Who checks it:** `pip-shelf`, which compares it with its own copy of the same key. A match opens `/funds` and `/notify`.
+- **Who could see it:** neither function logs headers (there is no logging call in either file). Supabase's own request logs record a fixed short list of headers, and a custom header is not on it (their "Logs field reference" page; not checked against this project's logs). The call stays inside the project, over HTTPS.
+- **Is it a risk:** low today, and worth fixing the next time either file changes. The service key is the one key that can read and change everything, and here it travels as a header whose name no tool treats as secret. One line of header logging added later, on either side or in front of them, would write it to a log. Nobody new learns the key today: the receiver already has it.
+- **A safer design, same two files, no new secret:** send a short-lived signature in place of the key. The sender signs the current time and the route with the key (`HMAC-SHA256`, the way the email pass is already signed in `pip-reader`), the receiver signs the same words and compares, and refuses anything older than a minute. A header that leaks is then useless a minute later and never reveals the key. Ship `pip-shelf` first accepting both forms, then the connector, then drop the old form.
 
 ## The agent library
 
@@ -221,5 +232,6 @@ Read from the live catalog on November 18, 2026.
 - **Tables:** `founder_keys`, `forge_settings`, `build_orders`, `skill_specs`, `build_jobs`, `api_needs`, `api_shelf`, `primitives`, `spend_daily`, `events`, `client_connections`, `leads`, `connection_catalog`. (`tool_catalog` has migrations.)
 - **Recorded, not created:** `agent_library`, `api_funds`, `api_fund_snaps` and the function `agent_library_reused` are written down in `supabase/migrations/20261118_05_record_library_and_funds.sql`. It changes nothing where they exist, and a test compares it with the live catalog. It holds structure only; the rows of `api_funds` are not in the repo.
 - **Functions it calls:** `shelf_refresh_needs()`, `agent_library_reused(lib)`.
+- **Used by `pip-shelf`:** the functions `lead_alert_token_ok(t)`, `shelf_refresh_needs()`, `fund_burn(p_days)` and `fund_history(p_days)`, the tables above, and the database's own caller `ping_pip_shelf()` with its trigger `api_needs_alert`. None has a migration here.
 - **Triggers its writes set off, and what they call:** on `skill_specs`: `skill_specs_golive_guard` (`forge_golive_guard`, which uses `shelf_missing`, `shelf_provider_ready`, `shelf_links`), `skill_specs_portal_gate` (`portal_golive_gate`, which uses `portal_flag`, `portal_health_missing`, `business_connections`, `jurisdiction_rules`, `business_agreements`), `skill_specs_portal_card_gate` (`portal_card_gate`), `skill_specs_portal_manifest` (`portal_on_spec`, `portal_compile_manifest`, `portal_arr`, `portal_sync_connections`, table `agent_manifests`). `skill_specs_portal_billing_gate` and `skill_specs_portal_golive` are in the repo.
 - **Also used by `pip-forge`:** `claim_build_job`, `forge_file_needs`, `forge_order_code` (also the default of `build_orders.code`), `forge_spend_add`, `forge_setting`, `shelf_fund_target`, and the triggers `build_orders_portal_attach` (`portal_on_order`), `api_needs_alert` and `leads_alert`.

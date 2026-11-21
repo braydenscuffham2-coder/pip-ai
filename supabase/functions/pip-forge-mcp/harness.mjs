@@ -49,9 +49,14 @@ function matcher(params) {
     if (["select", "order", "limit", "on_conflict"].includes(col)) continue;
     const i = raw.indexOf("."), op = raw.slice(0, i), val = raw.slice(i + 1);
     const get = (r) => r[col];
+    const bare = (v) => v.replace(/^"|"$/g, "");
     if (op === "eq") tests.push((r) => String(get(r)) === val);
+    else if (raw === "not.is.null") tests.push((r) => (get(r) ?? null) !== null);
+    else if (op === "gte") tests.push((r) => get(r) >= val);
+    else if (op === "gt") tests.push((r) => get(r) > val);
+    else if (op === "lt") tests.push((r) => get(r) < val);
     else if (op === "neq") tests.push((r) => String(get(r)) !== val);
-    else if (op === "in") { const set = val.slice(1, -1).split(","); tests.push((r) => set.includes(String(get(r)))); }
+    else if (op === "in") { const set = val.slice(1, -1).split(",").map(bare); tests.push((r) => set.includes(String(get(r)))); }
     else if (op === "is") tests.push((r) => (val === "null" ? (get(r) ?? null) === null : get(r) === (val === "true")));
     else throw new Error(`fake database: filter ${col}=${raw} is not supported`);
   }
@@ -75,7 +80,14 @@ function install(env) {
   globalThis.fetch = async (url, init = {}) => {
     const u = new URL(String(url)), method = init.method || "GET", body = init.body ? JSON.parse(init.body) : null;
     if (u.hostname === "api.anthropic.com") { world.asked.push(body); const text = world.model?.(body) ?? "{}"; return reply(200, { content: [{ type: "text", text }], usage: { input_tokens: 10, output_tokens: 10 } }); }
-    if (u.hostname !== "test.invalid") { world.outside.push(String(url)); return reply(599, {}); }
+    if (u.hostname !== "test.invalid") {
+      // Anything outside Pip's own project. A test may stand in for a vendor; what it does not answer counts as a stray call.
+      const call = { url: String(url), host: u.hostname, method, headers: { ...(init.headers || {}) }, body };
+      const made = world.vendor?.(call);
+      if (!made) { world.outside.push(String(url)); return reply(599, {}); }
+      world.vendorCalls.push(call);
+      return typeof made.text === "string" ? new Response(made.text, { status: made.status ?? 200, headers: { "content-type": "text/html" } }) : reply(made.status ?? 200, made.json ?? {});
+    }
     if (u.pathname === "/functions/v1/pip-shelf/funds") { // the funding tracker's numbers live in pip-shelf
       world.fundCalls.push({ body, internal: init.headers?.["x-pip-internal"] === world.env.SUPABASE_SERVICE_ROLE_KEY });
       return world.funds ? reply(200, world.funds(body)) : reply(500, { error: "not mocked" });
@@ -96,6 +108,12 @@ function install(env) {
       world.log.push({ op: "patch", table: path, body: clone(body), count: rows.length });
       return reply(200, clone(rows));
     }
+    if (method === "DELETE") {
+      const gone = all.filter(hit);
+      world.tables[path] = all.filter((r) => !gone.includes(r));
+      world.log.push({ op: "delete", table: path, count: gone.length });
+      return reply(200, null);
+    }
     if (method === "POST") {
       const made = (Array.isArray(body) ? body : [body]).map((r) => ({ ...clone(r) }));
       const key = u.searchParams.get("on_conflict"); // "insert, or update the row that has the same value here"
@@ -111,7 +129,7 @@ function install(env) {
 }
 
 function common() {
-  const reset = (t = tables()) => { world.tables = t; world.log = []; world.reads = []; world.rpc = {}; world.model = null; world.asked = []; world.funds = null; world.fundCalls = []; world.pending = []; world.refuse = {}; };
+  const reset = (t = tables()) => { world.tables = t; world.log = []; world.reads = []; world.rpc = {}; world.model = null; world.asked = []; world.funds = null; world.fundCalls = []; world.vendor = null; world.vendorCalls = []; world.outside = []; world.pending = []; world.refuse = {}; };
   reset();
   return {
     world,
@@ -157,4 +175,26 @@ export async function bootForge() {
     return { status: res.status, json: await res.json() };
   };
   return { ...common(), post, console: (action, spec) => post(`/console?token=${FOUNDER}&action=${action}&order=${IDS.order}&spec=${spec}`) };
+}
+
+// Made-up values for pip-shelf. `ALERT` stands for the token the database sends with its own knocks.
+export const SERVICE = "test-service-role";
+export const ALERT = "test-alert-token";
+
+/** Starts pip-shelf (the Shelf's alert and the funding tracker's numbers). `post(path, body, headers)` calls a route. */
+export async function bootShelf(env = {}) {
+  install({ SUPABASE_URL: "https://test.invalid", SUPABASE_SERVICE_ROLE_KEY: SERVICE, LEAD_ALERT_TO: "founder@test.invalid", RESEND_API_KEY: "test-resend-key", ...env });
+  await import("../pip-shelf/index.ts");
+  const handler = globalThis.__handler;
+  if (!handler) throw new Error("pip-shelf did not call Deno.serve");
+  const c = common();
+  const call = async (method, path, body, headers = {}) => {
+    const res = await handler(new Request(`https://test.invalid/functions/v1/pip-shelf${path}`, { method, headers: { "content-type": "application/json", ...headers }, ...(method === "GET" ? {} : { body: JSON.stringify(body ?? {}) }) }));
+    const text = await res.text();
+    return { status: res.status, text, json: text ? JSON.parse(text) : null };
+  };
+  // The database's own token check, as the real function does it: one right answer.
+  const reset = (t) => { c.reset(t); world.rpc.lead_alert_token_ok = (a) => a?.t === ALERT; };
+  reset();
+  return { ...c, reset, call, post: (path, body, headers = { "x-pip-alert": ALERT }) => call("POST", path, body, headers) };
 }
