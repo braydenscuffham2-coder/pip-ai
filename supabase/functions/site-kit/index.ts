@@ -616,17 +616,49 @@ export async function secondChance(d: string, kit: any, html: string, pages: { t
 // opening the same scan again costs nothing. About $0.004 for two Maps searches plus $0.09 for the search counts.
 const DFS_LOGIN = Deno.env.get("DATAFORSEO_LOGIN") ?? "", DFS_PASS = Deno.env.get("DATAFORSEO_PASSWORD") ?? "";
 const DFS = "https://api.dataforseo.com/v3";
-async function dfs(path: string, body: unknown, ms = 25000): Promise<any | null> {
+
+// ---------- daily spending cap ----------
+// Anyone can start a scan without signing in, and a scan buys DataForSEO data. Every DataForSEO order and every new
+// scan takes from a budget for the day (UTC) kept in public.spend_daily. spend_take is atomic, so callers at the same
+// moment can't overshoot it. Once a budget is used, paid calls stop until the next day; when the budget can't be
+// checked, they don't go out at all. Change the limits with the DFS_DAILY_USD and SCANS_DAILY secrets on this function.
+const capOf = (k: string, dflt: number) => { const v = Number(Deno.env.get(k)); return Number.isFinite(v) && v > 0 ? v : dflt; };
+export const CAPS = { dfs_usd: capOf("DFS_DAILY_USD", 3), scans: capOf("SCANS_DAILY", 40) };
+// Takes units from today's budget (a negative amount gives it back). With room, also asks that room be left after it.
+export async function spend(kind: keyof typeof CAPS, units: number, room = 0): Promise<boolean> {
+  if (!SB_URL || !SB_KEY) return false;
+  try {
+    const r = await db("rpc/spend_take", { method: "POST", body: JSON.stringify({ p_kind: kind, p_units: Math.round(units * 10000) / 10000, p_cap: CAPS[kind] - room }) });
+    const v = r.ok ? await r.json().catch(() => null) : (await r.body?.cancel(), null);
+    if (v !== true && units >= 0) console.warn("[site-kit cap]", kind, units, r.ok ? "over today's limit" : `budget check failed ${r.status}`);
+    return v === true;
+  } catch (e) { console.error("[site-kit cap]", String(e).slice(0, 120)); return false; }
+}
+// What one DataForSEO order costs, rounded up a little: a Maps search $0.002 (20 places) to $0.004 (40 to 100), search
+// counts $0.09 a request, reviews $0.0015 for each 10 asked for.
+export const REVIEWS_PER_10 = 0.0015;
+export function dfsCost(path: string, body: any) {
+  if (path.includes("/serp/google/maps/")) return (Number(body?.[0]?.depth) || 100) > 20 ? 0.004 : 0.002;
+  if (path.includes("/search_volume/")) return 0.09;
+  return 0.01;
+}
+export const CAPPED = 49001;
+// Notes that a request was turned away by the cap, so a half-finished answer isn't saved as if it were complete.
+export type Bill = { capped: boolean };
+async function dfs(path: string, body: unknown, ms = 25000, bill?: Bill): Promise<any | null> {
   if (!DFS_LOGIN || !DFS_PASS) return null;
+  const cost = dfsCost(path, body);
+  if (!(await spend("dfs_usd", cost))) { if (bill) bill.capped = true; return { error: CAPPED, message: "daily_limit" }; }
+  const refund = () => spend("dfs_usd", -cost);
   const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
   try {
     const r = await fetch(DFS + path, { method: "POST", signal: ctl.signal, headers: { authorization: "Basic " + btoa(`${DFS_LOGIN}:${DFS_PASS}`), "content-type": "application/json" }, body: JSON.stringify(body) });
     const j: any = await r.json().catch(() => null);
     const task = j?.tasks?.[0];
-    if (!r.ok || !task) { console.error("[site-kit dfs]", path, r.status, String(j?.status_message || "").slice(0, 160)); return null; }
-    if (task.status_code !== 20000) { console.error("[site-kit dfs]", path, task.status_code, String(task.status_message || "").slice(0, 160)); return { error: task.status_code, message: String(task.status_message || "").slice(0, 160) }; }
+    if (!r.ok || !task) { console.error("[site-kit dfs]", path, r.status, String(j?.status_message || "").slice(0, 160)); await refund(); return null; }
+    if (task.status_code !== 20000) { console.error("[site-kit dfs]", path, task.status_code, String(task.status_message || "").slice(0, 160)); await refund(); return { error: task.status_code, message: String(task.status_message || "").slice(0, 160) }; }
     return task;
-  } catch (e) { console.error("[site-kit dfs]", path, String(e).slice(0, 120)); return null; } finally { clearTimeout(t); }
+  } catch (e) { console.error("[site-kit dfs]", path, String(e).slice(0, 120)); await refund(); return null; } finally { clearTimeout(t); }
 }
 
 // What customers actually type for each kind of business (Google's category names are not how people search).
@@ -666,8 +698,8 @@ const hostOf = (s: unknown) => { try { const x = String(s || ""); return new URL
 type Self = { id: string; name: string; d: string; phones: Set<string> };
 
 // One Google Maps search, as a customer around the business would see it (a city-wide map centred on it).
-export async function mapsRank(keyword: string, at: { latitude: number; longitude: number }, self: Self) {
-  const task = await dfs("/serp/google/maps/live/advanced", [{ keyword, location_coordinate: `${at.latitude.toFixed(7)},${at.longitude.toFixed(7)},12z`, language_code: "en", depth: 100, device: "desktop" }]);
+export async function mapsRank(keyword: string, at: { latitude: number; longitude: number }, self: Self, rivals: string[] = [], bill?: Bill) {
+  const task = await dfs("/serp/google/maps/live/advanced", [{ keyword, location_coordinate: `${at.latitude.toFixed(7)},${at.longitude.toFixed(7)},12z`, language_code: "en", depth: 100, device: "desktop" }], 25000, bill);
   if (!task || task.error) return null;
   const items = (task.result?.[0]?.items || []).filter((x: any) => x?.type === "maps_search" && x.title);
   if (items.length < 5) return null;
@@ -684,8 +716,10 @@ export async function mapsRank(keyword: string, at: { latitude: number; longitud
   const stars = (x: any) => ({ rating: Number.isFinite(x?.rating?.value) ? Math.round(x.rating.value * 10) / 10 : null, reviews: Number.isFinite(x?.rating?.votes_count) ? x.rating.votes_count : null });
   return {
     query: keyword, checked: items.length, rank: i >= 0 ? pos(items[i], i) : null, listed: !!self.id,
-    top: items.slice(0, 3).map((x: any, k: number) => ({ pos: pos(x, k), name: clip(x.title, 80), ...stars(x), you: k === i })),
+    // the first 20 places as Maps lists them (the ladder on the market page), and where each competitor Pip picked sits
+    top: items.slice(0, 20).map((x: any, k: number) => ({ pos: pos(x, k), name: clip(x.title, 80), ...stars(x), you: k === i, pid: String(x.place_id || "") || null })),
     you: i >= 0 ? { name: clip(items[i].title, 80), ...stars(items[i]) } : null,
+    rivals: rivals.filter(Boolean).map(pid => { const k = items.findIndex((x: any) => x.place_id === pid); return { pid, pos: k >= 0 ? pos(items[k], k) : null }; }),
   };
 }
 
@@ -940,12 +974,13 @@ export async function improveRivals(d: string, g: any, getKit?: (() => Promise<{
 }
 
 // Monthly Google searches for what the business does, by people in its city (the state when Google has no city figure).
-export async function demandFor(words: string[], cityName: string, st: string) {
+export async function demandFor(words: string[], cityName: string, st: string, bill?: Bill) {
   const state = STATES[st] || "";
   if (!state || !words.length) return null;
   const kws = [...new Set(words.slice(0, 2).flatMap(w => [w, `${w} near me`, `${w} ${cityName.toLowerCase()}`]))].filter(k => k.length <= 80 && k.split(/\s+/).length <= 10);
   for (const t of [{ loc: `${cityName},${state},United States`, scope: "city", area: `${cityName}, ${st}` }, { loc: `${state},United States`, scope: "state", area: state }]) {
-    const task = await dfs("/keywords_data/google_ads/search_volume/live", [{ keywords: kws, location_name: t.loc, language_code: "en" }], 40000);
+    const task = await dfs("/keywords_data/google_ads/search_volume/live", [{ keywords: kws, location_name: t.loc, language_code: "en" }], 40000, bill);
+    if (task?.error === CAPPED) return null;
     if (!task || task.error) continue;
     const rows = (task.result || []).filter((r: any) => r && typeof r.keyword === "string" && Number(r.search_volume) > 0);
     const total = rows.reduce((n: number, r: any) => n + Number(r.search_volume), 0);
@@ -980,7 +1015,7 @@ export function marketHints(u: URL) {
   };
 }
 
-export async function insightFor(d: string, g: any, h: ReturnType<typeof marketHints>) {
+export async function insightFor(d: string, g: any, h: ReturnType<typeof marketHints> & { keepDemand?: unknown }) {
   const ok = g && !g.error;
   const place = ok && g.place && typeof g.place === "object" ? g.place : null;
   const type = String((ok && g.industry?.type) || place?.primaryType || h.kind || "");
@@ -996,11 +1031,13 @@ export async function insightFor(d: string, g: any, h: ReturnType<typeof marketH
   if (!at) at = (await locate(place?.address || city))?.location ?? null;
   const phones = new Set<string>([...((ok && g.phones) || []), place?.phone || ""].map(last10).filter(Boolean));
   const self: Self = { id: String(place?.id || h.place || ""), name: String(place?.name || h.name || ""), d, phones };
+  const rivals = (ok && Array.isArray(g.competitors) ? g.competitors : []).map((c: any) => String(c?.placeId || "")).filter((p: string) => PLACE_RE.test(p));
+  const bill: Bill = { capped: false };
   const [maps, demand] = await Promise.all([
-    at ? Promise.all(words.slice(0, 2).map(w => mapsRank(`${w} ${cityName}`, at!, self))).then(r => r.filter(Boolean)) : Promise.resolve([]),
-    demandFor(words, cityName, st),
+    at ? Promise.all(words.slice(0, 2).map(w => mapsRank(`${w} ${cityName}`, at!, self, rivals, bill))).then(r => r.filter(Boolean)) : Promise.resolve([]),
+    h.keepDemand !== undefined ? Promise.resolve(h.keepDemand) : demandFor(words, cityName, st, bill),
   ]);
-  return { at: new Date().toISOString(), city: cityName, state: st, words, maps, demand };
+  return { at: new Date().toISOString(), city: cityName, state: st, words, maps, demand, ...(bill.capped ? { capped: true } : {}) };
 }
 
 // Google's own speed test of the home page on a phone. Free; needs the PageSpeed Insights API turned on for the
@@ -1027,8 +1064,9 @@ export async function pageSpeed(d: string) {
 // Google's own listing gives Pip only 5 reviews per business. Pip asks for these the moment it starts studying a business
 // (?reviews=start), on DataForSEO's fast queue, and collects them as they finish (?reviews=poll), so they are back before
 // Pip designs anything. Each set is kept on the scan's row. Reviewer names, profile links and photos are dropped here
-// and never stored. About $0.0015 per 10 reviews: up to 300 of the business's own plus 100 for each of 5 competitors.
-const OWN_DEPTH = 300, RIVAL_DEPTH = 100;
+// and never stored. About $0.0015 per 10 reviews: up to 300 of the business's own plus 200 for each of 5 competitors
+// (about $0.20 for a full order, taken from the daily budget above).
+export const OWN_DEPTH = 300, RIVAL_DEPTH = 200;
 const PLACE_RE = /^[A-Za-z0-9_-]{16,120}$/, TASK_RE = /^[0-9a-f]{8}-[0-9a-f-]{20,40}$/i;
 const rvKey = (id: string) => "rv_" + id.replace(/[^0-9a-z]/gi, "").slice(0, 40);
 async function dfsCall(path: string, init: RequestInit = {}, ms = 20000): Promise<any | null> {
@@ -1047,8 +1085,14 @@ export async function postReviews(own: string, rivals: string[]) {
     ...[...new Set(rivals)].filter(p => p !== own).slice(0, 5).map(p => ({ place_id: p, depth: RIVAL_DEPTH, tag: "rival" })),
   ];
   if (!jobs.length) return [];
+  // null: today's budget is used
+  const cost = jobs.reduce((n, x) => n + x.depth / 10 * REVIEWS_PER_10, 0);
+  if (!(await spend("dfs_usd", cost))) return null;
   const j = await dfsCall("/business_data/google/reviews/task_post", { method: "POST", body: JSON.stringify(jobs.map(x => ({ ...x, location_code: 2840, language_code: "en", sort_by: "newest", priority: 2 }))) });
   const tasks = (j?.tasks || []).filter((t: any) => t && t.status_code === 20100 && typeof t.id === "string");
+  // give back what wasn't ordered
+  const placed = tasks.reduce((n: number, t: any) => n + (Number(t.data?.depth) || (t.data?.tag === "own" ? OWN_DEPTH : RIVAL_DEPTH)) / 10 * REVIEWS_PER_10, 0);
+  if (placed < cost) await spend("dfs_usd", -(cost - placed));
   if ((j?.tasks || []).length && !tasks.length) console.error("[site-kit reviews] not created", JSON.stringify((j.tasks || []).map((t: any) => [t?.status_code, String(t?.status_message || "").slice(0, 80)])));
   return tasks.map((t: any) => ({ id: String(t.id), tag: t.data?.tag === "own" ? "own" : "rival", placeId: String(t.data?.place_id || "") }));
 }
@@ -1066,8 +1110,11 @@ export async function getReviews(id: string) {
   if (t.status_code === 20000) {
     const res = t.result?.[0];
     if (!res) return { status: "pending" as const };
-    const reviews = (res.items || []).map(reviewOf).filter((r: any) => r.text.length > 3);
-    return { status: "ready" as const, reviews, total: Number.isFinite(res.reviews_count) ? res.reviews_count : null };
+    const all = (res.items || []).map(reviewOf);
+    const reviews = all.filter((r: any) => r.text.length > 3);
+    // every review's date, stars and reply, star-only ones too, so the pace of new reviews isn't undercounted
+    const dated = all.filter((r: any) => r.at).map((r: any) => [r.at, r.rating, r.replied ? 1 : 0]);
+    return { status: "ready" as const, reviews, total: Number.isFinite(res.reviews_count) ? res.reviews_count : null, dated };
   }
   if (t.status_code === 40601 || t.status_code === 40602) return { status: "pending" as const };
   return { status: "error" as const, code: t.status_code };
@@ -1099,6 +1146,7 @@ export async function reviewsMode(u: URL, d: string) {
     if (!own && !rivals.length) return { ok: false, error: "no_places" };
     await put(d, "rv_at", new Date().toISOString());
     const tasks = await postReviews(own, rivals);
+    if (tasks === null) { await put(d, "rv_at", null); return { ok: false, error: "daily_limit" }; }
     if (tasks.length) await put(d, "rv_tasks", tasks);
     return { ok: tasks.length > 0, tasks };
   }
@@ -1109,9 +1157,9 @@ export async function reviewsMode(u: URL, d: string) {
     if (!b) return { ok: false, error: "no_scan" };
     if (!(Array.isArray(b.v) ? b.v : []).some((t: any) => t?.id === id)) return { ok: false, error: "unknown_task" };
     const kept = (await getPart(d, rvKey(id)))?.v;
-    if (kept && Array.isArray(kept.reviews)) return { ok: true, status: "ready", reviews: kept.reviews, total: kept.total ?? null, cached: true };
+    if (kept && Array.isArray(kept.reviews)) return { ok: true, status: "ready", reviews: kept.reviews, total: kept.total ?? null, dated: kept.dated ?? null, cached: true };
     const r: any = await getReviews(id);
-    if (r.status === "ready") { await put(d, rvKey(id), { reviews: r.reviews, total: r.total }); return { ok: true, status: "ready", reviews: r.reviews, total: r.total }; }
+    if (r.status === "ready") { await put(d, rvKey(id), { reviews: r.reviews, total: r.total, dated: r.dated }); return { ok: true, status: "ready", reviews: r.reviews, total: r.total, dated: r.dated }; }
     return { ok: true, status: r.status, ...(r.code ? { code: r.code } : {}) };
   }
   return { ok: false, error: "bad_mode" };
@@ -1148,6 +1196,13 @@ async function keyCheck() {
     } catch (e) { out.pagespeed = { error: String(e).slice(0, 120) }; }
   }
   out.dataforseo_key = !!(DFS_LOGIN && DFS_PASS);
+  if (SB_URL && SB_KEY) {
+    const day = new Date().toISOString().slice(0, 10);
+    const r = await db(`spend_daily?day=eq.${day}&select=kind,units`).catch(() => null);
+    const rows: any[] = r?.ok ? await r.json().catch(() => []) : [];
+    const used = (k: string) => Number(rows.find(x => x?.kind === k)?.units) || 0;
+    out.today = { day, dataforseo_usd: used("dfs_usd"), dataforseo_cap_usd: CAPS.dfs_usd, scans: used("scans"), scans_cap: CAPS.scans };
+  }
   if (DFS_LOGIN && DFS_PASS) {
     try {
       const r = await fetch(DFS + "/appendix/user_data", { headers: { authorization: "Basic " + btoa(`${DFS_LOGIN}:${DFS_PASS}`) } });
@@ -1288,6 +1343,7 @@ Deno.serve(async (req) => {
       return noStore({ ok: true, job: d, cached: true });
     }
     if (b && b.status === "running" && quiet < 90_000) return noStore({ ok: true, job: d, running: true });
+    if (!(await spend("scans", 1))) return noStore({ ok: false, error: "daily_limit" });
     const now = new Date().toISOString();
     await db("site_builds?on_conflict=domain", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ domain: d, status: "running", parts: {}, created_at: now, updated_at: now }) }).then(r => r.body?.cancel());
     if (Math.random() < 0.1) db(`site_builds?created_at=lt.${new Date(Date.now() - 7 * 86_400_000).toISOString()}`, { method: "DELETE" }).then(r => r.body?.cancel()).catch(() => {});
@@ -1302,10 +1358,15 @@ Deno.serve(async (req) => {
     const b = await getBuild(d);
     if (!b) return noStore({ ok: false, error: "no_scan" });
     const p = b.parts || {};
-    if (p.insight) return noStore({ ok: true, cached: true, ...p.insight });
+    // maps=1 with the check code: look the Maps searches up again (cheap) and keep the saved search demand (the costly part)
+    const remap = u.searchParams.get("maps") === "1" && CHECK_CODE && u.searchParams.get("code") === CHECK_CODE && !!p.insight;
+    if (p.insight && !remap) return noStore({ ok: true, cached: true, ...p.insight });
     if (p.insight_at && Date.now() - Date.parse(p.insight_at) < 75_000) return noStore({ ok: false, pending: true });
+    // two Maps searches and up to two search-count requests: about $0.19 at most, $0.01 for a Maps-only look
+    if (!(await spend("dfs_usd", 0, remap ? 0.01 : 0.19))) return noStore({ ok: false, error: "daily_limit" });
     await put(d, "insight_at", new Date().toISOString());
-    const out: any = await insightFor(d, p.gather, marketHints(u)).catch(e => ({ error: String(e).slice(0, 160) }));
+    const out: any = await insightFor(d, p.gather, remap ? { ...marketHints(u), keepDemand: p.insight.demand ?? null } : marketHints(u)).catch(e => ({ error: String(e).slice(0, 160) }));
+    if (out.capped) { await put(d, "insight_at", null); return noStore({ ok: false, error: "daily_limit" }); }
     const good = !!(out.maps?.length || out.demand);
     if (good) await put(d, "insight", out);
     return noStore({ ok: good, ...out });
