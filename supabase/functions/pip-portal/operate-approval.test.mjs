@@ -57,6 +57,8 @@ function fakeClient(w) {
     update(p) { this.op = "update"; this.p = p; return this; }
     eq(c, v) { if (c.includes(".")) { const [rel, col] = c.split("."); this.f.push((r) => (w.tables[rel] ?? []).some((x) => x.id === r.order_id && x[col] === v)); } else this.f.push((r) => r[c] === v); return this; }
     neq(c, v) { this.f.push((r) => r[c] !== v); return this; }
+    gte(c, v) { this.f.push((r) => r[c] != null && r[c] >= v); return this; }
+    not() { return this; } or() { return this; } lte() { return this; } lt() { return this; } gt() { return this; } ilike() { return this; } contains() { return this; }
     is(c, v) { this.f.push((r) => (r[c] ?? null) === v); return this; }
     in(c, vs) { this.f.push((r) => vs.includes(r[c])); return this; }
     order() { return this; } limit() { return this; }
@@ -115,6 +117,9 @@ test("the owner sees what the operator does in plain words, and the approvals wa
   assert.ok(r.json.words.needsYou.some((x) => /Approve the brand voice/.test(x)));
   assert.equal(r.json.approvals.length, 1);
   assert.equal(r.json.approved, false);
+  // the review screen builds its "approve once" list from this, so it must name every approval the operator needs
+  assert.equal(r.json.asks.brand_voice, true);
+  assert.ok(Array.isArray(r.json.asks.accounts) && r.json.asks.accounts.length >= 1);
 });
 test("the owner approves with a fresh sign-in; the approval is recorded", async () => {
   const w = world(), call = await boot(w);
@@ -165,4 +170,54 @@ test("no sign-in, or a bad one, is refused before anything is read", async () =>
   const call = await boot(world());
   assert.equal((await call("GET", `${P()}/operator`, null)).status, 401);
   assert.equal((await call("POST", `${P()}/operator-approval`, "not.a.jwt", { do: "approve", id: 1 })).status, 401);
+});
+
+// ---------- the review screen's reads ----------
+const day = (n) => new Date(Date.now() - n * 86_400_000).toISOString();
+const cases = () => [
+  { id: "aaaaaaaa-0000-4000-8000-000000000001", business_id: BIZ, spec_id: SPEC, process: "content_social", case_key: "week-48", contact_hash: "hash-1", stage: "sent", touches: 1, next_at: day(-2), status: "open", opened_at: day(1), context: { first_name: "Dana" }, rules: {} },
+  { id: "bbbbbbbb-0000-4000-8000-000000000002", business_id: BIZ, spec_id: SPEC, process: "content_social", case_key: "week-47", contact_hash: "hash-2", stage: null, touches: 2, next_at: day(3), status: "done", closed_reason: "replied", opened_at: day(9), closed_at: day(2), last_touch_at: day(3), context: {}, rules: {} },
+  { id: "cccccccc-0000-4000-8000-000000000003", business_id: BIZ, spec_id: SPEC, process: "content_social", case_key: "old", contact_hash: "hash-3", touches: 3, next_at: day(30), status: "stopped", closed_reason: "stop", opened_at: day(40), closed_at: day(20), context: {}, rules: {} },
+  { id: "dddddddd-0000-4000-8000-000000000004", business_id: OTHER, spec_id: SPEC2, process: "content_social", case_key: "theirs", contact_hash: "hash-4", touches: 1, next_at: day(-1), status: "open", opened_at: day(1), context: { first_name: "Sam" }, rules: {} },
+];
+test("the review screen's case list is dark while the lane is off", async () => {
+  const w = world({ lane: false }); w.tables.operator_cases = cases();
+  const r = await (await boot(w))("GET", `${P()}/operator-cases`, OWNER);
+  assert.equal(r.status, 404);
+});
+test("owner and staff see what is open and what closed this week: stages, counts and times, never who the customer is", async () => {
+  const w = world(); w.tables.operator_cases = cases();
+  const call = await boot(w);
+  for (const who of [OWNER, STAFF]) {
+    const r = await call("GET", `${P()}/operator-cases`, who);
+    assert.equal(r.status, 200);
+    assert.equal(r.json.process, "content_social");
+    assert.deepEqual(r.json.open.map((x) => x.ref), ["aaaaaaaa"]);
+    assert.deepEqual(r.json.closed.map((x) => [x.ref, x.closed_reason]), [["bbbbbbbb", "replied"]], "a case closed 20 days ago is not this week's");
+    assert.deepEqual(Object.keys(r.json.open[0]).sort(), ["closed_at", "closed_reason", "last_touch_at", "next_at", "opened_at", "ref", "stage", "status", "touches"]);
+    const text = JSON.stringify(r.json);
+    for (const secret of ["hash-1", "hash-2", "Dana", "week-48", "week-47", "context", "contact_hash", "case_key"]) assert.ok(!text.includes(secret), `${secret} must not leave the server`);
+    assert.ok(!text.includes("dddddddd"), "another business's case never shows");
+  }
+});
+test("a case list for a teammate of another business is refused", async () => {
+  const w = world(); w.tables.operator_cases = cases();
+  const r = await (await boot(w))("GET", `${P(SPEC2)}/operator-cases`, OWNER);
+  assert.ok([403, 404].includes(r.status), String(r.status));
+});
+test("someone who is not signed in gets nothing", async () => {
+  const w = world(); w.tables.operator_cases = cases();
+  const r = await (await boot(w))("GET", `${P()}/operator-cases`, null);
+  assert.equal(r.status, 401);
+});
+test("the Portal's home data marks an operator teammate only while the lane is on", async () => {
+  for (const lane of [true, false]) {
+    const w = world({ lane });
+    w.tables.businesses = [{ id: BIZ, name: "TEST Fork", status: "active" }];
+    w.handlers.portal_agents = () => [{ spec_id: SPEC, name: "social", status: "sandbox", needs: [], pauses: [] }];
+    const r = await (await boot(w))("GET", `/business/${BIZ}`, OWNER);
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    assert.equal(r.json.operate_on, lane);
+    assert.equal(r.json.agents[0].operator, lane ? "content_social" : undefined);
+  }
 });
