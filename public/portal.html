@@ -1861,7 +1861,22 @@ function vaultCard() {
   return h("div", { class: "card dash vault rise", style: { "--i": 3 } },
     h("div", { class: "row", style: { alignItems: "flex-start" } }, h("span", { class: "ic" }, icon("shield")), h("div", { class: "grow" }, h("h2", { class: "h-s" }, "A tool that only has a username and password?"), h("p", { class: "small", style: { marginTop: "6px" } }, "Tell us which one. The locked vault for these is not open yet, so we do not take the password now. Never send a password by email or text."))),
     h("div", { class: "fields", style: { marginTop: "16px" } }, h("label", { class: "field", for: "v-tool" }, h("span", { class: "lab" }, "Tool name"), tool), h("label", { class: "field", for: "v-page" }, h("span", { class: "lab" }, "Its sign-in page ", h("em", {}, "optional")), page)),
-    h("div", { class: "btns" }, h("button", { class: "btn ghost", "data-k": "vault", onclick: () => tool.value.trim() && run(() => api("/business/" + id + "/vault", { tool_name: tool.value.trim(), login_url: page.value.trim() }), "Saved. No password was taken.") }, "Save for the vault")));
+    h("div", { class: "btns" },
+      // Pip's setup help (the Setup Agent): a secure cloud browser the owner signs in to while watching. Shown only when it is switched on.
+      S.data.setup_on ? h("button", { class: "btn pri", "data-k": "setup-start", onclick: () => tool.value.trim() && run(async () => {
+        const r = await api("/business/" + id + "/setup", { action: "start", tool_name: tool.value.trim(), login_url: page.value.trim() });
+        location.href = "/setup.html?b=" + encodeURIComponent(id) + "&s=" + encodeURIComponent(r.setup_id);
+      }) }, "Connect it with Pip's help") : null,
+      h("button", { class: "btn ghost", "data-k": "vault", onclick: () => tool.value.trim() && run(() => api("/business/" + id + "/vault", { tool_name: tool.value.trim(), login_url: page.value.trim() }), "Saved. No password was taken.") }, "Save for the vault")),
+    setupList());
+}
+// Setups Pip is helping with: one line each, with a way back in when one needs the owner.
+function setupList() {
+  const list = (S.data.setups || []), id = S.bid;
+  if (!list.length) return null;
+  const word = { consent: "Waiting for your yes", owner_control: "Waiting for you to sign in", paused: "Needs you to sign in again", done: "Connected", failed: "Didn't connect", manual: "Set up by hand", blocked: "Waiting on paperwork", stopped: "Stopped" };
+  return h("ul", { class: "rules", style: { marginTop: "14px" } }, list.map((x) => h("li", {}, icon(x.state === "done" ? "check" : "info"),
+    h("span", {}, x.tool + ": " + (word[x.state] || "Pip is working on it") + " ", h("a", { href: "/setup.html?b=" + encodeURIComponent(id) + "&s=" + encodeURIComponent(x.id) }, ["paused", "owner_control", "consent", "failed"].includes(x.state) ? "Open" : "Watch")))));
 }
 
 function activityTab() {
