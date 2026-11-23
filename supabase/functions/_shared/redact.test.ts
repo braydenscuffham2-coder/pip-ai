@@ -46,3 +46,24 @@ test("bad input never throws", () => {
   assert.deepEqual(redact(""), { text: "", kinds: [] });
   assert.deepEqual(redact(undefined as unknown as string), { text: "", kinds: [] });
 });
+
+test("ZIP, area, gate and order codes are not secrets and stay", () => {
+  for (const s of ["my zip code is 83642", "Zip code 83646 please", "gate code is 4521", "promo code 2026", "job code: 77120", "order code 558812"]) {
+    const r = redact(s);
+    assert.equal(r.text, s, s);
+    assert.deepEqual(r.kinds, []);
+  }
+  assert.equal(redact("the code is 482913").text, "the code is [code removed]");
+  assert.equal(redact("zip code 83642 and my verification code is 482913").text, "zip code 83642 and my verification code is [code removed]");
+});
+
+test("a customer's own account number stays unless the message is about a bank", () => {
+  const plain = "my account number is 10044871, can you see my last visit?";
+  assert.equal(redact(plain).text, plain);
+  assert.deepEqual(redact(plain).kinds, []);
+  const bank = redact("bank account number 1234567890 routing 021000021");
+  assert.ok(!/1234567890|021000021/.test(bank.text), bank.text);
+  assert.deepEqual(bank.kinds, ["bank"]);
+  const checking = redact("pay from checking, account 000123456789");
+  assert.ok(!checking.text.includes("000123456789"), checking.text);
+});

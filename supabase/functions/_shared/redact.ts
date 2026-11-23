@@ -25,9 +25,13 @@ const SSN_NAMED = /\b(ssn|social security(?: number| no\.?)?)(\s*(?:#|number|no\
 // "my password is hunter2", "passcode: 1234", "pin = 0000". The label stays so the meaning survives.
 const SECRET = /\b(password|passcode|pass code|passwd|pwd|pin(?: number)?)(\s*(?:is|:|=)\s*|\s+is\s+)("[^"]{1,128}"|'[^']{1,128}'|\S{1,128})/gi;
 // "the code is 482913", "verification code: 482913"
-const CODE = /\b((?:verification|security|login|sign[- ]in|one[- ]time|confirmation|2fa|mfa|otp|auth(?:entication)?)\s+code|code)(\s*(?:is|:|=)?\s*)(\d{4,8})\b/gi;
+// A ZIP, area, promo, gate, order or job code is not a secret, so a bare "code" after one of those words is left alone.
+const CODE = /\b((?:verification|security|login|sign[- ]in|one[- ]time|confirmation|2fa|mfa|otp|auth(?:entication)?)\s+code|(?<!\b(?:zip|postal|area|promo|coupon|discount|gate|door|order|job|booking|reference|ref|tracking|model|part|error)\s)code)(\s*(?:is|:|=)?\s*)(\d{4,8})\b/gi;
 // "account number 12345678", "routing number: 021000021"
+// A plain "account number" is usually the customer's account with the business (which the teammate needs to look them
+// up), so it is removed only when the message is about a bank: it says bank, checking, savings, routing, ACH or wire.
 const BANK = /\b(account(?: number| no\.?| #)?|acct(?: number| no\.?| #)?|routing(?: number| no\.?| #)?)(\s*(?:is|:|=)?\s*)(\d{6,17})\b/gi;
+const BANK_TALK = /\b(bank|checking|savings|routing|ach|wire|direct deposit)\b/i;
 
 export function redact(input: string): Redacted {
   if (typeof input !== "string" || !input) return { text: typeof input === "string" ? input : "", kinds: [] };
@@ -37,7 +41,7 @@ export function redact(input: string): Redacted {
   text = text.replace(SSN_NAMED, (_m, label, gap) => { kinds.add("ssn"); return `${label}${gap}[SSN removed]`; });
   text = text.replace(SSN_SPLIT, () => { kinds.add("ssn"); return "[SSN removed]"; });
   text = text.replace(SECRET, (m, label, gap, value) => { if (/^\[.*removed\]$/.test(value)) return m; kinds.add("secret"); return `${label}${gap}[removed]`; });
-  text = text.replace(BANK, (_m, label, gap) => { kinds.add("bank"); return `${label}${gap}[number removed]`; });
+  if (BANK_TALK.test(input)) text = text.replace(BANK, (_m, label, gap) => { kinds.add("bank"); return `${label}${gap}[number removed]`; });
   text = text.replace(CODE, (_m, label, gap) => { kinds.add("code"); return `${label}${gap}[code removed]`; });
   return { text, kinds: [...kinds] };
 }
