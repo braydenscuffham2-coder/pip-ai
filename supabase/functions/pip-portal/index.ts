@@ -122,6 +122,7 @@ const MAIL: Record<string, (d: any) => { subject: string; html: string; text: st
   invite: (d) => ({ subject: `You were added to ${d.business || "a business"} on Pip`, html: wrap(`You were added to ${d.business || "a business"}`, `${esc(d.by || "The owner")} gave you ${d.role === "owner" ? "owner" : "staff"} access to its Pip Portal.`, { href: d.link, label: "Open the Portal" }), text: `You were added to ${d.business} on Pip. Open the Portal: ${d.link}` }),
   paused: (d) => ({ subject: `${d.agent || "An agent"} paused a job`, html: wrap(`${d.agent || "An agent"} paused`, `${esc(d.why || "It could not continue.")} The rest of your team is still working.`, { href: d.link, label: "See what it needs" }), text: `${d.agent} paused: ${d.why}. ${d.link}` }),
   price_ready: (d) => ({ subject: "Your Pip price is ready to accept", html: wrap("Your price is ready", "Open your Portal to review and accept it. Setup unlocks right after.", { href: d.link, label: "Review your price" }), text: `Your Pip price is ready: ${d.link}` }),
+  setup_resignin: (d) => ({ subject: `Sign in to ${d.tool || "your tool"} again`, html: wrap(`Sign in to ${d.tool || "your tool"} again`, `Pip's connection to ${esc(d.tool || "it")} closed. Only the jobs that use it are waiting; the rest of your team is still working. Open your Portal, tap Sign in again, and they pick up where they left off.`, { href: d.link, label: "Open my Portal" }), text: `Pip's connection to ${d.tool || "your tool"} closed. Only the jobs that use it are waiting. Open your Portal and tap Sign in again: ${d.link}` }),
   disconnected: (d) => ({ subject: `Pip is disconnected from ${d.business || "your business"}`, html: wrap("Everything is disconnected", `${esc(d.by || "An owner")} disconnected Pip. Every tool sign-in was revoked and every agent is stopped. One thing only you can undo: call forwarding at your phone company.`), text: `Pip is disconnected from ${d.business}. Tool sign-ins are revoked and agents are stopped. Remember to turn off call forwarding at your phone company.` }),
 };
 async function sendMail(to: string, template: string, data: any) {
@@ -214,6 +215,8 @@ async function business(u: User, bid: string) {
     extra_tools: await extraTools(bid),
     setup_unlocked: !!b.price_accepted_at, terms_url: termsUrl, terms_version: await setting("portal_terms_version", null),
     vault_open: false, connect_on: !!(Deno.env.get("COMPOSIO_API_KEY") ?? "").trim(), fresh: u.fresh,
+    setup_on: (await setting("setup_agent_on", false)) === true,
+    setups: r.role === "staff" ? [] : ((await db.from("setup_sessions").select("id,tool,state,reason,result,created_at").eq("business_id", bid).order("created_at", { ascending: false }).limit(10)).data || []),
   });
 }
 async function activity(u: User, bid: string, url: URL) {
@@ -525,6 +528,80 @@ async function ack(u: User, bid: string, body: any) {
   await log(bid, "owner", `${bc.connection_catalog.label}: you asked Pip to finish this step with you.`, { actor: u.email });
   return json({ ok: true });
 }
+// ---------------- the Setup Agent ----------------
+// The owner connects a tool with Pip's help: Pip opens the tool's sign-in page in a secure cloud browser, the owner
+// signs in while watching (password through the key box, codes and captchas on the page), and Pip finishes the setup.
+// The steps run in setup-run; the password goes only to vault-writer. This route starts, steers and reports.
+const SETUP_OPEN = ["queued", "consent", "composio", "opening", "find_login", "owner_control", "verify", "configuring", "testing", "saving", "paused"];
+async function setupRun(path: string, setup_id: string) {
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/setup-run${path}`, { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify({ setup_id }), signal: AbortSignal.timeout(path === "/step" ? 5000 : 20000) }).catch(() => null);
+  return r ? await r.json().catch(() => null) : null;
+}
+async function setupAction(u: User, bid: string, body: any) {
+  const r = await access(u, bid); need(r, "owner"); await unlocked(bid, r);
+  if ((await setting("setup_agent_on", false)) !== true) throw new Fail(409, "setup_off", "Pip's setup help is not switched on yet.");
+  const action = cut(body.action, 20);
+  if (action === "start") {
+    needFresh(u);
+    const no = vaultRefusal(body); if (no) throw new Fail(400, no.code, no.message);
+    const tool = cut(body.tool_name, 80); if (tool.length < 2) throw new Fail(400, "bad_tool");
+    const login = cut(body.login_url, 300);
+    if (!/^https:\/\//.test(login)) throw new Fail(400, "bad_link", "Add the tool's sign-in page, starting with https://.");
+    const key = tool.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "tool";
+    const steps = Array.isArray(body.steps) ? body.steps.map((x: unknown) => cut(x, 200)).filter(Boolean).slice(0, 12) : [];
+    const { data, error } = await db.from("setup_sessions").insert({ business_id: bid, tool, tool_key: key, login_url: login, mode: "browser", plan: { steps }, created_by: u.email }).select("id").single();
+    if (error || !data) throw new Fail(409, "setup_open", "A setup for this tool is already open. Continue that one.");
+    await log(bid, "owner", `${tool}: Pip's setup help started. You sign in yourself; Pip never sees your password.`, { actor: u.email });
+    await setupRun("/step", data.id);
+    return json({ ok: true, setup_id: data.id });
+  }
+  const sid = cut(body.setup_id, 40); if (!UUID.test(sid)) throw new Fail(400, "bad_setup");
+  const { data: s } = await db.from("setup_sessions").select("id,tool,state,reason,result,plan,owner_taps,login_url").eq("id", sid).eq("business_id", bid).maybeSingle();
+  if (!s) throw new Fail(404, "not_found");
+  const tap = (patch: Record<string, unknown>) => db.from("setup_sessions").update({ ...patch, owner_taps: (s.owner_taps || 0) + 1, updated_at: now() }).eq("id", sid);
+  if (action === "status") {
+    const watch = ["find_login", "owner_control", "verify", "configuring", "testing"].includes(s.state);
+    const live = watch ? (await setupRun("/live", sid))?.url ?? null : null;
+    return json({ ok: true, setup: { id: s.id, tool: s.tool, state: s.state, reason: s.reason, result: s.result, keybox: !!s.plan?.keybox, live, interactive: s.state === "owner_control" } });
+  }
+  if (action === "consent") {
+    if (s.state !== "consent") throw new Fail(409, "not_now");
+    const { data: b } = await db.from("businesses").select("terms_version").eq("id", bid).single();
+    await db.from("consent_ledger").insert({ business_id: bid, contact_hash: await sha(u.email), contact_hint: u.email.slice(0, 1) + "••••", contact_kind: "email", channel: "any", purpose: "setup_signin", status: "granted", method: "portal",
+      proof: { tool: s.tool, setup_id: sid, login_url: s.login_url, terms_version: b?.terms_version ?? null, said: `Pip may sign in to ${s.tool} in a secure browser while I watch. I type my own password and codes.` }, recorded_by: u.email });
+    await tap({ consent_at: now() });
+    await setupRun("/step", sid);
+    return json({ ok: true });
+  }
+  if (action === "ticket") {
+    if (s.state !== "owner_control" || !s.plan?.keybox) throw new Fail(409, "not_now");
+    const raw = crypto.getRandomValues(new Uint8Array(32));
+    const ticket = btoa(String.fromCharCode(...raw)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    await db.from("setup_tickets").insert({ hash: await sha(ticket), setup_id: sid, expires_at: new Date(Date.now() + 10 * 60_000).toISOString() });
+    return json({ ok: true, ticket, url: `${Deno.env.get("SUPABASE_URL")}/functions/v1/vault-writer/keys` });
+  }
+  if (action === "signed_in") {
+    if (s.state !== "owner_control") throw new Fail(409, "not_now");
+    await tap({ state: "verify", reason: null });
+    await setupRun("/step", sid);
+    return json({ ok: true });
+  }
+  if (action === "resume") {
+    if (!["paused", "failed"].includes(s.state)) throw new Fail(409, "not_now");
+    await tap({ state: "opening", reason: null, result: null, step: 0 });
+    await setupRun("/step", sid);
+    return json({ ok: true });
+  }
+  if (action === "stop") {
+    if (!SETUP_OPEN.includes(s.state)) return json({ ok: true, already: true });
+    await setupRun("/stop", sid);
+    await log(bid, "owner", `${s.tool}: setup stopped.`, { actor: u.email });
+    return json({ ok: true });
+  }
+  throw new Fail(400, "bad_action");
+}
+
 async function vault(u: User, bid: string, body: any) {
   const r = await access(u, bid); need(r, "owner"); await unlocked(bid, r);
   // Closed until an external vault and its login service exist. Nothing secret is accepted, stored or logged.
@@ -820,6 +897,7 @@ Deno.serve(async (req) => {
       if (a === "texting") return await texting(u, bid, body);
       if (a === "ack") return await ack(u, bid, body);
       if (a === "vault") return await vault(u, bid, body);
+      if (a === "setup") return await setupAction(u, bid, body);
       if (a === "unsupported") return await unsupported(u, bid, body);
       if (a === "issue") return await issue(u, bid, body);
       if (a === "people") return await addPerson(u, bid, body);

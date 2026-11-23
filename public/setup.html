@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Connect a tool with Pip's help</title>
+<style>
+:root{color-scheme:light;--ink:#0b0d1f;--ink-2:#4b5175;--ink-3:#686e92;--paper:#fbfaf7;--card:#fff;--line:rgba(11,13,31,.1);--good:#0f7a53;--warn:#b23a1c;--blue:#2563eb;--r:16px;
+  --f-body:ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;--f-display:"Instrument Serif","Iowan Old Style",Georgia,serif}
+*{box-sizing:border-box}
+body{margin:0;min-height:100dvh;background:var(--paper);color:var(--ink);font:400 16px/1.5 var(--f-body);-webkit-font-smoothing:antialiased}
+main{max-width:980px;margin:0 auto;padding:24px 16px 64px}
+h1{font:400 30px/1.15 var(--f-display);margin:0 0 6px}
+p{margin:0}.muted{color:var(--ink-2)}.fine{font-size:13px;color:var(--ink-3)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-top:16px}
+.grid{display:grid;gap:16px;grid-template-columns:1fr}
+@media (min-width:900px){.grid.two{grid-template-columns:minmax(0,1fr) 320px}}
+.view{position:relative;width:100%;aspect-ratio:16/10;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#eef0f6}
+.view iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.view.watch iframe{pointer-events:none}
+.tag{display:inline-block;font:600 11px/1 var(--f-body);letter-spacing:.08em;text-transform:uppercase;padding:6px 8px;border-radius:999px;background:#eef2ff;color:var(--blue)}
+.tag.good{background:#e7f6ef;color:var(--good)}.tag.warn{background:#fdeee9;color:var(--warn)}
+label{display:block;margin-top:12px;font-size:14px;font-weight:600}
+input{display:block;width:100%;margin-top:6px;font:inherit;padding:12px 14px;border-radius:12px;border:1px solid rgba(11,13,31,.2);background:#fff}
+button{font:600 15px/1 var(--f-body);padding:13px 18px;border-radius:12px;border:0;cursor:pointer;margin-top:14px}
+.pri{background:var(--ink);color:#fff}.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}.link{background:none;color:var(--ink-2);padding:8px 0;text-decoration:underline}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.note{margin-top:12px;padding:12px 14px;border-radius:12px;background:#f4f5fa;font-size:14px}
+.note.err{background:#fdeee9;color:var(--warn)}.note.ok{background:#e7f6ef;color:var(--good)}
+ul.say{margin:10px 0 0;padding-left:20px;color:var(--ink-2);font-size:15px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <p class="fine"><a href="/portal.html" id="back">Back to your Portal</a></p>
+  <h1 id="title">Connect a tool with Pip's help</h1>
+  <p class="muted" id="lead">You sign in yourself. Pip never sees your password.</p>
+  <div id="app" aria-live="polite"><div class="card"><p class="muted">Loading…</p></div></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js" integrity="sha384-uteMfOloLDGt042uDz+xHGF3ym63/WQ6rFq7murQRG8Ih7QrXGEGNtWd8688sb4O" crossorigin="anonymous"></script>
+<script>
+"use strict";
+// Pip's Setup Agent, the owner's side. The owner watches a secure cloud browser, signs in themselves (password through
+// the key box below, which goes straight to the client's own 1Password vault; codes and captchas on the page), and Pip
+// does the rest. This page never stores what is typed in the key box: it is sent once, over HTTPS, then cleared.
+const SB_URL = "https://qqaikvgjzzcdwumnyspb.supabase.co";
+const SB_KEY = "sb_publishable_Uw0vCJdDrXHB1wbSm9bBNg_3m6TdZvs";
+const FN = SB_URL + "/functions/v1/pip-portal";
+const q = new URLSearchParams(location.search), BID = q.get("b") || "", SID = q.get("s") || "";
+const $ = (id) => document.getElementById(id), app = $("app");
+const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } });
+let last = null, timer = 0, liveSrc = "";
+
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) { if (v == null || v === false) continue; if (k.startsWith("on")) el.addEventListener(k.slice(2), v); else if (k === "class") el.className = v; else el.setAttribute(k, v === true ? "" : v); }
+  for (const c of kids.flat()) if (c != null && c !== false) el.append(c.nodeType ? c : String(c));
+  return el;
+}
+async function api(action, extra) {
+  const { data } = await sb.auth.getSession();
+  const tok = data.session && data.session.access_token;
+  if (!tok) throw Object.assign(new Error("Sign in to your Portal first."), { code: "sign_in" });
+  const r = await fetch(FN + "/business/" + encodeURIComponent(BID) + "/setup", { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + tok }, body: JSON.stringify(Object.assign({ action, setup_id: SID }, extra || {})) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.message || "Something went wrong. Try again."), { code: j.error });
+  return j;
+}
+const WORDS = {
+  submitted: "Sent to your vault and typed into the sign-in form. If the site asks for a code, type it in the window.",
+  filled: "Sent to your vault and typed in. Press the site's sign-in button in the window.",
+  saved_not_filled: "Saved to your vault. Pip couldn't find the fields, so type them in the window yourself.",
+  ticket_expired: "That took too long. Tap Send again.",
+  vault_failed: "Your vault didn't answer, so nothing was typed. You can sign in directly in the window instead.",
+  vault_not_configured: "The vault isn't switched on yet. Sign in directly in the window instead.",
+  not_waiting_for_sign_in: "Pip isn't waiting for a sign-in right now.",
+  browser_closed: "The secure window closed. Tap Sign in again.",
+};
+
+function liveView(url, interactive) {
+  if (!url) return h("div", { class: "view" }, h("p", { class: "muted", style: "padding:18px" }, "Opening the secure window…"));
+  const wrap = h("div", { class: "view" + (interactive ? "" : " watch") });
+  const frame = h("iframe", { title: "Secure browser", src: url, sandbox: "allow-same-origin allow-scripts", allow: "clipboard-read; clipboard-write" });
+  wrap.append(frame); liveSrc = url;
+  return wrap;
+}
+
+function keyBox(s) {
+  const user = h("input", { id: "kb-user", autocomplete: "username", inputmode: "email", required: true });
+  const pass = h("input", { id: "kb-pass", type: "password", autocomplete: "current-password", required: true });
+  const out = h("div", { "aria-live": "polite" });
+  const form = h("form", { onsubmit: async (e) => {
+    e.preventDefault();
+    const u = user.value, p = pass.value;
+    pass.value = ""; // cleared at once: nothing typed here is kept on this page
+    if (!u || !p) return;
+    out.replaceChildren(h("p", { class: "note" }, "Sending…"));
+    try {
+      const t = await api("ticket");
+      const r = await fetch(t.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ticket: t.ticket, username: u, password: p }) });
+      const j = await r.json().catch(() => ({}));
+      out.replaceChildren(h("p", { class: "note " + (j.ok ? "ok" : "err") }, WORDS[j.code] || "That didn't go through. You can sign in directly in the window."));
+    } catch (err) { out.replaceChildren(h("p", { class: "note err" }, err.message)); }
+  } },
+    h("p", { class: "fine" }, "Goes straight to your own 1Password vault and into the sign-in form. Pip's AI never sees it."),
+    h("label", { for: "kb-user" }, "Username or email"), user,
+    h("label", { for: "kb-pass" }, "Password"), pass,
+    h("button", { class: "pri", type: "submit" }, "Send to the sign-in form"), out);
+  return h("div", { class: "card" }, h("span", { class: "tag" }, "Key box"), form);
+}
+
+function render(s) {
+  const tag = { done: ["Connected", "good"], failed: ["Didn't connect", "warn"], paused: ["Needs you", "warn"], manual: ["Set up by hand", "warn"], blocked: ["Waiting on paperwork", "warn"], stopped: ["Stopped", ""] }[s.state] || ["In progress", ""];
+  $("title").textContent = "Connect " + s.tool + " with Pip's help";
+  const stop = h("button", { class: "link", type: "button", onclick: () => go("stop") }, "Stop");
+  const reason = s.reason ? h("p", { class: "note" }, s.reason) : null;
+  if (s.state === "consent") {
+    return [h("div", { class: "card" }, h("span", { class: "tag" }, "Before Pip starts"),
+      h("p", { style: "margin-top:12px" }, "Pip will open " + s.tool + "'s sign-in page in a secure cloud browser. You'll see it here."),
+      h("ul", { class: "say" }, h("li", {}, "You sign in yourself. Your password goes into your own 1Password vault, never to Pip's AI."),
+        h("li", {}, "If the site sends a code or shows a captcha, you answer it."),
+        h("li", {}, "Then Pip sets up only what your team needs, tests it, and closes the window. Nothing is recorded.")),
+      h("div", { class: "row" }, h("button", { class: "pri", type: "button", onclick: () => go("consent") }, "Yes, I'll sign in while Pip watches"), stop))];
+  }
+  if (s.state === "owner_control") {
+    return [h("div", { class: "grid two" },
+      h("div", {}, liveView(s.live, true), h("p", { class: "fine", style: "margin-top:8px" }, "This window is a secure browser in the cloud. You can tap and type in it.")),
+      h("div", {}, s.keybox ? keyBox(s) : h("div", { class: "card" }, h("p", {}, "Sign in directly in the window.")),
+        h("div", { class: "card" }, reason, h("button", { class: "pri", type: "button", onclick: () => go("signed_in") }, "I'm signed in"), h("div", {}, stop))))];
+  }
+  if (["find_login", "verify", "configuring", "testing", "opening", "queued", "saving"].includes(s.state)) {
+    return [liveView(s.live, false), h("div", { class: "card" }, h("span", { class: "tag" }, tag[0]), h("p", { style: "margin-top:10px" }, s.state === "testing" ? "Pip is testing the connection." : "Pip is setting up " + s.tool + ". You can watch; you don't need to do anything."), reason, stop)];
+  }
+  const again = ["paused", "failed"].includes(s.state) ? h("button", { class: "pri", type: "button", onclick: () => go("resume") }, "Sign in again") : null;
+  return [h("div", { class: "card" }, h("span", { class: "tag " + tag[1] }, tag[0]), reason || h("p", { style: "margin-top:10px" }, s.state === "done" ? s.tool + " is connected and its test passed." : ""), again, h("p", {}, h("a", { href: "/portal.html?b=" + encodeURIComponent(BID) }, "Back to your Portal")))];
+}
+
+async function go(action) {
+  try { await api(action); } catch (e) { app.prepend(h("p", { class: "note err" }, e.message)); }
+  poll(true);
+}
+async function poll(now) {
+  clearTimeout(timer);
+  try {
+    const { setup: s } = await api("status");
+    const key = JSON.stringify([s.state, s.reason, s.keybox, !!s.live, s.interactive]);
+    // Keep the window (and anything typed in it) when nothing about the page needs to change.
+    if (key !== last || (s.live && s.live !== liveSrc && !document.querySelector(".view iframe"))) { last = key; app.replaceChildren(...render(s).filter(Boolean)); }
+    if (!["done", "failed", "manual", "blocked", "stopped"].includes(s.state)) timer = setTimeout(poll, s.state === "owner_control" ? 3000 : 2000);
+  } catch (e) {
+    app.replaceChildren(h("div", { class: "card" }, h("p", { class: "note err" }, e.message), e.code === "sign_in" ? h("p", {}, h("a", { href: "/portal.html" }, "Sign in to your Portal")) : null));
+  }
+}
+if (!/^[0-9a-f-]{36}$/i.test(BID) || !/^[0-9a-f-]{36}$/i.test(SID)) app.replaceChildren(h("div", { class: "card" }, h("p", {}, "Open this page from your Portal.")));
+else { $("back").href = "/portal.html?b=" + encodeURIComponent(BID); poll(true); }
+</script>
+</body>
+</html>
