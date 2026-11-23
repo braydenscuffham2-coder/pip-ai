@@ -30,6 +30,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { allows, type Ask, type Grant, isMoneyTool, type Job, jobForMessage, jobsOf, notYet, PIP_RECORDS, type Verdict } from "../_shared/teammate-spec.ts";
 import { type ExecResult, runJob, type State, type Tool } from "../_shared/job-engine.ts";
 import { localDay } from "../_shared/schedule.ts";
+import { EMAIL_OPT_OUT_LINE, isStopRequest } from "../_shared/optout.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!, SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const db = createClient(SB_URL, SERVICE, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -300,6 +301,15 @@ async function turn(body: J, trace: boolean) {
   const seen = new Set<string>();
   for (const m of [...(past ?? []).filter((m: J) => m.role === "user").map((m: J) => String(m.content)), message]) for (const e of m.match(EMAIL_RE) ?? []) seen.add(e.toLowerCase());
 
+  // Email from a customer: STOP (or "please stop emailing me") is recorded and ends all email to that address, with no
+  // reply and no model call. Anything else records that they wrote first. The address is the visitor, which only a
+  // trusted caller (the site, pip-run or a mail intake) can set. It is hashed in the database and never stored.
+  if (channel === "email" && c.biz?.id && typeof body?.visitor === "string" && EMAIL_ONE.test(body.visitor.trim())) {
+    const stop = isStopRequest(message);
+    const { data: ein } = await db.rpc("portal_email_in", { p_business: c.biz.id, p_spec: id, p_from: body.visitor.trim(), p_kind: stop ? "stop" : "message" });
+    if (stop || ein?.allowed !== true) return json({ conversation: conv, reply: "", actions: [], live: false, opted_out: true });
+  }
+
   // may this teammate act for real right now?
   const { data: sb } = await db.from("forge_settings").select("value").eq("key", "act_sandbox_businesses").maybeSingle();
   const real = c.s.status === "live" || (Array.isArray(sb?.value) && !!c.biz && sb.value.includes(c.biz.id));
@@ -463,9 +473,23 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
     }
     if (!real) { actions.push({ tool: name, status: "test_only" }); return { text: write ? "Test mode: nothing was changed. Tell the customer a team member will follow up." : "Test mode: no data was read. Tell the customer a team member will confirm." }; }
     args = { ...args, ...(meta.row.fixed ?? {}) };
+    let sentTo = "", sentBody = "";
     if (meta.row.guard === "email") {
       const key = ["body", "message_body", "content"].find((k) => typeof args[k] === "string");
       if (key && !AI_RE.test(args[key])) args[key] = `${args[key]}\n\nSent by ${c!.teammate}, an AI assistant for ${c!.name}.`;
+      if (key && !/reply stop/i.test(args[key])) args[key] = `${args[key]}\n${EMAIL_OPT_OUT_LINE}`;
+      // Before a send: has this person opted out of email? Fail closed: if the database cannot say yes, nothing is sent.
+      // An address the customer typed in this chat is recorded as consent (web_form) the first time.
+      const to = [args.recipient_email, args.to].find((v) => typeof v === "string" && EMAIL_ONE.test(v.trim()));
+      if (to && c!.biz?.id) {
+        const { data: gate } = await db.rpc("portal_email_gate", { p_business: c!.biz.id, p_spec: id, p_to: String(to).trim(), p_given_in_chat: seen.has(String(to).trim().toLowerCase()) });
+        if (gate?.allowed !== true) {
+          actions.push({ tool: name, status: "blocked" });
+          await log(`${c!.teammate} did not email a customer: ${gate?.reason === "opted_out" ? "they opted out of email" : "email permission could not be confirmed"}`, "skipped", meta.job);
+          return { text: gate?.reason === "opted_out" ? "Blocked: this person asked not to be emailed. Do not email them again. Tell them nothing was sent." : "Blocked: email permission could not be confirmed. Tell the customer a team member will follow up.", error: true };
+        }
+        sentTo = String(to).trim();
+      }
       // Gmail's send-only permission cannot look up the mailbox's own address, and the tool refuses to send without one.
       // Pip supplies it here; the model never sets it. Gmail swaps in the signed-in mailbox whenever the two differ,
       // so this cannot make a teammate send as anyone else.
@@ -516,6 +540,12 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
       return { text: `That did not work: ${err || "unknown error"}. Do not tell the customer it was done.`, error: true };
     }
     actions.push({ tool: name, status: "done" });
+    if (sentTo) {
+      // One record per email that really went out: which consent row covered it, and that it carried the AI line and the opt-out line.
+      const k = ["body", "message_body", "content"].find((x) => typeof args[x] === "string");
+      sentBody = k ? String(args[k]) : "";
+      await db.rpc("portal_outbound_sent", { p_business: c!.biz.id, p_spec: id, p_contact: sentTo, p_kind: "email", p_channel: "email", p_ai_disclosed: AI_RE.test(sentBody), p_opt_out_offered: /reply stop/i.test(sentBody) });
+    }
     if (write) await log(`${c!.teammate}: ${meta.row.label}`, "ok", meta.job);
     if (meta.row.shape === "busy_only") {
       const items = dig(r.j?.data, "items");
