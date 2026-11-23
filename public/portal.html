@@ -115,6 +115,28 @@ svg.i{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-widt
 .card-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .card-h .h-s{margin-top:10px}
 .stack{display:flex;flex-direction:column;gap:16px}
+/* operators: the review screen (shown only while the operator lane is on) */
+.op-back{align-self:flex-start}
+.op-head{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.op-head .titles{flex:1;min-width:200px}
+.op-list{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.op-row{appearance:none;border:0;width:100%;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px;padding:10px 14px;border-radius:15px;background:rgba(255,255,255,.7);box-shadow:inset 0 0 0 1px var(--line);font:500 15px/1.35 var(--f-body);color:var(--ink);cursor:pointer}
+.op-row:hover{box-shadow:inset 0 0 0 1px rgba(var(--violet-rgb),.5)}
+.op-row:focus-visible{outline:none;box-shadow:0 0 0 4px rgba(var(--violet-rgb),.25),inset 0 0 0 1px var(--violet-ink)}
+.op-row .sub{display:block;font-size:13px;color:var(--ink-3);font-weight:400;margin-top:2px}
+.op-row.done{cursor:default;background:transparent}
+.op-nums{display:flex;gap:26px;flex-wrap:wrap;margin-top:12px}
+.op-nums b{display:block;font:400 34px/1 var(--f-display);color:var(--ink)}
+.op-nums span{font-size:13px;color:var(--ink-3)}
+.op-ask{padding:16px 0;border-top:1px solid var(--line)}
+.op-ask:first-of-type{border-top:0;padding-top:6px}
+.op-ask h4{font:600 15.5px/1.3 var(--f-body);color:var(--ink)}
+.op-ask blockquote{margin:10px 0 0;padding:12px 14px;border-radius:14px;background:rgba(var(--violet-rgb),.07);font-size:15px;line-height:1.5;color:var(--ink-2);white-space:pre-wrap}
+.op-ask .area{min-height:110px;padding:13px 15px;resize:vertical;margin-top:10px}
+.op-time{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:10px}
+.op-time li{display:flex;gap:10px;align-items:flex-start;font-size:15px;line-height:1.45;color:var(--ink-2)}
+.op-time svg.i{flex:none;margin-top:2px;color:var(--good)}
+
 .stack-l{display:flex;flex-direction:column;gap:22px}
 .row{display:flex;align-items:center;gap:12px}
 .row.wrap{flex-wrap:wrap}
@@ -1516,7 +1538,7 @@ async function load() {
   if (S.data) celebrateChanges();
 }
 async function openBusiness(id) {
-  S.bid = id; S.tab = "team"; S.log = null; S.logState = null; S.data = null; S.openTouched = false; S.openSlots = new Set();
+  S.bid = id; S.tab = "team"; S.op = null; S.opc = {}; S.log = null; S.logState = null; S.data = null; S.openTouched = false; S.openSlots = new Set();
   history.replaceState(null, "", "?b=" + id);
   loadingView(); await load(); render();
 }
@@ -1710,13 +1732,113 @@ function mateCard(a, i) {
       a.needs.length ? h("div", { class: "needs" }, h("span", {}, "Needs"), needs) : null,
       a.pauses.map((p) => h("p", { class: "why" }, icon("alert"), h("span", {}, "Paused: " + (p.detail || ({ owner: "by an owner", staff: "by staff", founder: "by Pip", expired_access: "a sign-in stopped working", disconnect: "everything was disconnected" }[p.reason] || p.reason)))))) : null,
     canDo(a),
-    h("div", { class: "more" }, h("div", { class: "acts" + (paused ? " pri" : "") }, act)));
+    h("div", { class: "more" }, h("div", { class: "acts" + (paused ? " pri" : "") }, act,
+      S.data.operate_on && a.operator ? h("button", { class: "btn ghost", "data-k": "op-" + a.spec_id, onclick: () => { S.op = a.spec_id; render({ scroll: "top" }); } }, "See " + mateName(a) + "'s work", icon("arrow")) : null)));
   card.addEventListener("pointerenter", () => hover(card, true));
   card.addEventListener("focusin", () => hover(card, true));
   return card;
 }
+
+// ---------- operators: the review screen ----------
+// An operator runs a whole recurring job on its own (posts, review requests, quote follow-ups). This screen is where an
+// owner approves its voice and accounts once, sees what it has open and what it finished this week, and pauses it.
+// It exists only while the operator lane is on: the server sends operate_on and marks each operator teammate.
+const OP_NAME = { content_social: "Social posts", review_requests: "Review requests", quote_followup: "Quote follow-ups" };
+const OP_ITEM = { content_social: ["post", "posts"], review_requests: ["review request", "review requests"], quote_followup: ["quote follow-up", "quote follow-ups"] };
+const OP_CLOSED = { replied: "They replied, so it stopped and handed the conversation to you.", opted_out: "They said stop. It will never contact them again.", completed: "Finished.", max_touches: "It reached its limit and stopped.", max_days: "Time ran out, so it stopped.", gate: "A safety rule stopped it.", missing_approval: "It stopped because an approval was missing." };
+const OP_ACCOUNT = { facebook_page: "Facebook Page", instagram_business: "Instagram account", google_business: "Google Business Profile", linkedin_page: "LinkedIn Page" };
+const accountName = (k) => OP_ACCOUNT[k] || String(k).replace(/_/g, " ");
+const dayWord = (iso) => { if (!iso) return ""; const d = new Date(iso), n = new Date(), days = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(n.getFullYear(), n.getMonth(), n.getDate())) / 864e5); return days === 0 ? "today" : days === 1 ? "tomorrow" : days === -1 ? "yesterday" : d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }); };
+function opLoad(sid) {
+  S.opc = S.opc || {};
+  if (S.opc[sid] !== undefined) return S.opc[sid];
+  S.opc[sid] = null;
+  const at = "/business/" + S.bid + "/agents/" + sid;
+  Promise.all([api(at + "/operator"), api(at + "/operator-cases")]).then(([v, c]) => { S.opc[sid] = { v, c }; }, (e) => { S.opc[sid] = { error: e.message || "This could not be loaded." }; }).then(() => { if (S.op === sid) render(); });
+  return null;
+}
+const opAsk = (sid, body, okText) => run(async () => { await api("/business/" + S.bid + "/agents/" + sid + "/operator-approval", body); if (S.opc) delete S.opc[sid]; }, okText, () => Pip.happy());
+// One thing the owner approves once: the brand voice, or one account it may post to.
+function opApproval(a, kind, subject, rows) {
+  const nm = mateName(a), sid = a.spec_id, mine = rows.filter((r) => r.kind === kind && (r.subject || "") === subject), cur = mine[mine.length - 1] || null, owner = S.data.role === "owner";
+  const title = kind === "brand_voice" ? "The voice " + nm + " writes in" : "Posting to your " + accountName(subject);
+  const takeBack = () => confirmSheet({ title: "Take this approval back?", body: nm + " stops posting until it is approved again.", ok: "Take it back", danger: true, onOk: () => opAsk(sid, { do: "revoke", id: cur.id }, "Taken back. " + nm + " has stopped posting.") });
+  if (cur && cur.status === "approved") return h("div", { class: "op-ask", "data-k": "ask-" + kind + "-" + subject },
+    h("div", { class: "row wrap", style: { justifyContent: "space-between" } }, h("h4", {}, title), pill("Approved" + (cur.approved_at ? " " + dayWord(cur.approved_at) : ""), "good")),
+    kind === "brand_voice" && cur.voice && cur.voice.text ? h("blockquote", {}, cur.voice.text) : null,
+    h("div", { class: "btns" }, h("button", { class: "btn quiet", "data-k": "revoke-" + cur.id, onclick: takeBack }, "Take it back")));
+  if (cur && cur.status === "requested") return h("div", { class: "op-ask", "data-k": "ask-" + kind + "-" + subject },
+    h("div", { class: "row wrap", style: { justifyContent: "space-between" } }, h("h4", {}, title), pill("Waiting for an owner", "wait")),
+    kind === "brand_voice" && cur.voice && cur.voice.text ? h("blockquote", {}, cur.voice.text) : null,
+    owner ? h("div", { class: "btns" }, h("button", { class: "btn pri", "data-k": "approve-" + cur.id, onclick: () => opAsk(sid, { do: "approve", id: cur.id }, "Approved.") }, icon("check"), "Approve"),
+        h("button", { class: "btn quiet", "data-k": "revoke-" + cur.id, onclick: () => opAsk(sid, { do: "revoke", id: cur.id }, "Declined. Nothing will be posted.") }, "Decline"))
+      : h("p", { class: "fine", style: { marginTop: "8px" } }, "Only an owner of this business can approve this."));
+  // Nothing asked yet, or the last one was taken back: an owner writes or confirms it and approves in one step.
+  const again = cur && cur.status === "revoked";
+  if (!owner) return h("div", { class: "op-ask", "data-k": "ask-" + kind + "-" + subject }, h("div", { class: "row wrap", style: { justifyContent: "space-between" } }, h("h4", {}, title), pill(again ? "Taken back" : "Not approved yet", "warn")), h("p", { class: "fine", style: { marginTop: "8px" } }, "Only an owner of this business can approve this."));
+  const both = async (body) => { const r = await api("/business/" + S.bid + "/agents/" + sid + "/operator-approval", Object.assign({ do: "request", kind }, body)); if (S.opc) delete S.opc[sid]; await api("/business/" + S.bid + "/agents/" + sid + "/operator-approval", { do: "approve", id: r.id }); };
+  if (kind === "account") return h("div", { class: "op-ask", "data-k": "ask-" + kind + "-" + subject },
+    h("div", { class: "row wrap", style: { justifyContent: "space-between" } }, h("h4", {}, title), pill(again ? "Taken back" : "Not approved yet", "warn")),
+    h("p", { class: "small", style: { marginTop: "6px" } }, nm + " posts nothing to this account until you approve it."),
+    h("div", { class: "btns" }, h("button", { class: "btn pri", "data-k": "allow-" + subject, onclick: () => run(() => both({ subject }), "Approved.", () => Pip.happy()) }, icon("check"), "Approve this account")));
+  const area = h("textarea", { class: "area", id: "op-voice", maxlength: "1500", placeholder: "For example: warm and plain, short sentences, never salesy. We say 'folks', not 'customers'." });
+  return h("div", { class: "op-ask", "data-k": "ask-" + kind + "-" + subject },
+    h("div", { class: "row wrap", style: { justifyContent: "space-between" } }, h("h4", {}, title), pill(again ? "Taken back" : "Not approved yet", "warn")),
+    h("label", { class: "field", for: "op-voice", style: { marginTop: "10px" } }, h("span", { class: "lab" }, "How should " + nm + " sound?"), area),
+    h("p", { class: "fine", style: { marginTop: "8px" } }, "A sentence or two is enough. " + nm + " writes every post in this voice, and posts nothing until you approve it."),
+    h("div", { class: "btns" }, h("button", { class: "btn pri", "data-k": "voice-approve", onclick: () => { const t = area.value.trim(); if (t.length < 20) { area.setAttribute("aria-invalid", "true"); area.focus(); say("Describe the voice in at least a sentence.", "err"); showNote(); return; } run(() => both({ voice: { text: t } }), "Voice approved.", () => Pip.happy()); } }, icon("check"), "Approve this voice")));
+}
+// One item: what happened to it so far and what happens next. Progress only, never who the customer is.
+function opCaseSheet(a, v, c, x) {
+  const one = (OP_ITEM[c.process] || ["item"])[0], max = c.max_touches, sent = x.touches + (max ? " of " + max : "") + " sent";
+  const li = (ic, text) => h("li", {}, icon(ic), h("span", {}, text));
+  openSheet([kick(OP_NAME[c.process] || "Operator"), h("h2", { class: "h-s", id: "sh-t" }, "One " + one),
+    h("ul", { class: "op-time" },
+      li("check", "Started " + dayWord(x.opened_at) + "."),
+      x.touches ? li("check", (c.process === "content_social" ? "Posts: " : "Messages: ") + sent + (x.last_touch_at ? ", the last one " + dayWord(x.last_touch_at) : "") + ".") : li("info", "Nothing sent yet."),
+      x.status === "open" ? li("info", "Next step " + dayWord(x.next_at) + ". " + mateName(a) + " does it on its own.") : li("check", OP_CLOSED[x.closed_reason] || "Closed.")),
+    v.words.stops.length ? h("div", { style: { marginTop: "16px" } }, h("p", { class: "lab", style: { font: "500 11px/1.2 var(--f-mono)", letterSpacing: ".14em", textTransform: "uppercase", color: "var(--ink-2)" } }, "What stops it"), h("ul", { class: "rules", style: { marginTop: "8px" } }, v.words.stops.map((t) => h("li", {}, icon("info"), h("span", {}, t))))) : null,
+    h("p", { class: "fine", style: { marginTop: "14px" } }, "This screen shows progress only. Who the customer is stays in your own tools. Reference " + x.ref + "."),
+    h("div", { class: "btns" }, h("button", { class: "btn ghost", type: "button", onclick: () => sheet.close() }, "Close"))], ".btn.ghost");
+  sheet.setAttribute("aria-labelledby", "sh-t");
+}
+function operatorTab(a) {
+  const nm = mateName(a), sid = a.spec_id, paused = isPaused(a), got = opLoad(sid);
+  const back = h("button", { class: "back op-back", "data-k": "op-back", onclick: () => { S.op = null; render({ scroll: "top" }); } }, icon("back"), "Your team");
+  const act = paused ? (isOwner() ? h("button", { class: "btn pri", "data-k": "res-" + sid, onclick: () => run(() => api("/business/" + S.bid + "/agents/" + sid + "/resume", {}), "Resumed.", () => Pip.happy()) }, icon("play"), "Resume") : null)
+    : h("button", { class: "btn quiet", "data-k": "pau-" + sid, onclick: () => run(() => api("/business/" + S.bid + "/agents/" + sid + "/pause", {}), "Paused. " + nm + " has stopped.") }, icon("pause"), "Pause " + nm);
+  const head = (state, asksYou) => h("div", { class: "card hair rise", style: { "--i": 1 } }, h("div", { class: "op-head" }, face(nm, (a.role || "") + " " + a.name),
+    h("div", { class: "titles" }, kick(OP_NAME[a.operator] || "Operator", true), h("h2", { class: "h-s", style: { marginTop: "8px" } }, nm), h("p", { class: "small", style: { marginTop: "4px" } }, asksYou ? "Works on its own. You approve it once, and it hands you only what needs a person." : "Works on its own, and hands you only what needs a person.")),
+    h("div", { class: "stack", style: { gap: "10px", alignItems: "flex-end" } }, state, act)));
+  if (!got) return [back, head(pill("Loading", "")), h("div", { class: "card soft rise", style: { "--i": 2 } }, h("p", { class: "fine" }, "Getting " + nm + "'s work."))];
+  if (got.error) return [back, head(pill("Could not load", "warn")), h("div", { class: "card warm rise", style: { "--i": 2 } }, h("p", { class: "lead" }, got.error), h("div", { class: "btns" }, h("button", { class: "btn pri", "data-k": "op-retry", onclick: () => { delete S.opc[sid]; render(); } }, "Try again")))];
+  const v = got.v, c = got.c, asks = v.asks || { brand_voice: false, accounts: [] }, rows = v.approvals || [], items = OP_ITEM[c.process] || ["item", "items"];
+  const need = [].concat(asks.brand_voice ? [["brand_voice", ""]] : [], (asks.accounts || []).map((s) => ["account", s]));
+  const state = paused ? pill("Paused", "warn") : need.length && !v.approved ? pill("Waiting for your approval", "wait") : a.status === "live" ? pill("Working", "good") : pill((AGENT[a.status] || [a.status])[0], (AGENT[a.status] || [])[1] || "");
+  const li = (t) => h("li", {}, icon("check"), h("span", {}, t));
+  const openRow = (x) => h("li", {}, h("button", { class: "op-row", type: "button", "data-k": "case-" + x.ref, onclick: () => opCaseSheet(a, v, c, x) },
+    h("span", {}, x.touches ? x.touches + (c.max_touches ? " of " + c.max_touches : "") + " sent" : "Not started yet", h("span", { class: "sub" }, "Next step " + dayWord(x.next_at))), icon("arrow")));
+  const doneRow = (x) => h("li", {}, h("button", { class: "op-row", type: "button", "data-k": "case-" + x.ref, onclick: () => opCaseSheet(a, v, c, x) },
+    h("span", {}, OP_CLOSED[x.closed_reason] || "Closed.", h("span", { class: "sub" }, "Closed " + dayWord(x.closed_at) + " after " + x.touches + " sent")), icon("arrow")));
+  return [back, head(state, need.length > 0),
+    paused ? h("div", { class: "card warm rise", style: { "--i": 2 }, "data-k": "op-paused" }, kick("Paused"), h("p", { class: "lead", style: { marginTop: "10px", fontSize: "15.5px" } }, nm + " is not sending or posting anything. Everything it had open is waiting where it stopped."),
+      a.pauses.map((p) => h("p", { class: "why", style: { marginTop: "8px" } }, icon("alert"), h("span", {}, "Paused: " + (p.detail || ({ owner: "by an owner", staff: "by staff", founder: "by Pip", expired_access: "a sign-in stopped working", disconnect: "everything was disconnected" }[p.reason] || p.reason))))),
+      isOwner() ? null : h("p", { class: "fine", style: { marginTop: "8px" } }, "An owner can resume.")) : null,
+    need.length ? h("div", { class: "card rise", style: { "--i": 3 }, "data-k": "op-needs" }, kick(v.approved ? "Your approvals" : "Needs you"), h("p", { class: "small", style: { marginTop: "8px" } }, v.approved ? "You approved these once. Take one back and " + nm + " stops posting." : nm + " posts nothing until each of these is approved. You do this once."),
+      need.map(([k, s]) => opApproval(a, k, s, rows))) : null,
+    h("div", { class: "card rise", style: { "--i": 4 }, "data-k": "op-week" }, kick("This week"),
+      h("div", { class: "op-nums" }, h("div", {}, h("b", {}, String(c.open.length) + (c.more ? "+" : "")), h("span", {}, "open " + items[c.open.length === 1 ? 0 : 1])), h("div", {}, h("b", {}, String(c.closed.length)), h("span", {}, "finished in the last 7 days"))),
+      c.open.length ? h("ul", { class: "op-list", "aria-label": "Open" }, c.open.slice(0, 8).map(openRow)) : h("p", { class: "fine", style: { marginTop: "12px" } }, "Nothing open right now."),
+      c.open.length > 8 ? h("p", { class: "fine", style: { marginTop: "8px" } }, "And " + (c.open.length - 8) + " more, in order of what comes next.") : null,
+      c.closed.length ? h("ul", { class: "op-list", "aria-label": "Finished this week" }, c.closed.slice(0, 6).map(doneRow)) : null),
+    h("div", { class: "card soft rise", style: { "--i": 5 }, "data-k": "op-words" }, kick("What " + nm + " does", true), h("ul", { class: "rules", style: { marginTop: "10px" } }, v.words.what.map(li)),
+      v.words.needsYou.length ? [h("p", { class: "small", style: { marginTop: "16px", fontWeight: 600, color: "var(--ink)" } }, "What it hands you"), h("ul", { class: "rules", style: { marginTop: "8px" } }, v.words.needsYou.map((t) => h("li", {}, icon("info"), h("span", {}, t))))] : null,
+      v.words.stops.length ? [h("p", { class: "small", style: { marginTop: "16px", fontWeight: 600, color: "var(--ink)" } }, "What stops it"), h("ul", { class: "rules", style: { marginTop: "8px" } }, v.words.stops.map((t) => h("li", {}, icon("info"), h("span", {}, t))))] : null)];
+}
 function teamTab() {
   const d = S.data;
+  const opMate = S.op && d.operate_on ? d.agents.find((x) => x.spec_id === S.op && x.operator) : null;
+  if (opMate) return operatorTab(opMate);
   return [stageCard(),
     d.agents.length ? h("section", { class: "stack", "aria-label": "Your team" }, h("div", { class: "row", style: { justifyContent: "space-between", marginTop: "6px" } }, h("h2", { class: "h-s" }, "Your team"), h("span", { class: "fine" }, d.agents.length === 1 ? "1 teammate" : d.agents.length + " teammates")), h("div", { class: "team" }, d.agents.map(mateCard)))
       : h("div", { class: "card dash empty rise", style: { "--i": 2 }, "data-pip-empty": "" }, h("p", { class: "h-s" }, "Your teammates will show here.")),
@@ -2112,7 +2234,7 @@ function setDock(on) {
   document.documentElement.classList.add("has-dock");
 }
 function setTab(k, slot, from) {
-  S.tab = k; say(null);
+  S.tab = k; S.op = null; say(null);
   render({ keepFocus: from ? "tab-" + from + "-" + k : null, scroll: "top" });
   if (slot) requestAnimationFrame(() => { const el = document.getElementById("step-" + slot); if (el) { el.open = true; el.scrollIntoView({ behavior: reduced() ? "auto" : "smooth", block: "start" }); const f = el.querySelector(".body button:not(:disabled), .body input, .body select"); if (f) setTimeout(() => f.focus({ preventScroll: true }), reduced() ? 0 : 450); } });
 }
@@ -2179,7 +2301,15 @@ function bizPlan() {
   const d = S.data, st = stageOf(d), nx = nextStep(d), ps = d.agents.filter(isPaused), owner = isOwner();
   const plan = { mood: "calm", line: "", point: null, tone: null };
   const pointAt = (sel) => () => document.querySelector(sel);
-  if (S.tab === "team") {
+  const opNow = S.tab === "team" && S.op && d.operate_on ? d.agents.find((x) => x.spec_id === S.op && x.operator) : null;
+  if (opNow) {
+    const got = S.opc && S.opc[S.op], waiting = got && got.v && !got.v.approved && ((got.v.asks || {}).brand_voice || ((got.v.asks || {}).accounts || []).length);
+    if (isPaused(opNow)) { plan.mood = "concerned"; plan.tone = "warn"; plan.line = mateName(opNow) + " is paused. Nothing goes out until an owner resumes."; }
+    else if (!got) { plan.mood = "think"; plan.line = "Pulling up " + mateName(opNow) + "'s work."; }
+    else if (got.error) { plan.mood = "concerned"; plan.line = "I couldn't load this just now."; }
+    else if (waiting) { plan.line = owner ? mateName(opNow) + " is ready and waiting on your approval. You do it once." : mateName(opNow) + " is waiting on an owner's approval."; plan.point = pointAt('[data-k="op-needs"]'); }
+    else plan.line = "Here's what " + mateName(opNow) + " has open and what it finished this week.";
+  } else if (S.tab === "team") {
     if (st === "building") { plan.line = d.agents.length ? "I'm building your team now. Each teammate shows up here as they're ready." : "I'm building your team now. Your teammates will show up here."; if (!d.agents.length) plan.point = pointAt("[data-pip-empty]"); }
     else if (st === "priced") { plan.line = owner ? "Your price is ready. Accept it and we can start setup." : "Your price is ready. An owner accepts it, then setup opens."; if (owner) plan.point = pointAt('[data-pip="next"]'); }
     else if (st === "setup") { plan.line = owner ? "Next up: " + (nx ? nx.label.charAt(0).toLowerCase() + nx.label.slice(1) : "setup") + ". Each step saves on its own, so stop any time." : "An owner is finishing setup. " + d.checklist.filter((s) => s.status === "active").length + " of " + d.checklist.length + " steps are done."; plan.point = pointAt('[data-pip="next"]'); }

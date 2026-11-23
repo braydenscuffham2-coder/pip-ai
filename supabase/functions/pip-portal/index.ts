@@ -174,7 +174,7 @@ async function me(u: User) {
  * and from the same check the runtime uses (see _shared/abilities.ts), never from a model. If anything goes wrong the
  * teammate is shown without the list rather than with a guess.
  */
-async function withAbilities(agents: any[]): Promise<any[]> {
+async function withAbilities(agents: any[], operateOn = false): Promise<any[]> {
   const ids = agents.map((a) => a?.spec_id).filter((x) => typeof x === "string");
   if (!ids.length) return agents;
   try {
@@ -189,7 +189,9 @@ async function withAbilities(agents: any[]): Promise<any[]> {
       const s = ((specs.data as any[]) || []).find((x) => x.id === a.spec_id);
       if (!s) return a;
       const m = ((mans.data as any[]) || []).find((x) => x.spec_id === a.spec_id);
-      try { return { ...a, abilities: abilitiesOf(s.spec, m ?? null, s.brain, catalog) }; } catch { return a; }
+      // While the operator lane is on, an operator teammate is marked with its process so the Portal can show its review screen.
+      const op = operateOn ? (() => { try { const c = checkOperate(s.spec); return c.ok && c.operate ? c.operate.process : null; } catch { return null; } })() : null;
+      try { return { ...a, abilities: abilitiesOf(s.spec, m ?? null, s.brain, catalog), ...(op ? { operator: op } : {}) }; } catch { return op ? { ...a, operator: op } : a; }
     });
   } catch { return agents; }
 }
@@ -209,8 +211,9 @@ async function business(u: User, bid: string) {
     db.from("business_agreements").select("kind,party,status,version,accepted_at").eq("business_id", bid),
     setting("portal_terms_url", null),
   ]);
+  const operateOn = (await db.rpc("portal_flag", { p_key: "operate_lane", p_default: false })).data === true;
   return json({
-    role: r.role, business: b, checklist: cl.data || [], agents: await withAbilities((ag.data as any[]) || []), people: (people as any).data || [], issues: issues.data || [],
+    role: r.role, business: b, checklist: cl.data || [], agents: await withAbilities((ag.data as any[]) || [], operateOn), operate_on: operateOn, people: (people as any).data || [], issues: issues.data || [],
     phone: phone.data, texting: text.data, rules: rules.data || [], health_missing: (hm as any).data || [], agreements: agr.data || [],
     extra_tools: await extraTools(bid),
     setup_unlocked: !!b.price_accepted_at, terms_url: termsUrl, terms_version: await setting("portal_terms_version", null),
@@ -663,7 +666,26 @@ async function operatorView(u: User, bid: string, sid: string) {
     db.from("operator_approvals").select("id,kind,subject,status,version,voice,approved_at,revoked_at").eq("spec_id", s.id).order("id"),
     db.rpc("operator_approved_current", { p_spec: s.id }),
   ]);
-  return json({ ok: true, process: c.operate.process, words: operatePlainWords(c.operate), approvals: rows ?? [], approved: ok === true });
+  // What this operator needs approved before it posts anything, so the Portal can ask for exactly that and nothing else.
+  const asks = { brand_voice: !!(c.operate as any).approvals?.brand_voice, accounts: ((c.operate as any).approvals?.accounts ?? []) as string[] };
+  return json({ ok: true, process: c.operate.process, words: operatePlainWords(c.operate), approvals: rows ?? [], approved: ok === true, asks });
+}
+// What an operator has open and what it finished in the last seven days, for the Portal's review screen. Counts, stages
+// and times only: never who the customer is, never the case key, never the words kept for the message.
+async function operatorCases(u: User, bid: string, sid: string) {
+  await access(u, bid);
+  const { s, spec } = await operatorSpec(bid, sid);
+  const c = checkOperate(spec);
+  if (!c.ok || !c.operate) throw new Fail(404, "not_found");
+  const cols = "id,stage,touches,next_at,status,closed_reason,opened_at,closed_at,last_touch_at";
+  const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const [open, closed] = await Promise.all([
+    db.from("operator_cases").select(cols).eq("spec_id", s.id).eq("business_id", bid).eq("status", "open").order("next_at").limit(50),
+    db.from("operator_cases").select(cols).eq("spec_id", s.id).eq("business_id", bid).neq("status", "open").gte("closed_at", weekAgo).order("closed_at", { ascending: false }).limit(50),
+  ]);
+  const slim = (x: any) => ({ ref: String(x.id).slice(0, 8), stage: x.stage ?? null, touches: Number(x.touches) || 0, next_at: x.next_at ?? null, status: x.status, closed_reason: x.closed_reason ?? null, opened_at: x.opened_at ?? null, closed_at: x.closed_at ?? null, last_touch_at: x.last_touch_at ?? null });
+  const o = ((open.data as any[]) || []).slice(0, 50).map(slim), d = ((closed.data as any[]) || []).slice(0, 50).map(slim);
+  return json({ ok: true, process: c.operate.process, max_touches: (c.operate as any).touches?.max ?? null, open: o, closed: d, more: o.length === 50 || d.length === 50 });
 }
 async function operatorApproval(u: User, bid: string, sid: string, body: any) {
   const r = await access(u, bid);
@@ -887,6 +909,7 @@ Deno.serve(async (req) => {
       if (a === "activity" && req.method === "GET") return await activity(u, bid, url);
       if (a === "tools" && req.method === "GET") return await toolSearch(u, bid, url);
       if (a === "agents" && p[3] && p[4] === "operator" && req.method === "GET") return await operatorView(u, bid, p[3]);
+      if (a === "agents" && p[3] && p[4] === "operator-cases" && req.method === "GET") return await operatorCases(u, bid, p[3]);
       if (req.method !== "POST") throw new Fail(405, "method");
       if (a === "profile") return await setProfile(u, bid, body);
       if (a === "accept") return await accept(u, bid, body);
