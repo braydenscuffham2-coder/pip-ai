@@ -143,19 +143,19 @@ insert into public.primitives (id, kind, label, how, limits, runtime, tier, effo
   'Plans a week of posts in the owner''s approved voice, sends them for the owner''s decision, and publishes the approved ones.',
   'Posts only to accounts the owner approved. The first posts, and any post with a price, offer, guarantee or customer in it, need the owner. Three posts a week at most. Never invents a review.',
   'shared', 'build', 3, 'low', array['public_post'], '[{"name": "meta", "role": "posting"}]'::jsonb,
-  array['schedule','owner_decision'], array['post'], 'conversation_sim', false,
+  array['event','record'], array['document','event'], 'conversation_sim', false,
   array['social_posting','owner_approval','draft_for_approval']),
  ('operate_review_requests', 'operate', 'Ask finished-job customers for a review',
   'When a job is marked completed, asks that customer for a review, once, then once more if they have not answered.',
   'Two asks at most, three days apart, inside calling hours, only to customers with a consent record. Stops at a reply, a STOP, or fourteen days.',
   'shared', 'build', 3, 'low', array['ai_disclosure','consent'], '[]'::jsonb,
-  array['record_changed'], array['message'], 'conversation_sim', true,
+  array['event','record'], array['message','event'], 'conversation_sim', true,
   array['consent_ledger','email','handoff']),
  ('operate_quote_followup', 'operate', 'Follow up on quotes that went quiet',
   'When a deal reaches quote sent, follows up with that customer until they answer or the window ends.',
   'Three follow-ups at most, three days apart, inside calling hours. Never mentions an amount. Stops at a reply, a STOP, or fourteen days.',
   'shared', 'build', 3, 'low', array['ai_disclosure','consent'], '[]'::jsonb,
-  array['record_changed'], array['message'], 'conversation_sim', true,
+  array['event','record'], array['message','event'], 'conversation_sim', true,
   array['consent_ledger','email','handoff'])
 on conflict (id) do nothing;
 
