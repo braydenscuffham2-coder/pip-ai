@@ -71,7 +71,12 @@ var a = (e) => e, C = [
   a({ id: "consent_ledger", kind: "guard", label: "Opt-in ledger", how: "Records who agreed to texts, emails and calls, honors STOP, and blocks any message to someone who never opted in", limits: "Every outbound message checks it first. Never bypassed.", runtime: "shared", tier: "ready", effort: 1, cost_band: "none", risk: [], needs_hardware: !1, needs_baa: !1, needs_owner_oauth: !1, providers: [{ name: "pip", role: "guard" }], inputs: ["record"], outputs: ["event"], test_strategy: "unit" }),
   a({ id: "ai_disclosure", kind: "guard", label: "Says it is AI", how: "Adds the right disclosure wording for the state and channel to every first message and call", limits: "Never removed.", runtime: "shared", tier: "ready", effort: 1, cost_band: "none", risk: [], needs_hardware: !1, needs_baa: !1, needs_owner_oauth: !1, providers: [{ name: "pip", role: "guard" }], inputs: ["message"], outputs: ["message"], test_strategy: "unit" }),
   a({ id: "pii_scrub", kind: "guard", label: "Keeps secrets out", how: "Strips card numbers, SSNs and IDs from anything a teammate stores or sends", limits: "Never removed.", runtime: "shared", tier: "ready", effort: 1, cost_band: "none", risk: [], needs_hardware: !1, needs_baa: !1, needs_owner_oauth: !1, providers: [{ name: "pip", role: "guard" }], inputs: ["message", "record"], outputs: ["message", "record"], test_strategy: "unit" })
-], b = [...C, ...te, ...se], Ee = b.map((e) => e.id), ne = new Map(b.map((e) => [e.id, e])), w = (e) => ne.get(e), Oe = C.map((e) => e.id);
+], OPS = [
+  // Operators (Job 3). Known to the gate, scorer and Forge by id; deliberately not in E, so the prompts the model reads are unchanged.
+  a({ id: "operate_content_social", kind: "operate", label: "Run the business's social posting", how: "Plans a week of posts in the owner's approved voice, sends them for the owner's decision, and publishes the approved ones.", limits: "Posts only to accounts the owner approved. The first posts, and any post with a price, offer, guarantee or customer in it, need the owner. Three posts a week at most. Never invents a review.", runtime: "shared", tier: "build", effort: 3, cost_band: "low", risk: ["public_post"], needs_hardware: !1, needs_baa: !1, needs_owner_oauth: !1, providers: [{ name: "meta", role: "posting" }], inputs: ["event", "record"], outputs: ["document", "event"], test_strategy: "conversation_sim", requires: ["social_posting", "owner_approval", "draft_for_approval"] }),
+  a({ id: "operate_review_requests", kind: "operate", label: "Ask finished-job customers for a review", how: "When a job is marked completed, asks that customer for a review, once, then once more if they have not answered.", limits: "Two asks at most, three days apart, inside calling hours, only to customers with a consent record. Stops at a reply, a STOP, or fourteen days.", runtime: "shared", tier: "build", effort: 3, cost_band: "low", risk: ["ai_disclosure", "consent"], needs_hardware: !1, needs_baa: !1, needs_owner_oauth: !1, providers: [], inputs: ["event", "record"], outputs: ["message", "event"], test_strategy: "conversation_sim", outbound: !0, requires: ["consent_ledger", "email", "handoff"] }),
+  a({ id: "operate_quote_followup", kind: "operate", label: "Follow up on quotes that went quiet", how: "When a deal reaches quote sent, follows up with that customer until they answer or the window ends.", limits: "Three follow-ups at most, three days apart, inside calling hours. Never mentions an amount. Stops at a reply, a STOP, or fourteen days.", runtime: "shared", tier: "build", effort: 3, cost_band: "low", risk: ["ai_disclosure", "consent"], needs_hardware: !1, needs_baa: !1, needs_owner_oauth: !1, providers: [], inputs: ["event", "record"], outputs: ["message", "event"], test_strategy: "conversation_sim", outbound: !0, requires: ["consent_ledger", "email", "handoff"] })
+], b = [...C, ...te, ...se], Ee = b.map((e) => e.id), ne = new Map([...b, ...OPS].map((e) => [e.id, e])), w = (e) => ne.get(e), Oe = C.map((e) => e.id);
 var Te = b.filter((e) => e.outbound).map((e) => e.id), Ne = b.filter((e) => e.kind === "sink").map((e) => e.id);
 function D(e) {
   return b.filter(e ?? (() => !0)).map((n) => `- ${n.id}: ${n.label} (${n.how}). Rules: ${n.limits}${n.needs_hardware ? " Needs hardware on site." : ""}`).join(`
@@ -147,7 +152,7 @@ function U(e) {
     pipeline: n,
     sinks: n.filter((o) => w(o)?.kind === "sink").map((o) => ({ kind: o, schema: Object.fromEntries((e.data_contract?.columns ?? []).map((l) => [l, "string"])) })),
     hardware: e.hardware ?? (r === "onprem" ? { sku: "jetson-orin-nano-super", cameras: 2, zones: "drawn at install" } : null),
-    acceptance: r === "onprem" ? [{ given: "the replay fixture", when: "the detector runs end to end", then: "occupancy accuracy ≥ 90% and leave-detection latency ≤ 120 s" }] : [{ given: "the spec tests", when: "the simulator runs them", then: "at least 80% pass and every must-not-promise test passes" }]
+    acceptance: r === "onprem" ? [{ given: "the replay fixture", when: "the detector runs end to end", then: "occupancy accuracy ≥ 90% and leave-detection latency ≤ 120 s" }] : r === "operate" ? [{ given: "three fake cases and a fake clock", when: "the dry run goes through every stage", then: "every cadence limit, every stop and every approval holds, and nothing is sent" }] : [{ given: "the spec tests", when: "the simulator runs them", then: "at least 80% pass and every must-not-promise test passes" }]
   };
   return {
     agent_id: e.id,
@@ -215,7 +220,7 @@ function ae(e) {
   let t = [...e?.package?.agents ?? [], ...e?.package?.wild ? [e.package.wild] : []];
   t.length || n.push("no agents chosen");
   for (let s of t) {
-    (!s.agent_id || !s.name) && n.push("agent without id/name"), ["spec", "code", "onprem"].includes(s.lane) || n.push(`${s.agent_id}: lane`), (!Array.isArray(s.uses) || !s.uses.length) && n.push(`${s.agent_id}: uses`);
+    (!s.agent_id || !s.name) && n.push("agent without id/name"), ["spec", "code", "onprem", "operate"].includes(s.lane) || n.push(`${s.agent_id}: lane`), (!Array.isArray(s.uses) || !s.uses.length) && n.push(`${s.agent_id}: uses`);
     for (let r of s.uses ?? []) w(r) || n.push(`${s.agent_id}: unknown primitive ${r}`);
   }
   return e?.consent?.ai_disclosure_ack !== !0 && n.push("consent.ai_disclosure_ack"), n.push(...B(e).map((s) => `secret-shaped content: ${s}`)), n;
@@ -391,6 +396,32 @@ Previous spec: ${JSON.stringify(t.previous)}` : ""}`;
 }
 
 // src/forge/simulate.ts
+// The simulator's test clock and fixtures. A teammate is graded on what it does with the facts it is given, so a test
+// that needs a fact the owner has not answered yet (open slots, emergency instructions) gets a clearly labelled sample
+// here, in the simulator only. Nothing below reaches a live teammate. The clock is fixed so "the next open day" has one
+// right answer: Friday evening, after hours, so the next open day is Monday.
+var SIM_NOW = "Friday, 6:15 PM in the business's own time zone (test clock). The next open day is Monday.";
+var SIM_FIXTURES = {
+  open_slots: "Open slots from the booking software for the next 7 days: Tuesday 9:00 AM, Tuesday 1:30 PM, Wednesday 10:00 AM, Thursday 1:30 PM. Each fits every bookable visit type for new and returning customers.",
+  emergency_instructions: "If this is a life-threatening emergency, hang up and call 911. For an urgent problem after hours, call the on-call line at 555-0100 and leave your name and number.",
+  on_call_contact: "On call after hours: the on-call staff member, reached at 555-0100.",
+  office_hours_and_address: "Open Monday to Thursday, 8:00 AM to 4:30 PM. Closed Friday to Sunday. Address: 100 Test Street.",
+  bookable_visit_types: "Bookable by the assistant: new-customer first visit, returning-customer routine visit, consultation. Anything else goes on the callback list.",
+  bookable_providers_and_hours: "Every provider can be booked Monday to Thursday, 8:00 AM to 4:00 PM only. No evenings, no weekends.",
+  new_patient_and_returning_patient_rules: "New customers book the first-visit slot; returning customers book the routine slot.",
+  insurance_and_payment_facts: "The office confirms insurance and payment details by phone on the next open day."
+};
+function simFixtures(e, n) {
+  let answered = new Set((n.qa ?? []).filter((s) => String(s.a ?? "").trim()).map((s) => String(s.q))), out = [];
+  for (let k of e.knowledge ?? []) {
+    if (typeof k != "string" || !k.startsWith("owner:")) continue;
+    let id = k.slice(6);
+    if (answered.has(id)) continue;
+    out.push(`- ${id}: ${SIM_FIXTURES[id] ?? `(sample answer for "${id.replace(/_/g, " ")}"; treat it as confirmed for this test)`}`);
+  }
+  if ((e.connections ?? []).includes("booking_app") && !out.some((l) => l.startsWith("- open_slots:"))) out.push(`- open_slots: ${SIM_FIXTURES.open_slots}`);
+  return out;
+}
 function pe(e, n) {
   let t = e.agent.tools.map((s) => {
     let r = w(s);
@@ -404,6 +435,12 @@ ${n.facts.join(`
 `)}
 ${n.qa.filter((s) => s.a).map((s) => `Owner on "${s.q}": ${s.a}`).join(`
 `)}
+${(() => { let f = simFixtures(e, n); return f.length ? `
+TEST FIXTURES (samples for this test only; treat them as the owner's confirmed facts)
+${f.join(`
+`)}
+` : ""; })()}
+NOW: ${SIM_NOW}
 
 ${R}
 
@@ -515,8 +552,16 @@ async function _e(e, n) {
   let t = n.db, s = n.maxAttempts ?? we, r = await t.getSpec(e.spec_id);
   if (!r) return { outcome: "founder", detail: "spec row missing" };
   let i = r.brain?.agent ?? {}, o = r.brain?.lane ?? i.lane ?? "spec";
+  const stop = async (forgeStage, why, extra = {}) => (await t.updateSpec(r.id, { status: "needs_review", forge_stage: forgeStage, ...extra }), await t.notify(r.id, "needs_founder", { stage: e.stage, errors: [why] }), { outcome: "founder", detail: why });
+  if (o === "operate" && e.stage !== "provision" && e.stage !== "golive" && !(await t.flag?.("operate_lane"))) return await stop("operate_off", "The operator lane is not switched on yet.");
   switch (e.stage) {
     case "compile": {
+      if (o === "operate") {
+        if (!n.operate) return await stop("compile_failed", "This build has no operator compiler.");
+        let h = n.operate.compile(i, r.business);
+        if (!h.ok) return await stop("compile_failed", h.errors.join("; "), { tests: { errors: h.errors } });
+        return await t.updateSpec(r.id, { spec: h.spec, status: "testing", forge_stage: "compiled", quote: { ...r.quote ?? {}, lane: o, needs: h.needs } }), await t.enqueue({ order_id: e.order_id, spec_id: r.id, stage: "test", attempt: e.attempt, log: e.log }), { outcome: "next", detail: `operator spec with ${h.spec.jobs.length} jobs` };
+      }
       if (o !== "spec")
         return await t.updateSpec(r.id, { forge_stage: "skipped_compile" }), await t.enqueue({ order_id: e.order_id, spec_id: r.id, stage: "stage", attempt: 1 }), { outcome: "next", detail: `${o} lane: no spec to compile` };
       let l = e.log?.at(-1), d = z({ ...i.presented, name: i.name, teammate: i.teammate, uses: i.uses, power: i.power, asks: i.asks, measure: i.measure, setup: i.setup_steps }, { business: r.business, facts: r.brain.facts ?? [], qa: r.brain.qa ?? [] }, l), u = await n.model(d, e.attempt >= 2 ? "opus" : "sonnet", `forge:compile:${r.skill_id}`), h = V(x(u), r.business);
@@ -527,6 +572,11 @@ async function _e(e, n) {
       return await t.updateSpec(r.id, { spec: h.spec, status: "testing", forge_stage: "compiled", quote: { tier: h.tier, waitingOn: h.waitingOn } }), await t.enqueue({ order_id: e.order_id, spec_id: r.id, stage: "test", attempt: e.attempt, log: e.log }), { outcome: "next", detail: `spec v${h.spec.version}, tier ${h.tier}, waiting on ${h.waitingOn.map((g) => g.id).join(", ") || "nothing"}` };
     }
     case "test": {
+      if (o === "operate") {
+        let d = n.operate.dryRun(r.spec);
+        if (await t.updateSpec(r.id, { tests: d, forge_stage: "tested" }), !d.ok) return await stop("tests_failed", `The dry run failed: ${d.cases.filter((g) => !g.ok).map((g) => g.name).join("; ")}`);
+        return await t.enqueue({ order_id: e.order_id, spec_id: r.id, stage: "review", attempt: e.attempt, log: e.log }), { outcome: "next", detail: `${d.passed}/${d.total} dry-run checks passed` };
+      }
       let l = r.spec, d = await Y(l, { facts: r.brain.facts ?? [], qa: r.brain.qa ?? [] }, n.model);
       if (await t.updateSpec(r.id, { tests: d, forge_stage: "tested" }), !(d.ratio >= 0.8 && d.must_not_promise_ok)) {
         let h = { errors: [], failed: d.cases.filter((g) => g.missed.length).map((g) => ({ test: { say: g.say }, reply: g.reply, missed: g.missed })), previous: l };
@@ -536,6 +586,7 @@ async function _e(e, n) {
     }
     case "review": {
       let l = await Z(i, r.spec, r.tests, n.reviewer);
+      if (o === "operate" && l.skipped) return await stop("review_unavailable", "Operators always go through review, and the reviewer is not available. Nothing was staged.");
       if (await t.updateSpec(r.id, { review: l, forge_stage: "reviewed" }), l.blocking.length) {
         let d = { errors: l.blocking.map((u) => `reviewer: ${u}`), failed: [], previous: r.spec };
         return e.attempt < s ? (await t.enqueue({ order_id: e.order_id, spec_id: r.id, stage: "compile", attempt: e.attempt + 1, log: [...e.log ?? [], d] }), { outcome: "retry", detail: l.blocking.join("; ") }) : (await t.updateSpec(r.id, { status: "needs_review", forge_stage: "review_blocked" }), await t.notify(r.id, "needs_founder", { stage: "review", blocking: l.blocking }), { outcome: "founder", detail: l.blocking.join("; ") });
@@ -547,7 +598,9 @@ async function _e(e, n) {
       if (o === "onprem") {
         let d = i.custom?.hardware ?? { sku: "jetson-orin-nano-super", cameras: 2 }, u = await t.createBox({ order_id: e.order_id, agent_id: r.skill_id, domain: r.domain, sku: d.sku, config: { cameras: d.cameras, zones: [], data_contract: i.data_contract ?? null, uses: i.uses, privacy: { store_video: !1, faces: !1 } } });
         await t.updateSpec(r.id, { status: "sandbox", forge_stage: "box_reserved", quote: { lane: o, box_id: u, needs: i.needs } }), l = `box ${u} reserved; flash, ship, calibrate on site`;
-      } else if (o === "code")
+      } else if (o === "operate")
+        await t.updateSpec(r.id, { status: "sandbox", forge_stage: "operator_dry_run", quote: { ...r.quote ?? {}, lane: o } }), l = "operator dry run passed; it can run for real only for a test business until go-live";
+      else if (o === "code")
         await t.updateSpec(r.id, { status: "sandbox", forge_stage: "template_assigned", quote: { lane: o, template: i.uses.includes("demand_forecast") ? "forecast" : "custom", needs: i.needs } }), l = "code lane: template assigned, needs the owner's data connection";
       else {
         let d = r.spec;
@@ -685,6 +738,7 @@ function Ie(e) {
 }
 export {
   b as PRIMITIVES,
+  pe as simulatorPrompt,
   K as agentTurn,
   Ie as anthropicModel,
   oe as buildOrder,

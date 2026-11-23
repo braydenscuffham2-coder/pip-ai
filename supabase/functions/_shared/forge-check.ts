@@ -12,6 +12,7 @@
 // The Forge prepares; Brayden switches on. Nothing here presses go-live, sets a price or sends anything.
 // Its one import is the contract beside it, so pip-forge, pip-forge-mcp and the tests all use the same copy.
 import { checkSpec, CONTRACT, isMoneyTool, type Job, type Level, MONEY_RECORDS, notYet } from "./teammate-spec.ts";
+import { checkOperate, operatorJobs } from "./operate.ts";
 
 // deno-lint-ignore no-explicit-any
 type J = any;
@@ -37,7 +38,7 @@ export async function loadCatalog(rows: (path: string) => Promise<unknown>): Pro
 }
 
 /** Does this spec declare jobs? The same test the contract uses: either key present means it must pass the check. */
-export const declares = (spec: unknown): boolean => isObj(spec) && (spec.contract !== undefined || spec.jobs !== undefined);
+export const declares = (spec: unknown): boolean => isObj(spec) && (spec.contract !== undefined || spec.jobs !== undefined || spec.operate !== undefined);
 
 /**
  * What is behind one tool of one job.
@@ -77,13 +78,13 @@ const title = (s: string) => s.replace(/_/g, " ").replace(/^./, (c) => c.toUpper
  *   - anything open only while answering a customer, for a job that can also start on its own.
  * Tests in forge-check.test.ts and pip-turn/forge-agree.test.mjs fail if pip-turn's own answer differs.
  */
-export function canRun(jobs: Job[], catalog: Catalog): ToolLine[] {
+export function canRun(jobs: Job[], catalog: Catalog, caseJobs: ReadonlySet<string> = new Set()): ToolLine[] {
   const steps = Array.isArray(catalog?.steps) ? catalog.steps.filter(isObj) : [];
   const reviewed = (Array.isArray(catalog?.tools) ? catalog.tools.filter(isObj) : []).filter((r) => typeof r.block === "string" && typeof r.record === "string" && typeof r.level === "string" && !isMoneyTool(r.toolkit));
   const stepOfBlock = (block: string) => steps.find((s) => (s.blocks ?? []).includes(block));
   const out: ToolLine[] = [];
   for (const job of jobs) {
-    const alone = job.triggers.some((t) => t.type !== "message"), answers = job.triggers.some((t) => t.type === "message");
+    const alone = job.triggers.some((t) => t.type !== "message"), answers = job.triggers.some((t) => t.type === "message"), op = caseJobs.has(job.id);
     for (const g of job.tools) {
       const base = { job: job.id, tool: g.tool, records: g.records, required: g.required };
       const end = (missing: Level[]) => (!missing.length ? "" : g.required ? " This job cannot run without it, so it blocks go-live." : " The job carries on without it.");
@@ -102,7 +103,7 @@ export function canRun(jobs: Job[], catalog: Catalog): ToolLine[] {
         : reviewed.filter((r) => { const s = stepOfBlock(r.block); return !!s && [r.block, s.slot, ...(s.blocks ?? [])].includes(g.tool); });
       const rowsFor = (l: Level) => mine.filter((r) => r.record === g.records && r.level === l);
       /** A reviewed row exists, and every one of them is something pip-turn does not open yet in this way of starting. */
-      const shutIn = (conversation: boolean) => g.can.filter((l) => rowsFor(l).length > 0 && rowsFor(l).every((r) => notYet(g, r, conversation)));
+      const shutIn = (conversation: boolean) => g.can.filter((l) => rowsFor(l).length > 0 && rowsFor(l).every((r) => notYet(g, r, conversation, op)));
       const none = g.can.filter((l) => !rowsFor(l).length);
       if (kit) {
         // A job that can start on its own gets nothing from an extra product, so for such a job every level is missing.
@@ -152,7 +153,10 @@ export function checkBuild(spec: unknown, catalog: Catalog): Check {
   if (!declares(spec)) return { declared: false, ok: true, errors: [], tools: [], lines: [OLDER_SHAPE], blocked: [] };
   const c = checkSpec(spec);
   if (!c.ok) return { declared: true, ok: false, errors: c.errors, tools: [], lines: [], blocked: [] };
-  const tools = canRun(c.jobs, catalog);
+  // An operator spec carries an operate block as well: it is checked whole, and any problem refuses the build.
+  const o = isObj(spec) && spec.operate !== undefined ? checkOperate(spec) : null;
+  if (o && !o.ok) return { declared: true, ok: false, errors: o.errors, tools: [], lines: [], blocked: [] };
+  const tools = canRun(c.jobs, catalog, o ? operatorJobs(spec).caseDriven : undefined);
   return { declared: true, ok: true, errors: [], tools, lines: tools.map((t) => t.say), blocked: tools.filter((t) => t.required && t.missing.length).map((t) => t.say) };
 }
 
@@ -178,9 +182,11 @@ export type Saved = { ok: true; spec: Record<string, J>; check: Check } | { ok: 
  *   - No jobs at all: saved as before, and the note says so.
  * Gaps (a tool with nothing behind it) never refuse a save. They are returned so the founder sees them.
  */
-export function saveBuild(stored: unknown, sent: { contract?: unknown; jobs?: unknown }, opts: { ready: boolean; at: string }, catalog: Catalog): Saved {
-  const carried = sent?.contract !== undefined || sent?.jobs !== undefined;
-  const spec: Record<string, J> = { ...(isObj(stored) ? stored : {}), ...(sent?.contract !== undefined ? { contract: sent.contract } : {}), ...(sent?.jobs !== undefined ? { jobs: sent.jobs } : {}) };
+export function saveBuild(stored: unknown, sent: { contract?: unknown; jobs?: unknown; operate?: unknown }, opts: { ready: boolean; at: string; operateLane?: boolean }, catalog: Catalog): Saved {
+  const carried = sent?.contract !== undefined || sent?.jobs !== undefined || sent?.operate !== undefined;
+  const spec: Record<string, J> = { ...(isObj(stored) ? stored : {}), ...(sent?.contract !== undefined ? { contract: sent.contract } : {}), ...(sent?.jobs !== undefined ? { jobs: sent.jobs } : {}), ...(sent?.operate !== undefined ? { operate: sent.operate } : {}) };
+  // The operator lane ships off. A spec that carries an operate block is not saved while it is off, so nothing half-built waits for the day it is switched on.
+  if (spec.operate !== undefined && opts.operateLane !== true) return { ok: false, errors: ["The operator lane is not switched on yet."], say: "Not saved. Operators are not switched on yet, so a teammate with an operate block cannot be saved." };
   const check = checkBuild(spec, catalog);
   if (check.declared && !check.ok && (carried || opts.ready)) {
     const more = check.errors.length > 40 ? [`...and ${check.errors.length - 40} more.`] : [];
@@ -198,9 +204,14 @@ export type Gate = { ok: true; check: Check } | { ok: false; why: string[]; chec
  * May this teammate go live right now? An older-shape teammate goes live as before. One that declares jobs must pass
  * the contract as it stands at this moment, and every job's required tools must have something behind them.
  */
-export function goLive(spec: unknown, catalog: Catalog): Gate {
+export function goLive(spec: unknown, catalog: Catalog, operator: { operateLane?: boolean; approved?: boolean } = {}): Gate {
   const check = checkBuild(spec, catalog);
   if (!check.declared) return { ok: true, check };
+  if (isObj(spec) && spec.operate !== undefined) {
+    if (operator.operateLane !== true) return { ok: false, check, why: ["Operators are not switched on yet, so this teammate cannot go live."] };
+    const op = checkOperate(spec);
+    if (op.ok && op.operate?.public.posts && operator.approved !== true) return { ok: false, check, why: ["The owner has not approved the brand voice and the accounts this teammate posts to. Ask them to approve in the Portal first."] };
+  }
   if (!check.ok) return { ok: false, check, why: ["Its jobs do not pass the teammate contract as it stands today:", ...check.errors.slice(0, 12), ...(check.errors.length > 12 ? [`...and ${check.errors.length - 12} more.`] : []), "Save corrected jobs from the Forge first."] };
   if (check.blocked.length) return { ok: false, check, why: ["A job needs a tool that has nothing behind it yet:", ...check.blocked.slice(0, 12)] };
   return { ok: true, check };

@@ -142,7 +142,9 @@ let dir = null, loads = 0;
  */
 export async function boot(opts = {}) {
   const world = {
-    tables: opts.tables || baseTables(), writes: [], insertErrors: {}, seq: 0, rpc: opts.rpc || {},
+    tables: opts.tables || baseTables(), writes: [], insertErrors: {}, seq: 0,
+    // The database's email permission functions say yes by default, as they do for a customer who has not opted out.
+    rpc: { portal_email_gate: () => ({ allowed: true }), portal_email_in: () => ({ allowed: true }), portal_outbound_sent: () => ({ recorded: true }), ...(opts.rpc || {}) },
     model: { script: [...(opts.model || [])], calls: [] },
     composio: { calls: [], handler: opts.composio || (() => ({ status: 404, json: { error: "not mocked" } })) },
     outside: [],

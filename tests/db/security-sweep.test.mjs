@@ -57,6 +57,12 @@ test("a redaction can be logged, by kind only; an unknown kind still cannot", { 
   await assert.rejects(db.query("insert into public.compliance_events (kind) values ('anything_else')"));
 });
 
+test("the record of a message that was sent can still be written after the sweep", { skip: !PGlite }, async () => {
+  const db = await fresh(); await db.exec(sql);
+  await db.query("insert into public.compliance_events (kind, channel) values ('outbound_sent', 'email')");
+  assert.equal((await db.query("select count(*)::int n from public.compliance_events where kind = 'outbound_sent'")).rows[0].n, 1);
+});
+
 test("the public keys lose every right on leads and scan_events, and both open policies are gone", { skip: !PGlite }, async () => {
   const db = await fresh();
   for (const t of ["public.leads", "public.scan_events"]) for (const role of ["anon", "authenticated"]) for (const p of ["select", "insert", "update", "delete", "truncate"]) assert.equal(await can(db, role, t, p), false, `${role} ${p} ${t}`);

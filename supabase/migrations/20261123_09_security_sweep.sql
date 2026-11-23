@@ -2,11 +2,11 @@
 -- Apply with the Supabase migration tool after the pull request is merged. Safe to run twice.
 
 -- 1. pip-turn now logs that it removed a card number, SSN, password, code or bank number from a customer's message.
---    The log carries the kind only, never the value.
+--    The log carries the kind only, never the value. 'outbound_sent' (20261122_outbound_record.sql) stays on the list.
 alter table public.compliance_events drop constraint if exists compliance_events_kind_check;
 alter table public.compliance_events add constraint compliance_events_kind_check check (kind = any (array[
   'ai_disclosure', 'recording_notice', 'opt_out', 'outbound_allowed', 'outbound_blocked', 'golive_blocked',
-  'terms_accepted', 'price_accepted', 'pii_redacted']));
+  'terms_accepted', 'price_accepted', 'outbound_sent', 'pii_redacted']));
 
 -- 3. The emailed code that turns a visitor's pass into one that can open a demo call. Only a hash of the code is kept,
 --    tied to the pass id (10 characters of the email's hash). Rows older than a day are of no use and are removed.

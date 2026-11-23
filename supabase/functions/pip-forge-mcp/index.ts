@@ -14,6 +14,7 @@
 // teammate's `contract` and `jobs` at the top of its spec and refuses a save whose jobs fail the check; forge_golive
 // checks again at that moment. The decisions are in ../_shared/forge-check.ts; this file only reads and writes.
 // deno-lint-ignore-file no-explicit-any
+import { connectionGate } from '../_shared/golive-connections.ts';
 import { BUILDER_NOTE, type Catalog, declares, goLive, loadCatalog, NO_CATALOG, OLDER_SHAPE, saveBuild } from '../_shared/forge-check.ts';
 
 const SB_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -21,6 +22,8 @@ const SB_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const H = { apikey: SB_KEY, authorization: `Bearer ${SB_KEY}`, 'content-type': 'application/json' };
 
+// The operator lane's switch. Anything that is not a clean true reads as off, including a failed read.
+const operateOn = async () => (await rows('rpc/portal_flag', { method: 'POST', body: JSON.stringify({ p_key: 'operate_lane', p_default: false }) }).catch(() => false)) === true;
 async function rows(path: string, init: RequestInit = {}) {
   const r = await fetch(`${SB_URL}/rest/v1/${path}`, { ...init, headers: { ...H, ...((init.headers as Record<string, string>) || {}) } });
   const t = await r.text();
@@ -283,7 +286,8 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
       if (!spec) throw new Error('no such teammate on this order');
       // The contract on every build. Jobs sent now, or already on the record, are checked before anything is written.
       const catalog = declares({ ...(spec.spec ?? {}), ...(sent.contract !== undefined ? { contract: sent.contract } : {}), ...(sent.jobs !== undefined ? { jobs: sent.jobs } : {}) }) ? await loadCatalog(rows) : NO_CATALOG;
-      const build = saveBuild(spec.spec, sent, { ready: STATUS_MAP[st] === 'sandbox', at: now() }, catalog);
+      const operateLane = spec.spec?.operate !== undefined ? await operateOn() : false;
+      const build = saveBuild(spec.spec, sent, { ready: STATUS_MAP[st] === 'sandbox', at: now(), operateLane }, catalog);
       if (!build.ok) throw new Refused([build.say, ...build.errors.map((e) => `- ${e}`)].join('\n'));
       const stored = spec.spec?.board && typeof spec.spec.board === 'object' && !Array.isArray(spec.spec.board) ? spec.spec.board : {};
       await patch('skill_specs', `id=eq.${spec.id}`, {
@@ -326,7 +330,7 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
     },
   },
   forge_golive: {
-    description: 'Go live: Brayden\'s tap. Puts one teammate (agent_id) or every sandbox-ready teammate of the order live. Refused, with the list, while anything they need is still missing from the Shelf. A teammate with declared jobs is also refused, with the reasons, if its jobs do not pass the contract check at this moment or a job needs a tool that has nothing behind it yet. A teammate with no declared jobs goes live as before.',
+    description: 'Go live: Brayden\'s tap. Puts one teammate (agent_id) or every sandbox-ready teammate of the order live. Refused, with the list, while anything they need is still missing from the Shelf. A teammate with declared jobs is also refused, with the reasons, if its jobs do not pass the contract check at this moment or a job needs a tool that has nothing behind it yet. It is also refused, naming each one in plain words, while a connection its manifest marks required is not connected and tested for the business. A teammate with no declared jobs and no required connection goes live as before.',
     inputSchema: { type: 'object', properties: { order_id: { type: 'string' }, agent_id: { type: 'string' } }, required: ['order_id'], additionalProperties: false },
     async run(a) {
       const id = uuid(a?.order_id); if (!id) throw new Error('order_id must be an order id');
@@ -339,8 +343,13 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
         try {
           // The contract, checked again now: it may have tightened since the build, and what exists may have changed.
           if (declares(s.spec)) catalog ??= await loadCatalog(rows);
-          const gate = goLive(s.spec, catalog ?? NO_CATALOG);
+          const operateLane = s.spec?.operate ? await operateOn() : false;
+          const approved = s.spec?.operate ? (await rows('rpc/operator_approved_current', { method: 'POST', body: JSON.stringify({ p_spec: s.id }) }).catch(() => false)) === true : true;
+          const gate = goLive(s.spec, catalog ?? NO_CATALOG, { operateLane, approved });
           if (!gate.ok) { out.push({ id: s.skill_id, live: false, declared_jobs: true, why: gate.why.join(' ') }); continue; }
+          // A connection the manifest marks required must be connected and tested for this business. Read fails closed.
+          const conn = await connectionGate(rows, s.id, s.skill_id);
+          if (!conn.ok) { out.push({ id: s.skill_id, live: false, missing_connections: conn.missing.map((m) => m.label), why: conn.why }); continue; }
           await patch('skill_specs', `id=eq.${s.id}`, { status: 'live', forge_stage: 'live', updated_at: now() }); out.push({ id: s.skill_id, live: true, declared_jobs: gate.check.declared });
         } catch (e) { out.push({ id: s.skill_id, live: false, why: String((e as Error).message || e).replace(/^shelf: /, '') }); }
       }
@@ -433,6 +442,36 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
       await insert('events', { kind: 'funds_set', domain: null, detail: { provider: p, ...body } }).catch(() => {});
       const row = ((await shelfFunds('providers', true)).rows as any[]).find((r) => r.provider === p);
       return { ok: true, provider: p, now: row ?? null };
+    },
+  },
+  pricing_quote: {
+    description: "Price a package for the pricing email, from Pip's price book (public.quote): the monthly price, the one-time setup fee, the hardware fee where a camera box applies, the usage included, and one plain line per agent and connection. The Portal's price comes from the same function, so the email and the Portal agree. agents: [{key, overrides?}] where key is a price_book key (web_chat, owner_alerts, calendar_booking, text_followup, email_followup, phone_agent, review_replies, camera_count, content_posting). connections: [{tool, kind}] with kind oauth, api, password, mfa or forbidden. Every quote is stored. You send the email; this never sends anything.",
+    inputSchema: { type: 'object', properties: {
+      agents: { type: 'array', items: { type: 'object' }, description: '[{key, overrides?: {runs_per_month, voice_minutes, messages, data_calls, ...}}]' },
+      connections: { type: 'array', items: { type: 'object' }, description: '[{tool, kind}]' },
+      order_id: { type: 'string', description: 'The order this quote is for, so it is stored against it.' },
+      registrations: { type: 'array', items: { type: 'string' }, description: 'Registration work in the setup fee, such as 10dlc.' },
+      camera_box: { type: 'boolean' }, customer_rank: { type: 'number', description: 'Which test customer this is (1, 2, 3 get the box at cost).' },
+      promo_pct: { type: 'number', description: "Loading-game discount on the first month, 0 to 5." },
+      active_agents: { type: 'number', description: 'Live agents across Pip, for the fixed platform share.' },
+    }, required: ['agents'], additionalProperties: false },
+    readOnly: false,
+    async run(a) {
+      const opts: Record<string, unknown> = { caller: 'email' };
+      for (const k of ['registrations', 'camera_box', 'customer_rank', 'promo_pct', 'active_agents']) if (a?.[k] !== undefined) opts[k] = a[k];
+      if (a?.order_id) { const id = uuid(a.order_id); if (!id) throw new Error('order_id must be an order id'); opts.order_id = id; }
+      const r = await fetch(`${SB_URL}/rest/v1/rpc/quote`, { method: 'POST', headers: { apikey: SB_KEY, authorization: `Bearer ${SB_KEY}`, 'content-type': 'application/json' }, body: JSON.stringify({ p_agents: a.agents, p_connections: a.connections ?? [], p_opts: opts }) });
+      const q = await r.json().catch(() => null);
+      if (!r.ok || !q || typeof q.monthly_usd !== 'number') throw new Error(String(q?.message || `quote failed (${r.status})`).replace(/^quote: /, ''));
+      const usd = (n: number) => `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
+      const lines = [
+        `Monthly: ${usd(q.monthly_usd)} a month${q.first_month_usd !== q.monthly_usd ? ` (first month ${usd(q.first_month_usd)} with the ${q.promo_pct}% you earned)` : ''}, including ${usd(q.included_usd)} of usage; usage above that is billed at the listed rates, and nothing is ever switched off.`,
+        `Setup, once: ${usd(q.setup_usd)}.`,
+        ...(q.hardware_usd != null ? [`On-site box, once: ${usd(q.hardware_usd)}.`] : []),
+        ...q.agents.map((x: any) => `- ${x.label}: ${usd(x.after_discount)} a month`),
+        ...q.connections.map((x: any) => `- Connecting ${x.tool}: ${usd(x.fee)} setup`),
+      ];
+      return { ...q, email_lines: lines, note: q.flags?.length ? `Check before sending: ${q.flags.join(', ')}.` : 'No flags.' };
     },
   },
   brain_scan: {
