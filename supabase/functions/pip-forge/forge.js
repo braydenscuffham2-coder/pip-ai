@@ -391,6 +391,32 @@ Previous spec: ${JSON.stringify(t.previous)}` : ""}`;
 }
 
 // src/forge/simulate.ts
+// The simulator's test clock and fixtures. A teammate is graded on what it does with the facts it is given, so a test
+// that needs a fact the owner has not answered yet (open slots, emergency instructions) gets a clearly labelled sample
+// here, in the simulator only. Nothing below reaches a live teammate. The clock is fixed so "the next open day" has one
+// right answer: Friday evening, after hours, so the next open day is Monday.
+var SIM_NOW = "Friday, 6:15 PM in the business's own time zone (test clock). The next open day is Monday.";
+var SIM_FIXTURES = {
+  open_slots: "Open slots from the booking software for the next 7 days: Tuesday 9:00 AM, Tuesday 1:30 PM, Wednesday 10:00 AM, Thursday 1:30 PM. Each fits every bookable visit type for new and returning customers.",
+  emergency_instructions: "If this is a life-threatening emergency, hang up and call 911. For an urgent problem after hours, call the on-call line at 555-0100 and leave your name and number.",
+  on_call_contact: "On call after hours: the on-call staff member, reached at 555-0100.",
+  office_hours_and_address: "Open Monday to Thursday, 8:00 AM to 4:30 PM. Closed Friday to Sunday. Address: 100 Test Street.",
+  bookable_visit_types: "Bookable by the assistant: new-customer first visit, returning-customer routine visit, consultation. Anything else goes on the callback list.",
+  bookable_providers_and_hours: "Every provider can be booked Monday to Thursday, 8:00 AM to 4:00 PM only. No evenings, no weekends.",
+  new_patient_and_returning_patient_rules: "New customers book the first-visit slot; returning customers book the routine slot.",
+  insurance_and_payment_facts: "The office confirms insurance and payment details by phone on the next open day."
+};
+function simFixtures(e, n) {
+  let answered = new Set((n.qa ?? []).filter((s) => String(s.a ?? "").trim()).map((s) => String(s.q))), out = [];
+  for (let k of e.knowledge ?? []) {
+    if (typeof k != "string" || !k.startsWith("owner:")) continue;
+    let id = k.slice(6);
+    if (answered.has(id)) continue;
+    out.push(`- ${id}: ${SIM_FIXTURES[id] ?? `(sample answer for "${id.replace(/_/g, " ")}"; treat it as confirmed for this test)`}`);
+  }
+  if ((e.connections ?? []).includes("booking_app") && !out.some((l) => l.startsWith("- open_slots:"))) out.push(`- open_slots: ${SIM_FIXTURES.open_slots}`);
+  return out;
+}
 function pe(e, n) {
   let t = e.agent.tools.map((s) => {
     let r = w(s);
@@ -404,6 +430,12 @@ ${n.facts.join(`
 `)}
 ${n.qa.filter((s) => s.a).map((s) => `Owner on "${s.q}": ${s.a}`).join(`
 `)}
+${(() => { let f = simFixtures(e, n); return f.length ? `
+TEST FIXTURES (samples for this test only; treat them as the owner's confirmed facts)
+${f.join(`
+`)}
+` : ""; })()}
+NOW: ${SIM_NOW}
 
 ${R}
 
@@ -685,6 +717,7 @@ function Ie(e) {
 }
 export {
   b as PRIMITIVES,
+  pe as simulatorPrompt,
   K as agentTurn,
   Ie as anthropicModel,
   oe as buildOrder,
