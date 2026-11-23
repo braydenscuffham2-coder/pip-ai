@@ -17,7 +17,8 @@ const IMPORT_LINE = 'import { createClient } from "jsr:@supabase/supabase-js@2";
 const BIZ = "11111111-1111-4111-8111-111111111111", OTHER = "99999999-9999-4999-8999-999999999999", ORDER = "33333333-3333-4333-8333-333333333333";
 const SPEC = "22222222-2222-4222-8222-222222222222", SPEC2 = "22222222-2222-4222-8222-222222222223";
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
-const token = (email, fresh = true) => `h.${b64({ email, amr: [{ method: "otp", timestamp: Math.floor(Date.now() / 1000) - (fresh ? 10 : 7200) }] })}.s`;
+const NOW = Math.floor(Date.now() / 1000); // pinned: a token built in world() must equal the one built at import, even if a second ticks between
+const token = (email, fresh = true) => `h.${b64({ email, amr: [{ method: "otp", timestamp: NOW - (fresh ? 10 : 7200) }] })}.s`;
 
 const posts = compileOperator("content_social", { business: "TEST Fork", teammate: "Hallie", accounts: ["facebook_page"], channels: ["facebook"] });
 const spec = { contract: CONTRACT, jobs: posts.jobs, operate: posts.operate };
