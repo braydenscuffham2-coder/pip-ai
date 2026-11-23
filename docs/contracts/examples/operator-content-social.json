@@ -1,0 +1,130 @@
+{
+  "contract": "teammate/1",
+  "jobs": [
+    {
+      "id": "plan_week",
+      "name": "Plan the week's posts",
+      "does": "Drafts up to three posts a week for Example Bakery from facts the owner has already given, and sends each to the owner.",
+      "instructions": "Every Monday, write up to 3 short social posts for Example Bakery using only the business facts on file. Never invent a customer quote, a review, a result, a price, an offer or a guarantee. Never use a customer's name or photo. Save each post as a draft for the owner to approve with the draft tool. Do not publish anything yourself in this job.",
+      "triggers": [
+        {
+          "type": "schedule",
+          "every": "week",
+          "on": [
+            "mon"
+          ],
+          "at": "08:00"
+        }
+      ],
+      "tools": [
+        {
+          "tool": "pip",
+          "records": "draft",
+          "can": [
+            "add"
+          ]
+        }
+      ],
+      "limits": {
+        "per_run": {
+          "steps": 10,
+          "actions": 4
+        },
+        "per_day": {
+          "runs": 2,
+          "actions": 8
+        }
+      },
+      "pause": {
+        "after_failures": 2,
+        "on_limit": "pause"
+      }
+    },
+    {
+      "id": "publish_post",
+      "name": "Publish an approved post",
+      "does": "Publishes a post the owner approved, to the accounts the owner connected, and nothing else.",
+      "instructions": "Publish exactly the approved draft text, unchanged, to the connected account. If the owner declined it, do nothing. If a check says the post may not go out, stop and tell the owner why. Never edit the text.",
+      "triggers": [
+        {
+          "type": "owner",
+          "on": "decision",
+          "about": "draft",
+          "when": [
+            "approved"
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "tool": "social_posting",
+          "records": "post",
+          "can": [
+            "add"
+          ]
+        }
+      ],
+      "limits": {
+        "per_run": {
+          "steps": 6,
+          "actions": 3
+        },
+        "per_day": {
+          "runs": 6,
+          "actions": 6
+        }
+      },
+      "pause": {
+        "after_failures": 2,
+        "on_limit": "pause"
+      }
+    }
+  ],
+  "operate": {
+    "version": "operate/1",
+    "process": "content_social",
+    "goal": "Keep Example Bakery's social accounts active with a few owner-approved posts a week.",
+    "case": {
+      "from": {
+        "schedule": "week"
+      },
+      "closes_when": [
+        "opted_out",
+        "max_touches",
+        "max_days"
+      ]
+    },
+    "touches": {
+      "max": 3,
+      "min_gap_hours": 24,
+      "channels": []
+    },
+    "public": {
+      "posts": true,
+      "channels": [
+        "facebook",
+        "instagram"
+      ],
+      "approval": "first_n:5"
+    },
+    "approvals": {
+      "brand_voice": true,
+      "accounts": [
+        "facebook_page",
+        "instagram_account"
+      ]
+    },
+    "stages": [
+      {
+        "id": "plan",
+        "job": "plan_week",
+        "does": "Plans the week and sends each draft to the owner."
+      },
+      {
+        "id": "publish",
+        "job": "publish_post",
+        "does": "Publishes only what the owner approved."
+      }
+    ]
+  }
+}

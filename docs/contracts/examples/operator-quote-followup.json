@@ -1,0 +1,131 @@
+{
+  "contract": "teammate/1",
+  "jobs": [
+    {
+      "id": "follow_up_quote",
+      "name": "Follow up on a quote",
+      "does": "After Example Landscaping sends a quote, checks in up to three times, then stops.",
+      "instructions": "A quote was sent to this customer. Check in politely and answer only what they asked about, using the business facts on file. Never state or change a price, a discount, an amount or a promise. If they want to book, hand off to the owner. If they reply, do not continue; the owner will. If they say stop, never message them again.",
+      "triggers": [
+        {
+          "type": "event",
+          "from": "crm",
+          "event": "record_changed",
+          "records": "deal",
+          "if": {
+            "field": "stage",
+            "is": "quote_sent"
+          }
+        }
+      ],
+      "tools": [
+        {
+          "tool": "crm",
+          "records": "deal",
+          "can": [
+            "read"
+          ],
+          "required": false
+        },
+        {
+          "tool": "crm",
+          "records": "contact",
+          "can": [
+            "read"
+          ],
+          "required": false
+        },
+        {
+          "tool": "email",
+          "records": "message",
+          "can": [
+            "add"
+          ],
+          "purpose": "transactional"
+        },
+        {
+          "tool": "pip",
+          "records": "handoff",
+          "can": [
+            "add"
+          ]
+        },
+        {
+          "tool": "pip",
+          "records": "booking_request",
+          "can": [
+            "add"
+          ]
+        }
+      ],
+      "limits": {
+        "per_run": {
+          "steps": 8,
+          "actions": 3
+        },
+        "per_day": {
+          "runs": 60,
+          "actions": 120
+        },
+        "each": [
+          {
+            "tool": "email",
+            "records": "message",
+            "per_run": 1,
+            "per_day": 80,
+            "per_contact_per_day": 1
+          }
+        ]
+      },
+      "pause": {
+        "after_failures": 2,
+        "on_limit": "pause",
+        "when": [
+          "a customer disputes a price or asks for a different price"
+        ]
+      }
+    }
+  ],
+  "operate": {
+    "version": "operate/1",
+    "process": "quote_followup",
+    "goal": "Follow up on every quote Example Landscaping sends, up to three times, then stop.",
+    "case": {
+      "from": {
+        "tool": "crm",
+        "records": "deal"
+      },
+      "closes_when": [
+        "replied",
+        "opted_out",
+        "completed",
+        "max_touches",
+        "max_days"
+      ]
+    },
+    "touches": {
+      "max": 3,
+      "min_gap_hours": 72,
+      "channels": [
+        "email"
+      ]
+    },
+    "audience": {
+      "who": "every_customer"
+    },
+    "public": {
+      "posts": false
+    },
+    "approvals": {
+      "brand_voice": false,
+      "accounts": []
+    },
+    "stages": [
+      {
+        "id": "follow_up",
+        "job": "follow_up_quote",
+        "does": "Checks in on the quote, up to three times 72 hours apart."
+      }
+    ]
+  }
+}

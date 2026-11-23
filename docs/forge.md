@@ -225,6 +225,17 @@ The check asks "does anything exist in Pip that could do this". It does not ask 
 
 **Not done yet** (lane 05's next steps): jobs in the library, so a reused skeleton starts with proven jobs; turning the gap lines into the owner's wording and into requests to the right lane; tests made with each build and a build that fails them blocked; the library; checking jobs against the tool list in point 2 above.
 
+## The operator lane (new, behind `operate_lane`)
+
+An operator runs a whole recurring process (weekly social posts, review requests, quote follow-ups) and keeps a record of each case. Rules and words: [`contracts/operate-spec.md`](contracts/operate-spec.md). The flag `operate_lane` is **off** by default; with it off the Forge refuses operator specs at go-live, saves, stages and the Portal does not show them.
+
+- **Compile.** An API-key build whose `uses` names one operator primitive is turned into a spec by `compileForForge` in `_shared/operate.ts`, with no model: a template per process, then `checkSpec` and `checkOperate`. The `operate` block rides beside the jobs. More than one operator in one teammate is refused.
+- **Test stage.** `dryRun` pushes made-up cases through every rule in made-up time and must pass before the teammate is ready. It uses an 08:00 to 20:00 local calling window.
+- **Review.** Operators always go through review before staging.
+- **Go-live.** `operator_approved_current` must be true (brand voice and every account approved) for a posting operator, and the flag must be on. Revoking an approval pauses the stage jobs with the reason `missing_approval`.
+- **Board builds** (`forge_save`) cannot carry an `operate` block; operators come through the API-key lane.
+- **Not done**: scan prompts do not propose operators yet; that needs a change in `scan-run` and the Brain bundle (a diff is in `docs/claude-app-brain-operator.diff`, not applied).
+
 ## Database pieces the connector depends on that no migration here creates
 
 Read from the live catalog on November 18, 2026.

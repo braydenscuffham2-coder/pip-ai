@@ -402,7 +402,8 @@ export function operatePlainWords(op: Operate): { what: string[]; stops: string[
   const r = RULES[op.process], what: string[] = [op.goal], stops: string[] = [], needsYou: string[] = [];
   if (r.reaches === "customer") {
     what.push(`It contacts customers by ${list(op.touches.channels)}, at most ${op.touches.max} time${op.touches.max === 1 ? "" : "s"} each, at least ${Math.round(op.touches.min_gap_hours / 24)} day${op.touches.min_gap_hours >= 48 ? "s" : ""} apart, and only in the hours the law allows.`);
-    what.push(op.audience?.who === "named_stage" ? `It asks customers at the "${op.audience.stage}" stage.` : "It asks every customer, with no filter on how happy they are.");
+    if (op.process === "review_requests") what.push(op.audience?.who === "named_stage" ? `It asks customers at the "${op.audience.stage}" stage.` : "It asks every customer, with no filter on how happy they are.");
+    else if (op.audience?.who === "named_stage") what.push(`It follows up on quotes at the "${op.audience.stage}" stage.`);
     stops.push("The moment a customer says STOP it never contacts them again.");
     if (op.case.closes_when.includes("replied")) stops.push("When a customer replies it stops and hands the conversation to you.");
     stops.push(`After ${op.touches.max} touches, or ${r.max_days} days, it stops.`);
