@@ -27,12 +27,17 @@ const STATE: Record<string, string> = {
 const NOT_ASKED = "it has not been asked for yet";
 const NOT_TESTED = "it is connected but has not been tested yet";
 
-/** The connections a manifest marks required. Anything not exactly `required: true` is optional. */
+/**
+ * The connections a manifest marks required. Anything not exactly `required: true` is optional.
+ * Today portal_compile_manifest writes `required: true` on every connection it lists, so the catalog's own
+ * `blocks_golive` is honoured too: a connection the catalog says does not block go-live (the Google Business Profile)
+ * does not block it here either, the same as the owner's own go-live check (portal_golive_gate).
+ */
 export function requiredConnections(manifest: unknown): { slot: string; label: string }[] {
   if (!isObj(manifest) || !Array.isArray(manifest.connections)) return [];
   const out: { slot: string; label: string }[] = [];
   for (const c of manifest.connections) {
-    if (!isObj(c) || c.required !== true) continue;
+    if (!isObj(c) || c.required !== true || c.blocks_golive === false) continue;
     const slot = text(c.slot, 60);
     if (!slot) continue;
     if (!out.some((o) => o.slot === slot)) out.push({ slot, label: text(c.label) || slot.replace(/_/g, " ") });

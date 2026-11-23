@@ -16,6 +16,12 @@ test("only a connection marked exactly required counts as required", () => {
   for (const bad of [null, undefined, "x", [], {}, { connections: "x" }, { connections: [null, 3] }]) assert.deepEqual(requiredConnections(bad), []);
 });
 
+test("a connection the catalog says does not block go-live never blocks, even though the manifest writes required: true on everything", () => {
+  const soft = { slot: "google_profile", label: "Google Business Profile", required: true, blocks_golive: false };
+  assert.deepEqual(requiredConnections(manifest(soft, { ...booking, blocks_golive: true })), [{ slot: "booking", label: "Booking software" }]);
+  assert.deepEqual(missingConnections(manifest(soft), [], names), { ok: true });
+});
+
 test("a required connection that is active and tested passes", () => {
   assert.deepEqual(missingConnections(manifest(booking), [{ slot: "booking", status: "active", checked_at: tested }], names), { ok: true });
 });

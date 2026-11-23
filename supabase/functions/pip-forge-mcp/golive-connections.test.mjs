@@ -75,6 +75,13 @@ test("an optional connection that is missing does not hold the teammate back", a
   assert.equal((await golive()).out.ok, true);
 });
 
+test("a connection the catalog says does not block go-live does not hold the teammate back, though the manifest marks it required", async () => {
+  world({ man: manifest({ ...booking, blocks_golive: true }, { slot: "google_profile", label: "Google Business Profile", required: true, blocks_golive: false }), conns: [conn("booking", "active", tested)] });
+  assert.equal((await golive()).out.ok, true);
+  world({ man: manifest({ ...booking, blocks_golive: true }, { slot: "google_profile", label: "Google Business Profile", required: true, blocks_golive: false }), conns: [] });
+  refused(await golive(), /still needs to connect Booking software/);
+});
+
 test("a teammate with no manifest goes live as before", async () => {
   world({ man: null });
   assert.equal((await golive()).out.ok, true);
