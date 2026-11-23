@@ -12673,7 +12673,7 @@ function mk4World(rc,D){
         let ry=ny+Math.min(2,ln.length)*60+6;if(b.rating!=null){c.fillStyle="#f2b23a";c.font=`700 40px ${FB}`;c.fillText(`★★★★★`,w/2,ry);c.fillStyle="#474c6b";c.font=`600 30px ${FB}`;c.fillText(`${b.rating.toFixed(1)} · ${D.n2(b.count||0)} reviews`,w/2,ry+46)}
         c.textAlign="left";let by=h-206,cg=c.createLinearGradient(40,0,w-40,0);cg.addColorStop(0,col);cg.addColorStop(1,"#14162d");c.fillStyle=cg;c.beginPath();c.roundRect(40,by,w-80,112,56);c.fill();c.fillStyle="#ffffff";c.font=`800 40px ${FB}`;c.textAlign="center";c.fillText(b.caps?.booking==="yes"?"Book online":"Call now",w/2,by+70);c.textAlign="left";
         c.fillStyle="#14162d";c.beginPath();c.roundRect(w/2-90,h-40,180,10,5);c.fill()});
-      const src=me?K6.logo:kit?.logo;if(src){let im=new Image();im.onload=()=>{img=im;o.draw()};im.src=src}
+      const src0=me?K6.logo:kit?.logo,src=typeof src0=="string"?src0:null;if(src){let im=new Image();im.onload=()=>{img=im;o.draw()};im.src=src}
       o.setKit=k2=>{if(!k2)return;k2.color&&(col=k2.color);if(k2.logo){kit=k2;let im=new Image();im.onload=()=>{img=im;o.draw()};im.src=k2.logo}else o.draw()};
       return o};
     const ext=[];

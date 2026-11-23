@@ -70,6 +70,12 @@ EDITS = [
     ("page:honest-badge",
      'match:Math.round(rm(n.match,50,98)??75),effort:i.effort,custom:a||void 0,',
      'match:Math.round(rm(n.match,50,98)??75),effort:n.pip_builds?"Built for you":i.effort,builds:V(n.pip_builds,160)||void 0,custom:a||void 0,'),
+    # The Market street asked the browser for an image at "/[object Object]": a shop's logo is an object
+    # ({w, h, data, ...}), not an address. Only a plain address is loaded now, so the stray request is gone and the
+    # street looks exactly as it did (the logo never drew before either).
+    ("page:no-object-image",
+     'const src=me?K6.logo:kit?.logo;if(src){let im=new Image();',
+     'const src0=me?K6.logo:kit?.logo,src=typeof src0=="string"?src0:null;if(src){let im=new Image();'),
     # A handle for the tests in tests/site/brain-inpage.test.mjs.
     ("test-handle",
      'globalThis.__pipBrain={design:qe,PRIMITIVES:x,version:3,',
