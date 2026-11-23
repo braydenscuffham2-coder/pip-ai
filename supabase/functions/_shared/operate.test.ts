@@ -298,3 +298,15 @@ test("notYet: an operator's job may be offered an email or text add, and nothing
   assert.equal(notYet(g, { record: "call", level: "add" }, false, true), notYet(g, { record: "call", level: "add" }, false, false), "the flag changes nothing about calls");
   assert.equal(notYet(g, { record: "message", level: "add", guard: "other" }, true, true), true);
 });
+
+test("every worked operator example in the docs passes checkOperate, and says what it does in plain words", async () => {
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const dir = new URL("../../../docs/contracts/examples/operator/", import.meta.url);
+  const files = readdirSync(dir).filter((f: string) => f.endsWith(".json"));
+  assert.equal(files.length, 3);
+  for (const f of files) {
+    const r = checkOperate(JSON.parse(readFileSync(new URL(f, dir), "utf8")));
+    assert.equal(r.ok, true, `${f}: ${r.errors.join("; ")}`);
+    assert.ok(operatePlainWords(r.operate!).what.length >= 1, f);
+  }
+});

@@ -38,7 +38,7 @@ A spec may be stricter than these numbers, never looser. The database holds the 
 }
 ```
 
-A block that breaks any rule is refused whole. Nothing is trimmed to fit. Worked examples that pass the check: [`content social`](examples/operator-content-social.json), [`review requests`](examples/operator-review-requests.json), [`quote follow-up`](examples/operator-quote-followup.json).
+A block that breaks any rule is refused whole. Nothing is trimmed to fit. Worked examples that pass the check: [`content social`](examples/operator/content-social.json), [`review requests`](examples/operator/review-requests.json), [`quote follow-up`](examples/operator/quote-followup.json).
 
 ### Rules the checker enforces
 
@@ -87,7 +87,7 @@ An API-key build that names one operator primitive in `uses` is compiled with no
 
 - While a case is open its context holds the customer's email in plain text; the trigger empties it when the case closes.
 - Replying to an operator's message closes the case on a best-effort basis.
-- Public posting needs Meta app review before any real post can go out.
+- Public posting needs Meta app review before any real post can go out. Until then the posting tool (`social_posting` in the content-social example) is a tool Pip does not have, so the Forge reports it as a gap that blocks go-live. That is the intended state, not a bug.
 - A scan does not yet propose operators on its own; the gate, scorer and Forge know them, the public scan prompts do not.
 - Counts per contact per day across runs rely on the database's cadence rules, not on the run's own counter.
 - SMS review requests depend on advice from a lawyer and on 10DLC, neither of which exists yet.

@@ -310,7 +310,7 @@ Do not show these sentences in the Portal for a teammate until the row for that 
 
 ## Operators (`operate/1`)
 
-A spec may carry one `operate` block beside its jobs. It turns a recurring process (posting, review requests, quote follow-up) into jobs that a *case* drives rather than a trigger of their own, with ceilings the checker enforces. The contract for that block is [`operate-spec.md`](operate-spec.md), with three worked examples in [`examples/`](examples/). A spec with an `operate` block still has to pass `checkSpec`; `checkOperate` is run on top of it, never instead of it. Off by default (`operate_lane`).
+A spec may carry one `operate` block beside its jobs. It turns a recurring process (posting, review requests, quote follow-up) into jobs that a *case* drives rather than a trigger of their own, with ceilings the checker enforces. The contract for that block is [`operate-spec.md`](operate-spec.md), with three worked examples in [`examples/operator/`](examples/operator/). A spec with an `operate` block still has to pass `checkSpec`; `checkOperate` is run on top of it, never instead of it. Off by default (`operate_lane`).
 
 ## Changing this contract
 
