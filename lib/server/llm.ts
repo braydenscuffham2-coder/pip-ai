@@ -34,7 +34,8 @@ export async function llm({ system, messages, maxTokens = 1200, tier = 'fast', t
     const data = (await res.json()) as { content?: { type: string; text?: string }[]; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } };
     const u = data.usage || {};
     const inTok = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) * 1.25 + (u.cache_read_input_tokens || 0) * (/opus|sonnet/.test(MODEL[tier]) ? 0.05 : 0.1);
-    void logEvent('llm', domain || null, { purpose, model: MODEL[tier], input: u.input_tokens, output: u.output_tokens, cache_read: u.cache_read_input_tokens, cache_write: u.cache_creation_input_tokens, usd: Math.round(costOf(MODEL[tier], inTok, u.output_tokens || 0) * 1e5) / 1e5 });
+    // Waited for, so the meter never misses a call (a log fired without waiting can be lost when the function freezes).
+    await logEvent('llm', domain || null, { purpose, model: MODEL[tier], input: u.input_tokens, output: u.output_tokens, cache_read: u.cache_read_input_tokens, cache_write: u.cache_creation_input_tokens, usd: Math.round(costOf(MODEL[tier], inTok, u.output_tokens || 0) * 1e5) / 1e5 }).catch(() => null);
     return (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim() || null;
   } catch (e) {
     console.error('[llm]', String(e));
