@@ -14,6 +14,7 @@
 // teammate's `contract` and `jobs` at the top of its spec and refuses a save whose jobs fail the check; forge_golive
 // checks again at that moment. The decisions are in ../_shared/forge-check.ts; this file only reads and writes.
 // deno-lint-ignore-file no-explicit-any
+import { connectionGate } from '../_shared/golive-connections.ts';
 import { BUILDER_NOTE, type Catalog, declares, goLive, loadCatalog, NO_CATALOG, OLDER_SHAPE, saveBuild } from '../_shared/forge-check.ts';
 
 const SB_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -326,7 +327,7 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
     },
   },
   forge_golive: {
-    description: 'Go live: Brayden\'s tap. Puts one teammate (agent_id) or every sandbox-ready teammate of the order live. Refused, with the list, while anything they need is still missing from the Shelf. A teammate with declared jobs is also refused, with the reasons, if its jobs do not pass the contract check at this moment or a job needs a tool that has nothing behind it yet. A teammate with no declared jobs goes live as before.',
+    description: 'Go live: Brayden\'s tap. Puts one teammate (agent_id) or every sandbox-ready teammate of the order live. Refused, with the list, while anything they need is still missing from the Shelf. A teammate with declared jobs is also refused, with the reasons, if its jobs do not pass the contract check at this moment or a job needs a tool that has nothing behind it yet. It is also refused, naming each one in plain words, while a connection its manifest marks required is not connected and tested for the business. A teammate with no declared jobs and no required connection goes live as before.',
     inputSchema: { type: 'object', properties: { order_id: { type: 'string' }, agent_id: { type: 'string' } }, required: ['order_id'], additionalProperties: false },
     async run(a) {
       const id = uuid(a?.order_id); if (!id) throw new Error('order_id must be an order id');
@@ -341,6 +342,9 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
           if (declares(s.spec)) catalog ??= await loadCatalog(rows);
           const gate = goLive(s.spec, catalog ?? NO_CATALOG);
           if (!gate.ok) { out.push({ id: s.skill_id, live: false, declared_jobs: true, why: gate.why.join(' ') }); continue; }
+          // A connection the manifest marks required must be connected and tested for this business. Read fails closed.
+          const conn = await connectionGate(rows, s.id, s.skill_id);
+          if (!conn.ok) { out.push({ id: s.skill_id, live: false, missing_connections: conn.missing.map((m) => m.label), why: conn.why }); continue; }
           await patch('skill_specs', `id=eq.${s.id}`, { status: 'live', forge_stage: 'live', updated_at: now() }); out.push({ id: s.skill_id, live: true, declared_jobs: gate.check.declared });
         } catch (e) { out.push({ id: s.skill_id, live: false, why: String((e as Error).message || e).replace(/^shelf: /, '') }); }
       }
