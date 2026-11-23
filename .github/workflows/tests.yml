@@ -18,6 +18,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Install the test database (PGlite), so the database tests run instead of being skipped
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: The text and voice routes run against stand-ins for the database, Twilio and the voice vendor
+        env:
+          DENO_NO_PACKAGE_JSON: "1"
+        run: |
+          deno run -A supabase/functions/pip-run/test/sms.ts
+          deno run -A supabase/functions/pip-voice/test/run.ts
       - name: The hard limits in pip-turn hold, and every lane's own function tests pass
         run: node --test "tests/**/*.test.mjs" "supabase/functions/**/*.test.ts" "supabase/functions/**/*.test.mjs"
       - name: The tests would notice if a limit were removed
