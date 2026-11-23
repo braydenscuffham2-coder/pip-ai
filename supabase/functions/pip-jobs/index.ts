@@ -18,6 +18,8 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { type Job, jobsOf } from "../_shared/teammate-spec.ts";
 import { dueSlot, localDay } from "../_shared/schedule.ts";
+import { isCaseDriven, operatorJobs } from "../_shared/operate.ts";
+import { dueRun, eventPlan, inCallingHours } from "../_shared/operate-run.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!, SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const db = createClient(SB_URL, SERVICE, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -44,7 +46,7 @@ async function caller(req: Request): Promise<"internal" | "ticket" | null> {
   return null;
 }
 
-type Mate = { spec: string; business: string; tz: string; jobs: Job[]; test: boolean };
+type Mate = { spec: string; business: string; tz: string; jobs: Job[]; test: boolean; doc: J };
 /** Teammates that declare jobs and may act for real, with their checked job lists. */
 async function mates(only?: { spec?: string; business?: string }): Promise<{ list: Mate[]; invalid: number }> {
   let q = db.from("skill_specs").select("id,status,spec,order_id").in("status", ["live", "approved", "sandbox"]).not("spec->jobs", "is", null).limit(300);
@@ -65,7 +67,7 @@ async function mates(only?: { spec?: string; business?: string }): Promise<{ lis
     if (s.status !== "live" && !test) continue;
     const found = jobsOf(s.spec);
     if (found.legacy || !found.jobs.length) { invalid++; continue; }
-    list.push({ spec: s.id, business: biz.id, tz: biz.timezone || "America/Boise", jobs: found.jobs, test });
+    list.push({ spec: s.id, business: biz.id, tz: biz.timezone || "America/Boise", jobs: found.jobs, test, doc: s.spec });
   }
   return { list, invalid };
 }
@@ -87,6 +89,27 @@ async function wake(limit = 8): Promise<J[]> {
   return out.map((o: J) => ({ run: o.run, status: o.status ?? null, outcome: o.outcome ?? null, error: o.error ?? null }));
 }
 
+// ---- operators: a customer process starts a run only for a case the cadence says is due ----
+// The switch. Anything but a clean true reads as off, including a failed read, so with the lane off none of this runs.
+const laneOn = async () => (await db.rpc("portal_flag", { p_key: "operate_lane", p_default: false })).data === true;
+/** Starts one run for each case that is due now. The database decides which are due; the run key makes starting one twice impossible. */
+async function driveCases(m: Mate, now: Date): Promise<string[]> {
+  const stages = operatorJobs(m.doc);
+  if (!stages.process || !stages.caseDriven.size || !inCallingHours(now, m.tz)) return [];
+  const runs: string[] = [];
+  for (const job of m.jobs) {
+    if (!stages.caseDriven.has(job.id)) continue;
+    const { data } = await db.rpc("operator_case_due", { p_spec: m.spec, p_limit: 20 });
+    for (const c of Array.isArray(data) ? data : []) {
+      if (typeof c?.case_key !== "string" || !Number.isInteger(c?.touches)) continue;
+      const r = dueRun({ case_key: c.case_key, touches: c.touches, context: c.context });
+      const id = await enqueue(m, job, "case", r.key, localDay(now, m.tz), r.input);
+      if (id) runs.push(id);
+    }
+  }
+  return runs;
+}
+
 async function tick() {
   // Knocks closer together than 45 seconds are ignored, so hammering this address costs almost nothing.
   // This gate is read-then-write, two steps and not one: two knocks that land at the same moment can both read the old
@@ -103,6 +126,7 @@ async function tick() {
     const slot = dueSlot(t, m.tz, now);
     if (slot && (await enqueue(m, job, "schedule", `s:${slot.key}`, localDay(slot.at, m.tz), { slot: slot.key }))) started++;
   }
+  if (list.some((m) => operatorJobs(m.doc).caseDriven.size) && (await laneOn())) for (const m of list) started += (await driveCases(m, now)).length;
   const woke = await wake();
   await db.from("forge_settings").upsert({ key: "jobs_tick", value: { at: now.toISOString(), teammates: list.length, invalid, started, woke: woke.length } });
   return json({ ok: true, teammates: list.length, invalid, started, woke });
@@ -121,12 +145,29 @@ async function event(b: J) {
   const data = b.data && typeof b.data === "object" && JSON.stringify(b.data).length <= 8000 ? b.data : {};
   const { list } = await mates({ business: b.business });
   const runs: string[] = [];
+  // A customer operator's stage job is never started by its own trigger. The event opens (or closes) a case, and the
+  // case starts the run when the cadence allows it. With the lane off nothing here happens at all.
+  let lane: boolean | null = null, cases = 0;
+  const touched: Mate[] = [];
+  for (const m of list) for (const job of m.jobs) {
+    if (!isCaseDriven(m.doc, job.id)) continue;
+    const plan = eventPlan(m.doc, job, { ...b, data });
+    if (plan.kind === "none") continue;
+    lane ??= await laneOn();
+    if (!lane) continue;
+    if (plan.kind === "open") {
+      const { data } = await db.rpc("operator_case_open", { p_spec: m.spec, p_process: operatorJobs(m.doc).process, p_case_key: plan.case_key, p_contact: plan.contact, p_contact_kind: "email", p_stage: plan.stage, p_context: plan.context });
+      if (typeof data === "string") { cases++; touched.push(m); }
+    } else await db.rpc("operator_case_signal", { p_spec: m.spec, p_case_key: plan.case_key, p_completed: true });
+  }
+  for (const m of new Set(touched)) runs.push(...(await driveCases(m, new Date())));
   for (const m of list) for (const job of m.jobs) for (const t of job.triggers) {
+    if (isCaseDriven(m.doc, job.id)) continue;
     if (t.type !== "event" || t.from !== b.from || t.event !== b.event || (t.records ?? null) !== (b.records ?? null) || !passes(t.if, data)) continue;
     const id = await enqueue(m, job, "event", `e:${b.from}:${b.event}:${b.key}`, localDay(new Date(), m.tz), { from: b.from, event: b.event, ...(b.records ? { records: b.records } : {}), data });
     if (id) runs.push(id);
   }
-  return json({ ok: true, started: runs.length, results: await Promise.all(runs.map(poke)) });
+  return json({ ok: true, started: runs.length, ...(cases ? { cases } : {}), results: await Promise.all(runs.map(poke)) });
 }
 
 async function runNow(b: J, who: "internal" | "ticket") {

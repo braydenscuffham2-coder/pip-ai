@@ -104,12 +104,12 @@
 --   end $function$;
 --   drop function public.operator_touch_decision(text, integer, timestamptz, timestamptz, integer, integer, integer, timestamptz, integer, text, text, text);
 --   drop function public.operator_close_reason(text, integer, timestamptz, integer, integer, timestamptz, text[], boolean, boolean, boolean);
---   drop function public.operator_case_open(uuid, text, text, text, text, text);
+--   drop function public.operator_case_open(uuid, text, text, text, text, text, jsonb);
 --   drop function public.operator_case_touch(uuid, integer, timestamptz, text, text, text);
 --   drop function public.operator_case_close(uuid, text, boolean);
 --   drop function public.operator_case_signal(uuid, text, boolean, boolean, boolean);
 --   drop function public.operator_case_due(uuid, integer);
---   drop function public.operator_send_check(uuid, text, text, integer);
+--   drop function public.operator_send_check(uuid, text, text, integer, text);
 --   drop function public.operator_approval_request(uuid, text, text, jsonb);
 --   drop function public.operator_approval_approve(bigint, text);
 --   drop function public.operator_approval_revoke(bigint, text);
@@ -118,6 +118,8 @@
 --   delete from public.forge_settings where key = 'operate_lane';
 --   update public.agent_pauses set reason = 'gate' where reason = 'missing_approval';
 --   drop table public.operator_approvals;
+--   drop trigger operator_cases_scrub on public.operator_cases;
+--   drop function public.operator_case_scrub();
 --   drop table public.operator_cases;
 --   drop table public.operator_process_rules;
 --   delete from public.primitives where id in ('operate_content_social','operate_review_requests','operate_quote_followup');
@@ -192,8 +194,17 @@ create table public.operator_cases (
   closed_at timestamptz,
   last_touch_at timestamptz,
   rules jsonb not null,
+  -- What a message to this customer may use: a first name, the address, one service and one date. Never an amount.
+  -- Kept only while the case is open (see operator_case_scrub), and never readable by anon or authenticated.
+  context jsonb not null default '{}'::jsonb check (jsonb_typeof(context) = 'object' and length(context::text) <= 1000),
   unique (spec_id, case_key)
 );
+create function public.operator_case_scrub() returns trigger language plpgsql set search_path to '' as $$
+begin
+  if new.status <> 'open' then new.context := '{}'::jsonb; end if;
+  return new;
+end $$;
+create trigger operator_cases_scrub before update on public.operator_cases for each row execute function public.operator_case_scrub();
 create index operator_cases_due on public.operator_cases (spec_id, next_at) where status = 'open';
 create index operator_cases_contact on public.operator_cases (business_id, contact_hash) where status = 'open';
 
@@ -254,7 +265,8 @@ end $$;
 
 -- 7. Cases. Every function here is service_role only; none of them sends anything.
 create or replace function public.operator_case_open(
-  p_spec uuid, p_process text, p_case_key text, p_contact text default null, p_contact_kind text default 'email', p_stage text default null
+  p_spec uuid, p_process text, p_case_key text, p_contact text default null, p_contact_kind text default 'email', p_stage text default null,
+  p_context jsonb default '{}'::jsonb
 ) returns uuid language plpgsql security definer set search_path to '' as $$
 declare c record; r public.operator_process_rules; v_id uuid; v_hash text;
 begin
@@ -263,8 +275,9 @@ begin
   if c.business_id is null or r.process is null or nullif(btrim(coalesce(p_case_key, '')), '') is null then return null; end if;
   v_hash := case when nullif(btrim(coalesce(p_contact, '')), '') is null then null
                  else public.portal_contact_hash(c.business_id, p_contact_kind, p_contact) end;
-  insert into public.operator_cases (business_id, spec_id, process, case_key, contact_hash, stage, rules)
+  insert into public.operator_cases (business_id, spec_id, process, case_key, contact_hash, stage, context, rules)
   values (c.business_id, p_spec, p_process, left(p_case_key, 200), v_hash, p_stage,
+          case when jsonb_typeof(p_context) = 'object' then (select coalesce(jsonb_object_agg(x.k, left(x.v, 120)), '{}'::jsonb) from jsonb_each_text(p_context) x(k, v) where x.k in ('first_name', 'name', 'email', 'service', 'when')) else '{}'::jsonb end,
           jsonb_build_object('max_touches', r.max_touches, 'min_gap_hours', r.min_gap_hours, 'max_days', r.max_days,
                              'first_n', r.first_n, 'weekly_cap', r.weekly_cap, 'purposes', r.purposes))
   on conflict (spec_id, case_key) do nothing
@@ -331,7 +344,7 @@ end $$;
 
 -- Open cases that are due now. A paused job, or a spec that is not live, gets nothing. Expired cases close here.
 create or replace function public.operator_case_due(p_spec uuid, p_limit integer default 20)
-returns table (case_id uuid, case_key text, stage text, touches integer)
+returns table (case_id uuid, case_key text, stage text, touches integer, context jsonb)
 language plpgsql security definer set search_path to '' as $$
 begin
   update public.operator_cases k set status = 'done', closed_reason = 'max_days', closed_at = now()
@@ -342,14 +355,14 @@ begin
              and (p.job is null or p.job in (select x->>'job' from public.skill_specs s, jsonb_array_elements(coalesce(s.spec->'operate'->'stages', '[]'::jsonb)) x where s.id = p_spec)
                   or p.job in (select 'job:' || (x->>'job') from public.skill_specs s, jsonb_array_elements(coalesce(s.spec->'operate'->'stages', '[]'::jsonb)) x where s.id = p_spec))) then return; end if;
   return query
-    select k.id, k.case_key, k.stage, k.touches from public.operator_cases k
+    select k.id, k.case_key, k.stage, k.touches, k.context from public.operator_cases k
      where k.spec_id = p_spec and k.status = 'open' and k.next_at <= now() and k.touches < (k.rules->>'max_touches')::integer
      order by k.next_at limit greatest(1, least(coalesce(p_limit, 20), 100));
 end $$;
 
 -- 8. The per-send guard the runtime calls with the case it is about to touch. It says which purpose applies on
 -- this channel; the live consent gate still decides yes or no on the contact.
-create or replace function public.operator_send_check(p_spec uuid, p_case_key text, p_channel text, p_touch integer)
+create or replace function public.operator_send_check(p_spec uuid, p_case_key text, p_channel text, p_touch integer, p_recipient text default null)
 returns jsonb language plpgsql security definer set search_path to '' as $$
 declare k public.operator_cases; purpose text;
 begin
@@ -362,7 +375,12 @@ begin
   purpose := k.rules->'purposes'->>p_channel;
   if purpose is null then return jsonb_build_object('ok', false, 'why', 'channel_not_allowed'); end if;
   if not public.portal_flag('operate_lane', false) then return jsonb_build_object('ok', false, 'why', 'lane_off'); end if;
-  return jsonb_build_object('ok', true, 'purpose', purpose, 'contact_hash', k.contact_hash);
+  -- The message may go only to the customer this case is about. No recipient, no stored contact, or a different one: refused.
+  if nullif(btrim(coalesce(p_recipient, '')), '') is null or k.contact_hash is null then return jsonb_build_object('ok', false, 'why', 'recipient_unknown'); end if;
+  if public.portal_contact_hash(k.business_id, case when p_channel = 'sms' then 'phone' else 'email' end, p_recipient) is distinct from k.contact_hash then
+    return jsonb_build_object('ok', false, 'why', 'recipient_mismatch');
+  end if;
+  return jsonb_build_object('ok', true, 'purpose', purpose);
 end $$;
 
 -- 9. Approvals. The current approval is the newest approved row for (spec, kind, subject) that was not revoked.
@@ -445,14 +463,15 @@ begin
 end $$;
 
 revoke all on function
+  public.operator_case_scrub(),
   public.operator_touch_decision(text, integer, timestamptz, timestamptz, integer, integer, integer, timestamptz, integer, text, text, text),
   public.operator_close_reason(text, integer, timestamptz, integer, integer, timestamptz, text[], boolean, boolean, boolean),
-  public.operator_case_open(uuid, text, text, text, text, text),
+  public.operator_case_open(uuid, text, text, text, text, text, jsonb),
   public.operator_case_touch(uuid, integer, timestamptz, text, text, text),
   public.operator_case_close(uuid, text, boolean),
   public.operator_case_signal(uuid, text, boolean, boolean, boolean),
   public.operator_case_due(uuid, integer),
-  public.operator_send_check(uuid, text, text, integer),
+  public.operator_send_check(uuid, text, text, integer, text),
   public.operator_approval_request(uuid, text, text, jsonb),
   public.operator_approval_approve(bigint, text),
   public.operator_approval_revoke(bigint, text),
@@ -460,14 +479,15 @@ revoke all on function
   public.operator_post_reserve(uuid, text)
 from public, anon, authenticated;
 grant execute on function
+  public.operator_case_scrub(),
   public.operator_touch_decision(text, integer, timestamptz, timestamptz, integer, integer, integer, timestamptz, integer, text, text, text),
   public.operator_close_reason(text, integer, timestamptz, integer, integer, timestamptz, text[], boolean, boolean, boolean),
-  public.operator_case_open(uuid, text, text, text, text, text),
+  public.operator_case_open(uuid, text, text, text, text, text, jsonb),
   public.operator_case_touch(uuid, integer, timestamptz, text, text, text),
   public.operator_case_close(uuid, text, boolean),
   public.operator_case_signal(uuid, text, boolean, boolean, boolean),
   public.operator_case_due(uuid, integer),
-  public.operator_send_check(uuid, text, text, integer),
+  public.operator_send_check(uuid, text, text, integer, text),
   public.operator_approval_request(uuid, text, text, jsonb),
   public.operator_approval_approve(bigint, text),
   public.operator_approval_revoke(bigint, text),

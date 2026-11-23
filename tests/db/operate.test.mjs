@@ -124,6 +124,31 @@ test("due returns open cases only for a live spec, and not while the stage job i
   assert.equal((await db.query("select * from operator_case_due($1)", [S_REVIEW])).rows.length, 0, "the review job is paused");
 });
 
+test("what a message may use is stored with the case only while it is open, only from a short list, and never an amount", { skip: !PGlite }, async () => {
+  const db = await fresh();
+  await flag(db, true);
+  const ctx = { first_name: "Pat", email: "pat@example.test", service: "Water heater", when: "2026-11-10", amount: "4200", total: 4200, card_number: "4242", notes: "x".repeat(500) };
+  const id = (await one(db, "select operator_case_open($1,'review_requests','q1','pat@example.test','email','quote_sent',$2::jsonb) id", [S_REVIEW, JSON.stringify(ctx)])).id;
+  const stored = (await one(db, "select context from operator_cases where id = $1", [id])).context;
+  assert.deepEqual(Object.keys(stored).sort(), ["email", "first_name", "service", "when"], "only the short list");
+  assert.ok(!JSON.stringify(stored).includes("4200") && !JSON.stringify(stored).includes("4242"));
+  const due = (await db.query("select * from operator_case_due($1)", [S_REVIEW])).rows;
+  assert.equal(due.length, 0, "not live: nothing due, so nothing leaves the table");
+  await db.exec(`update skill_specs set status = 'live' where id = '${S_REVIEW}'`);
+  assert.equal((await db.query("select * from operator_case_due($1)", [S_REVIEW])).rows[0].context.first_name, "Pat");
+  // Not an object, or too much: the database refuses or empties it.
+  for (const bad of ['"a string"', "[1,2]", "null", "5"]) {
+    const k = (await one(db, "select operator_case_open($1,'review_requests',$2,null,'email',null,$3::jsonb) id", [S_REVIEW, `bad-${bad.length}-${bad}`, bad])).id;
+    assert.deepEqual((await one(db, "select context from operator_cases where id = $1", [k])).context, {});
+  }
+  // The moment the case closes, the context is gone.
+  await one(db, "select operator_case_close($1,'replied',false)", [id]);
+  assert.deepEqual((await one(db, "select context from operator_cases where id = $1", [id])).context, {});
+  const id2 = (await one(db, "select operator_case_open($1,'review_requests','q2','pat@example.test','email',null,$2::jsonb) id", [S_REVIEW, JSON.stringify({ first_name: "Sam" })])).id;
+  await one(db, "select operator_case_signal($1,'q2',false,true,false)", [S_REVIEW]);
+  assert.deepEqual((await one(db, "select context from operator_cases where id = $1", [id2])).context, {}, "a STOP empties it too");
+});
+
 test("a reply or a STOP closes the case; a reply is ignored if the spec does not list it", { skip: !PGlite }, async () => {
   const db = await fresh();
   const o = async (k) => (await one(db, "select operator_case_open($1,'review_requests',$2,'a@example.test','email') id", [S_REVIEW, k])).id;
@@ -138,14 +163,21 @@ test("a reply or a STOP closes the case; a reply is ignored if the spec does not
 test("the send guard names the purpose per channel and refuses an unreserved touch, an unlisted channel, or a closed lane", { skip: !PGlite }, async () => {
   const db = await fresh();
   const id = (await one(db, "select operator_case_open($1,'review_requests','j1','a@example.test','email') id", [S_REVIEW])).id;
-  const chk = (ch, n) => one(db, "select operator_send_check($1,'j1',$2,$3) r", [S_REVIEW, ch, n]).then((x) => x.r);
+  const chk = (ch, n, to = "a@example.test") => one(db, "select operator_send_check($1,'j1',$2,$3,$4) r", [S_REVIEW, ch, n, to]).then((x) => x.r);
   assert.equal((await chk("email", 1)).why, "touch_not_reserved");
   await one(db, "select operator_case_touch($1,1,now(),'00:00','24:00','UTC')", [id]);
   assert.equal((await chk("email", 1)).why, "lane_off", "the lane is off");
   await flag(db, true);
   const ok = await chk("email", 1);
   assert.equal(ok.ok, true); assert.equal(ok.purpose, "transactional");
-  assert.equal((await chk("sms", 1)).purpose, "marketing", "a review text is marketing");
+  assert.equal((await chk("email", 1, "someone.else@example.test")).why, "recipient_mismatch", "only the customer this case is about");
+  assert.equal((await chk("email", 1, null)).why, "recipient_unknown");
+  assert.equal((await chk("email", 1, "  ")).why, "recipient_unknown");
+  assert.equal((await chk("sms", 1, "a@example.test")).why, "recipient_mismatch", "a phone is hashed as a phone, not an email");
+  const pid = (await one(db, "select operator_case_open($1,'review_requests','p1','+12085550100','phone') id", [S_REVIEW])).id;
+  await one(db, "select operator_case_touch($1,1,now(),'00:00','24:00','UTC')", [pid]);
+  const sms = (await one(db, "select operator_send_check($1,'p1','sms',1,'+12085550100') r", [S_REVIEW])).r;
+  assert.equal(sms.ok, true); assert.equal(sms.purpose, "marketing", "a review text is marketing");
   assert.equal((await chk("voice", 1)).why, "channel_not_allowed");
   assert.equal((await chk("email", 2)).why, "touch_not_reserved");
 });
@@ -236,7 +268,7 @@ test("the manifest carries the operate block for an operator and is unchanged fo
 test("every new function and table is closed to anon and signed-in users, open to service_role only", { skip: !PGlite }, async () => {
   const db = await fresh();
   const fns = (await db.query("select p.oid::regprocedure::text sig from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'operator\\_%'")).rows;
-  assert.equal(fns.length, 13);
+  assert.equal(fns.length, 14);
   for (const { sig } of fns) {
     for (const role of ["anon", "authenticated"]) assert.equal((await one(db, "select has_function_privilege($1,$2::regprocedure,'execute') ok", [role, sig])).ok, false, `${role} ${sig}`);
     assert.equal((await one(db, "select has_function_privilege('service_role',$1::regprocedure,'execute') ok", [sig])).ok, true, sig);

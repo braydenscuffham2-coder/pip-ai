@@ -366,7 +366,7 @@ test("canRun's rules are the ones pip-turn runs: the same function where it can 
     ["both", turn, 'return job.tools.find((x) => names.includes(x.tool) && x.records === row.record && (x.can as string[]).includes(row.level));'],
     // notYet is asked with "answering a customer" on a turn and without it in a job that started on its own
     ["POST /turn", oneTurn, 'if (!g || notYet(g, row, true)) continue;'],
-    ["POST /job", job, 'if (notYet(g, row, false)) continue;'],
+    ["POST /job", job, 'if (notYet(g, row, false, opRun)) continue;'],
     // an extra product: a reviewed row with block any_tool for that toolkit, matched to kit:<toolkit>
     ["POST /turn", oneTurn, '(catalog ?? []).filter((r: J) => r.block === "any_tool" && r.toolkit === x.toolkit)'],
     ["POST /turn", oneTurn, 'const g = grantFor(job, [`kit:${x.toolkit}`], row);'],
