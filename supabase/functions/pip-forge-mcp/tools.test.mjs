@@ -15,6 +15,8 @@ const TOOLS = [
   "shelf_status", "shelf_funded", "shelf_funds", "shelf_mark", "funds_set",
   "library_list", "library_match", "library_file", "library_retire",
   "client_connect", "client_connections", "redteam_pack", "redteam_save",
+  // Added November 23, 2026: the pricing email's numbers, from the same quote() the Portal uses.
+  "pricing_quote",
   // Added November 23, 2026: the only way a Claude chat starts a Brain scan now that scan-run refuses plain web requests.
   "brain_scan",
 ];
@@ -151,6 +153,30 @@ test("funds_set records a balance for a tracked provider and refuses one that is
 
 test("none of this reaches anything outside Pip's own project and the model", () => {
   assert.deepEqual(f.world.outside, []);
+});
+
+// ---------- pricing ----------
+const QUOTE = { monthly_usd: 152, first_month_usd: 147.44, promo_pct: 3, setup_usd: 100, hardware_usd: null, included_usd: 80.25,
+  agents: [{ label: "Phone agent", after_discount: 136.19 }, { label: "Website chat", after_discount: 27.55 }], connections: [{ tool: "Google Calendar", fee: 40 }], flags: ["placeholder_costs"] };
+
+test("pricing_quote asks the database's quote() as the email, and turns the answer into plain lines", async () => {
+  f.reset(tables());
+  let asked = null; f.world.rpc.quote = (body) => { asked = body; return QUOTE; };
+  const r = await f.tool("pricing_quote", { agents: [{ key: "phone_agent" }, { key: "web_chat" }], connections: [{ tool: "Google Calendar", kind: "oauth" }], promo_pct: 3, order_id: IDS.order });
+  assert.equal(r.ok, true, r.text);
+  assert.deepEqual(asked.p_opts, { caller: "email", promo_pct: 3, order_id: IDS.order });
+  assert.deepEqual(asked.p_agents, [{ key: "phone_agent" }, { key: "web_chat" }]);
+  assert.match(r.out.email_lines[0], /\$152 a month \(first month \$147\.44 with the 3% you earned\), including \$80\.25 of usage/);
+  assert.match(r.out.email_lines[0], /nothing is ever switched off/);
+  assert.ok(r.out.email_lines.includes("- Connecting Google Calendar: $40 setup"));
+  assert.match(r.out.note, /placeholder_costs/);
+});
+
+test("pricing_quote passes a refusal from quote() back in plain words", async () => {
+  f.reset(tables());
+  f.world.rpc.quote = () => null;
+  const r = await f.tool("pricing_quote", { agents: [{ key: "nope" }] });
+  assert.equal(r.ok, false);
 });
 
 // ---------- the Brain ----------
