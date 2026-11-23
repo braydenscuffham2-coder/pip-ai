@@ -28,6 +28,7 @@
 // Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ANTHROPIC_API_KEY, COMPOSIO_API_KEY. Optional: PIP_FAST_MODEL.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { allows, type Ask, type Grant, isMoneyTool, type Job, jobForMessage, jobsOf, notYet, PIP_RECORDS, type Verdict } from "../_shared/teammate-spec.ts";
+import { clean, redact } from "../_shared/redact.ts";
 import { type ExecResult, runJob, type State, type Tool } from "../_shared/job-engine.ts";
 import { localDay } from "../_shared/schedule.ts";
 import { EMAIL_OPT_OUT_LINE, isStopRequest } from "../_shared/optout.ts";
@@ -273,13 +274,17 @@ async function load(specId: string) {
 // ---------- one turn ----------
 async function turn(body: J, trace: boolean) {
   const id = typeof body?.skill === "string" ? body.skill : "";
-  const message = typeof body?.message === "string" ? body.message.trim().slice(0, 1000) : "";
+  // Card numbers, SSNs, passwords, one-time codes and bank numbers come out here, before the words are stored, sent to
+  // the model or copied into an owner alert. The teammate's "pii_scrub" tool is only a name; this is the code that does it.
+  const { text: message, kinds: redacted } = redact(typeof body?.message === "string" ? body.message.trim().slice(0, 1000) : "");
   const channel = ["web_chat", "sms", "voice", "email"].includes(body?.channel) ? body.channel : "web_chat";
   if (!/^[0-9a-f-]{36}$/i.test(id) || !message) return json({ error: "bad_request" }, 400);
   const c = await load(id);
   if (!c || !["live", "approved", "sandbox"].includes(c.s.status)) return json({ error: "not_found" }, 404);
   if (!c.runnable || !c.chat) return json({ error: "not_runnable" }, 409);
   if (c.biz && ["disconnected", "cancelled"].includes(c.biz.status)) return json({ error: "not_found" }, 404);
+  // What was removed is logged by kind only, never the value.
+  if (redacted.length && c.biz?.id) await db.from("compliance_events").insert({ business_id: c.biz.id, spec_id: id, kind: "pii_redacted", channel, detail: { kinds: redacted } });
 
   // conversation and history
   let conv = typeof body?.conversation === "string" && /^[0-9a-f-]{36}$/i.test(body.conversation) ? body.conversation : null;
@@ -296,7 +301,7 @@ async function turn(body: J, trace: boolean) {
   const tally = new Map<string, number>();
   for (const m of past ?? []) for (const a of Array.isArray(m.actions) ? m.actions : []) if (a?.tool && WORD[a.status]) { const k = `${String(a.tool).slice(0, 60)}: ${WORD[a.status]}`; tally.set(k, (tally.get(k) ?? 0) + 1); }
   const earlier = [...tally].slice(-20).map(([k, n]) => `- ${k}${n > 1 ? ` (${n} times)` : ""}`).join("\n");
-  const history = (past ?? []).slice(-16).map((m: J) => ({ role: m.role, content: String(m.content) }));
+  const history = (past ?? []).slice(-16).map((m: J) => ({ role: m.role, content: clean(String(m.content)) }));
   const first = !(past ?? []).some((m: J) => m.role === "assistant");
   const seen = new Set<string>();
   for (const m of [...(past ?? []).filter((m: J) => m.role === "user").map((m: J) => String(m.content)), message]) for (const e of m.match(EMAIL_RE) ?? []) seen.add(e.toLowerCase());
@@ -603,7 +608,7 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
     reply = reply || `Thanks for reaching out to ${c.name}! A team member will get back to you shortly.`;
   }
   if (first && !AI_RE.test(reply)) reply = `This is ${c.teammate}, an AI assistant for ${c.name}. ${reply}`;
-  reply = reply.slice(0, channel === "sms" ? 700 : 1400);
+  reply = clean(reply).slice(0, channel === "sms" ? 700 : 1400);
 
   await db.from("messages").insert([{ conversation_id: conv, role: "user", content: message }, { conversation_id: conv, role: "assistant", content: reply, actions }]);
   if (c.biz?.id && cost > 0) await db.from("usage_events").insert({ business_id: c.biz.id, spec_id: id, unit: channel === "sms" ? "sms" : channel === "voice" ? "voice_minute" : "conversation", qty: 0, cost_usd: Math.round(cost * 1e5) / 1e5, provider: "anthropic", meta: { conversation: conv, model: MODEL } });

@@ -698,3 +698,42 @@ test("the website does not get the founder's trace of steps and tools", async ()
   const r = await t.turn("hi", {}, { "x-pip-secret": SITE_SECRET });
   assert.ok(!("steps" in r.json) && !("offered" in r.json));
 });
+
+// ---------- what a customer types that must never be kept ----------
+// A teammate's "pii_scrub" tool is only a name the model may declare. This is the code that removes the numbers.
+test("a card number a customer types is removed before it is stored, shown to the model or put in an owner alert", async () => {
+  const t = await boot({ model: [says("I'm an AI assistant. I can't take card details here.")] });
+  const r = await t.turn("Sure, my card number is 4111 1111 1111 1111, can you put it on file?");
+  assert.equal(r.status, 200);
+  const everything = JSON.stringify({ model: t.world.model.calls, writes: t.world.writes });
+  for (const form of ["4111 1111 1111 1111", "4111111111111111"]) assert.equal(everything.includes(form), false, "the card number is nowhere: not in the prompt, not in any write");
+  const stored = t.inserts("messages").find((m) => m.role === "user");
+  assert.match(stored.content, /\[card number removed\]/);
+  const logged = t.inserts("compliance_events")[0];
+  assert.deepEqual([logged.kind, logged.detail], ["pii_redacted", { kinds: ["card"] }], "logged by kind only, never the value");
+});
+
+test("a password and a one-time code are removed too, and the owner alert carries neither", async () => {
+  const t = await boot({ model: [null] }); // the model is down, so the owner gets the customer's words in an alert
+  await t.turn("my password is Tr0ub4dor&3 and the verification code is 482913");
+  const everything = JSON.stringify(t.world.writes);
+  for (const secret of ["Tr0ub4dor&3", "482913"]) assert.equal(everything.includes(secret), false, `${secret} was kept`);
+  assert.match(t.inserts("notifications").map((n) => JSON.stringify(n)).join(" "), /password is \[removed\]/);
+});
+
+test("a card number already sitting in an older message is removed before the model sees the history", async () => {
+  const tables = baseTables();
+  tables.conversations.push({ id: "44444444-4444-4444-8444-444444444444", spec_id: IDS.spec, channel: "web_chat" });
+  tables.messages.push({ id: 1, conversation_id: "44444444-4444-4444-8444-444444444444", role: "user", content: "card 5555 5555 5555 4444", actions: [] });
+  const t = await boot({ tables, model: [says("I'm an AI assistant. How can I help?")] });
+  await t.turn("hello again", { conversation: "44444444-4444-4444-8444-444444444444" });
+  assert.equal(JSON.stringify(t.world.model.calls).includes("5555 5555 5555 4444"), false);
+});
+
+test("ordinary numbers are left alone: a phone number, an order number, a time", async () => {
+  const t = await boot({ model: [says("I'm an AI assistant. Got it.")] });
+  await t.turn("Call me at 208-555-0100 about order 12345678, any time after 4:30");
+  const stored = t.inserts("messages").find((m) => m.role === "user");
+  assert.equal(stored.content, "Call me at 208-555-0100 about order 12345678, any time after 4:30");
+  assert.equal(t.inserts("compliance_events").length, 0);
+});

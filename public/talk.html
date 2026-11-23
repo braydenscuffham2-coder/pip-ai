@@ -231,7 +231,8 @@ button{font:inherit;color:inherit}
   }
   const P = readPayload() || SAMPLE;
   // The pass Pip hands out when the owner gives an email before "Your team". Kept for this tab so a refresh still works.
-  const PASS = (() => {
+  let CODE = "";
+  let PASS = (() => {
     let p = "";
     try { p = new URLSearchParams(location.search).get("pass") || ""; } catch {}
     try { if (p) sessionStorage.setItem("pip.pass", p); else p = sessionStorage.getItem("pip.pass") || ""; } catch {}
@@ -379,6 +380,9 @@ You are ${NAME}, ${poss(P.biz)} AI ${roleLow}. You are speaking out loud on a ph
     const m = {
       mic: `Your microphone is blocked. Allow it from the icon in your browser's address bar, then press Call ${NAME} again.`,
       needs_email: `This line opens from your team in Pip. Go back to Pip, enter your email on the "Your team" step, and press Call ${NAME} from there.`,
+      needs_code: `Pip emailed you a 6-digit code when you opened your team. Type it below to call ${NAME}.`,
+      wrong_code: "That code doesn't match. Check the email from Pip and try again.",
+      code_expired: `That code has run out. Go back to Pip and enter your email on the "Your team" step again for a new one.`,
       daily_cap: `${NAME}'s demo line has taken all its calls for today. It opens again tomorrow.`,
       monthly_cap: `${NAME}'s demo line is out of minutes for this month. Send us your plan and we'll set up a live demo.`,
       out_of_minutes: `${NAME}'s demo line is out of minutes for this month. Send us your plan and we'll set up a live demo.`,
@@ -386,10 +390,32 @@ You are ${NAME}, ${poss(P.biz)} AI ${roleLow}. You are speaking out loud on a ph
       dropped: "The call dropped. Check your internet connection and call again.",
     }[code] || "The call couldn't connect. Check your internet connection and try again.";
     $("err").textContent = m; $("err").hidden = false;
+    codeBox(code === "needs_code" || code === "wrong_code");
     stopTimer(); conv = null;
     setState("ready"); status("Not connected"); $("go").hidden = false; $("end").hidden = true; $("mute").hidden = true; $("goLabel").textContent = `Call ${NAME}`;
   }
+  // The emailed code, asked for once. The answer brings back a pass that covers the rest of this visit.
+  function codeBox(show) {
+    let box = document.getElementById("codeBox");
+    if (!show) { if (box) box.hidden = true; return; }
+    if (!box) {
+      box = document.createElement("form"); box.id = "codeBox";
+      box.style.cssText = "display:flex;gap:8px;justify-content:center;margin:10px 0 0";
+      const inp = document.createElement("input");
+      Object.assign(inp, { id: "codeIn", inputMode: "numeric", autocomplete: "one-time-code", maxLength: 6, placeholder: "6-digit code", required: true });
+      inp.setAttribute("aria-label", "6-digit code from Pip's email");
+      inp.style.cssText = "font:inherit;padding:10px 12px;border-radius:10px;border:1px solid rgba(0,0,0,.18);width:9em;text-align:center;letter-spacing:.2em";
+      const btn = document.createElement("button"); btn.type = "submit"; btn.textContent = `Call ${NAME}`;
+      btn.style.cssText = "font:inherit;padding:10px 16px;border-radius:10px;border:0;background:#2563eb;color:#fff;cursor:pointer";
+      box.append(inp, btn);
+      box.addEventListener("submit", (e) => { e.preventDefault(); CODE = String(inp.value || "").replace(/\D/g, "").slice(0, 6); if (CODE.length === 6) start(); });
+      $("err").after(box);
+    }
+    box.hidden = false;
+    const inp = document.getElementById("codeIn"); inp.value = ""; try { inp.focus(); } catch {}
+  }
   async function start() {
+    codeBox(false);
     $("err").hidden = true; $("after").hidden = true; $("fine").hidden = false;
     if (!window.ElevenLabsClient?.Conversation) return fail("sdk");
     resetSlip(); caught = 0; handed = false; firstHeard = false; ended = false;
@@ -399,9 +425,11 @@ You are ${NAME}, ${poss(P.biz)} AI ${roleLow}. You are speaking out loud on a ph
     catch { return fail("mic"); }
     let tk;
     try {
-      const r = await fetch(TOKEN_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ biz: P.biz, mate: NAME, pass: PASS }) });
+      const r = await fetch(TOKEN_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ biz: P.biz, mate: NAME, pass: PASS, ...(CODE ? { code: CODE } : {}) }) });
       tk = await r.json().catch(() => ({}));
+      CODE = "";
       if (!r.ok || !tk.token) return fail(tk.error || "unavailable");
+      if (typeof tk.pass === "string") { PASS = tk.pass.slice(0, 120); try { sessionStorage.setItem("pip.pass", PASS); } catch {} }
     } catch { return fail("network"); }
     maxS = tk.maxSeconds || 180;
     t0 = performance.now();
