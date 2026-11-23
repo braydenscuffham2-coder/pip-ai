@@ -444,6 +444,26 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
       return { ok: true, provider: p, now: row ?? null };
     },
   },
+  brain_scan: {
+    description: "Start a Brain scan of a business website (the Imagination Engine: what agents it should get), or read one you started. Start: give domain, and optionally state (two letters) and says (what the owner said). Read: give scan_id. A new scan counts against the Brain's day and month limits; one already running for the same site is reused. This is the only way to start a scan from a Claude chat: a plain web request to scan-run is refused.",
+    inputSchema: { type: 'object', properties: { domain: { type: 'string' }, state: { type: 'string', description: 'Two-letter US state, for state rules.' }, says: { type: 'string', description: 'What the owner said about the business, up to 500 characters.' }, scan_id: { type: 'string', description: 'Read a scan you started instead of starting one.' } }, additionalProperties: false },
+    async run(a) {
+      const base = `${SB_URL}/functions/v1/scan-run`;
+      const headers = { authorization: `Bearer ${SB_KEY}`, 'x-pip-visitor': 'founder' };
+      if (a?.scan_id) {
+        const id = uuid(a.scan_id); if (!id) throw new Error('scan_id must be a scan id');
+        const r = await fetch(`${base}?scan=${id}`, { headers, signal: AbortSignal.timeout(20000) });
+        return await r.json().catch(() => ({ ok: false, error: `scan-run answered ${r.status}` }));
+      }
+      const d = String(a?.domain || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split(/[/?#]/)[0];
+      if (!/^([a-z0-9-]+\.)+[a-z]{2,}$/.test(d)) throw new Error('domain must be a website address such as example.com');
+      const q = new URLSearchParams({ d, start: '1' });
+      if (typeof a?.state === 'string' && /^[A-Za-z]{2}$/.test(a.state)) q.set('state', a.state.toUpperCase());
+      if (typeof a?.says === 'string' && a.says.trim()) q.set('says', a.says.trim().slice(0, 500));
+      const r = await fetch(`${base}?${q}`, { headers, signal: AbortSignal.timeout(20000) });
+      return await r.json().catch(() => ({ ok: false, error: `scan-run answered ${r.status}` }));
+    },
+  },
   forge_settings: {
     description: 'Read or change the Forge\'s safety settings: fallback_hours (how long an order waits for the Board before the API key may build it), kill_switch (stops all API-key builds), daily_cap_usd.',
     inputSchema: { type: 'object', properties: { fallback_hours: { type: 'number', minimum: 0, maximum: 168 }, kill_switch: { type: 'boolean' }, daily_cap_usd: { type: 'number', minimum: 0, maximum: 200 } }, additionalProperties: false },

@@ -6,6 +6,8 @@
 // It files a lead and returns a pass that the live-call demo asks for.
 // Stateless Streamable HTTP (JSON responses, no SSE stream).
 
+import { codeHash, mintPass, newCode, passId, throwaway } from "../_shared/pass.ts";
+
 const SB_URL = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "");
 const ALLOW = new Set([
   `${SB_URL}/functions/v1/site-kit`,
@@ -18,30 +20,34 @@ const MAX_CHARS = 2_000_000;
 const UPSTREAM_MS = 115_000;
 
 // ---------- the pass ----------
-// A visitor who gives an email before "Your team" gets a pass: a signed note that says "this visitor is a lead"
-// and when it runs out. The expensive demos (a live call) ask for it. Only this project can sign or check one.
+// A visitor who gives an email before "Your team" gets a level-1 pass at once, so the reveal never waits, and a
+// six-digit code by email. The live call demo asks for that code once; typing it turns the pass into level 2.
+// Signing and checking live in ../_shared/pass.ts (PIP_PASS_SECRET; the service key until that is set).
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const enc = new TextEncoder();
-const b64u = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-async function sign(msg: string) {
-  const key = await crypto.subtle.importKey("raw", enc.encode(`pip-pass-v1|${SB_KEY}`), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return b64u(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(msg)))).slice(0, 32);
-}
-async function mintPass(email: string, exp: number) {
-  const id = b64u(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(email)))).slice(0, 10);
-  return `p1.${exp}.${id}.${await sign(`${exp}.${id}`)}`;
-}
+const RESEND = Deno.env.get("RESEND_API_KEY") ?? "";
+const FROM = Deno.env.get("PORTAL_FROM") ?? Deno.env.get("LEAD_ALERT_FROM") ?? "Pip <onboarding@resend.dev>";
 // Reached through pip_read like any other Pip address, but answered here: nothing is fetched, so the email
 // never lands in a request log.
 const PASS_URL = `${SB_URL}/functions/v1/pip-pass`;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const NOT_REAL = /@(example\.(com|org|net)|test\.com|mailinator\.com|guerrillamail\.com|yopmail\.com|tempmail\.com|10minutemail\.com)$/;
 const db = (path: string, init: RequestInit = {}) => fetch(`${SB_URL}/rest/v1/${path}`, { ...init, headers: { apikey: SB_KEY, authorization: `Bearer ${SB_KEY}`, "content-type": "application/json", ...((init.headers as Record<string, string>) || {}) }, signal: AbortSignal.timeout(8000) });
 const say = (o: unknown) => ({ content: [{ type: "text", text: JSON.stringify(o) }] });
 
+/** Emails the code, at most once a minute per pass. Only its hash is kept. Never blocks the pass. */
+async function sendCode(email: string, id: string): Promise<boolean> {
+  if (!RESEND || !SB_KEY) return false;
+  const recent = await db(`email_codes?pass_id=eq.${encodeURIComponent(id)}&sent_at=gte.${encodeURIComponent(new Date(Date.now() - 60_000).toISOString())}&select=pass_id`).then((r) => (r.ok ? r.json() : [])).catch(() => []);
+  if (Array.isArray(recent) && recent.length) return true;
+  const code = newCode();
+  const saved = await db("email_codes?on_conflict=pass_id", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ pass_id: id, code_hash: await codeHash(id, code), expires_at: new Date(Date.now() + 30 * 60_000).toISOString(), tries: 0, sent_at: new Date().toISOString(), verified_at: null }) }).then((r) => r.ok).catch(() => false);
+  if (!saved) return false;
+  const text = `Your Pip code is ${code}.\n\nType it on the call page to talk with your AI team. It works for 30 minutes.\n\nIf you didn't ask for this, you can ignore this email. Pip never asks for a password.`;
+  return await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: `Bearer ${RESEND}`, "content-type": "application/json" }, body: JSON.stringify({ from: FROM, to: [email], subject: "Your Pip code", text }), signal: AbortSignal.timeout(8000) }).then((r) => r.ok).catch(() => false);
+}
+
 async function pass(u: URL) {
   const email = (u.searchParams.get("email") || "").trim().toLowerCase().slice(0, 120);
-  if (!EMAIL.test(email) || NOT_REAL.test(email)) return say({ ok: false, error: "invalid_email" });
+  if (!EMAIL.test(email) || throwaway(email)) return say({ ok: false, error: "invalid_email" });
   if (!SB_URL || !SB_KEY) return say({ ok: false, error: "not_configured" });
   const site = (u.searchParams.get("d") || "").toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split(/[/?#]/)[0].slice(0, 120);
   const biz = (u.searchParams.get("biz") || "").replace(/\s+/g, " ").trim().slice(0, 80);
@@ -55,8 +61,9 @@ async function pass(u: URL) {
       await db("leads", { method: "POST", headers: { prefer: "return=minimal" }, body: JSON.stringify({ name: (biz ? `Owner of ${biz}` : "Pip visitor").slice(0, 80), contact: email, email, business: biz || site || null, site: site || null, modules: [], stage: "reserve", source: "pip-gate", message: "Gave this email to see their team. No order yet." }) }).then((r) => r.body?.cancel()).catch(() => {});
     }
   } catch { /* the pass is still given: a visitor never waits on the lead list */ }
-  const exp = Math.floor(Date.now() / 1000) + 30 * 86_400;
-  return say({ ok: true, pass: await mintPass(email, exp), until: new Date(exp * 1000).toISOString() });
+  const exp = Math.floor(Date.now() / 1000) + 30 * 86_400, id = await passId(email);
+  const code_sent = await sendCode(email, id).catch(() => false);
+  return say({ ok: true, pass: await mintPass(1, id, exp), until: new Date(exp * 1000).toISOString(), code_sent });
 }
 
 const TOOL = {

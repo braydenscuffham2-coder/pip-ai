@@ -12,6 +12,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { abilitiesOf } from "../_shared/abilities.ts";
 import { checkOperate, operatePlainWords } from "../_shared/operate.ts";
 import { checkAsk, mayApprove, mayRevoke } from "../_shared/operate-approval.ts";
+import { vaultRefusal } from "../_shared/vault-input.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -527,7 +528,8 @@ async function ack(u: User, bid: string, body: any) {
 async function vault(u: User, bid: string, body: any) {
   const r = await access(u, bid); need(r, "owner"); await unlocked(bid, r);
   // Closed until an external vault and its login service exist. Nothing secret is accepted, stored or logged.
-  for (const k of Object.keys(body || {})) if (/pass|secret|token|code|otp|pin/i.test(k)) throw new Fail(400, "vault_closed", "The vault is not open yet, so do not send a password.");
+  // Field names, values, and the link: a password typed anywhere, or a link with a sign-in in it, is refused.
+  const no = vaultRefusal(body); if (no) throw new Fail(400, no.code, no.message);
   const tool = cut(body.tool_name, 120); if (tool.length < 2) throw new Fail(400, "bad_tool");
   const order = await firstOrder(bid);
   await db.from("portal_issues").insert({ business_id: bid, opened_by: u.email, body: `Password-only tool to connect when the vault opens: ${tool}${body.login_url ? ` (${cut(body.login_url, 200)})` : ""}` });

@@ -67,6 +67,16 @@ const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), {
   status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, apikey', 'access-control-allow-methods': 'GET, POST, OPTIONS' },
 });
 const db = (path: string, init: RequestInit = {}) => fetch(`${SB_URL}/rest/v1/${path}`, { ...init, headers: { apikey: SB_KEY, authorization: `Bearer ${SB_KEY}`, 'content-type': 'application/json', ...((init.headers as Record<string, string>) || {}) } });
+
+// Who may start a scan: the service key (Pip's own functions, the Forge connector) or the site secret (Pip's server).
+async function trusted(req: Request): Promise<boolean> {
+  const bearer = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
+  if (SB_KEY && bearer.length === SB_KEY.length) { let d = 0; for (let i = 0; i < SB_KEY.length; i++) d |= SB_KEY.charCodeAt(i) ^ bearer.charCodeAt(i); if (d === 0) return true; }
+  const secret = req.headers.get('x-pip-secret');
+  if (!secret || secret.length > 200) return false;
+  const r = await db('rpc/pip_ok', { method: 'POST', body: JSON.stringify({ p_secret: secret }) }).catch(() => null);
+  return !!r && r.ok && (await r.json().catch(() => false)) === true;
+}
 const one = async (path: string) => { const r = await db(path); if (!r.ok) return null; const j = await r.json(); return Array.isArray(j) ? j[0] ?? null : j; };
 const cleanDomain = (s: string) => (s || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split(/[/?#]/)[0];
 const validDomain = (d: string) => /^([a-z0-9-]+\.)+[a-z]{2,}$/.test(d);
@@ -238,10 +248,19 @@ Deno.serve(async (req) => {
   const d = cleanDomain(u.searchParams.get('d') || '');
   if (!validDomain(d)) return json({ ok: false, error: 'invalid' }, 400);
   if (u.searchParams.get('start') !== '1') return json({ ok: false, error: 'use start=1 or scan=<id>' }, 400);
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  const hourAgo = new Date(Date.now() - 3600e3).toISOString();
-  const recent = await db(`events?kind=eq.scan_run&detail->>ip=eq.${encodeURIComponent(ip)}&created_at=gte.${hourAgo}&select=id`).then((r) => r.ok ? r.json() : []).catch(() => []);
-  if ((recent as any[]).length >= PER_IP_HOUR) return json({ ok: false, error: 'rate_limited' }, 429);
+  // A new Brain scan costs model money, so only a caller that can prove it is Pip starts one: Pip's own server (the
+  // site secret, checked by pip_ok) or another Pip function and the Forge connector (the project's service key).
+  // A plain web request gets a plain answer. Reading a scan's progress (?scan=) stays open: it costs nothing.
+  if (!(await trusted(req))) return json({ ok: false, error: 'use_pip_forge', message: "A Brain scan starts from the Pip Forge connector's brain_scan tool or from Pip's own server. A plain web request can't start one." }, 403);
+  // The visitor, as the trusted caller names it: already a salted hash, never a raw address. The founder's own scans
+  // carry no visitor, so the per-visitor limits skip them and only the day's and month's totals apply.
+  const given = (req.headers.get('x-pip-visitor') || '').trim();
+  const ip = given === 'founder' ? '' : /^[A-Za-z0-9_-]{8,64}$/.test(given) ? given : 'unknown';
+  if (ip && ip !== 'unknown') {
+    const hourAgo = new Date(Date.now() - 3600e3).toISOString();
+    const recent = await db(`events?kind=eq.scan_run&detail->>ip=eq.${encodeURIComponent(ip)}&created_at=gte.${hourAgo}&select=id`).then((r) => r.ok ? r.json() : []).catch(() => []);
+    if ((recent as any[]).length >= PER_IP_HOUR) return json({ ok: false, error: 'rate_limited' }, 429);
+  }
 
   // reuse a running job for the same domain (the Recall screen still plays; progress is real)
   const running = await one(`scan_jobs?domain=eq.${encodeURIComponent(d)}&status=eq.running&order=created_at.desc&select=id,updated_at`);

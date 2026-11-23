@@ -105,10 +105,13 @@ export async function POST(req: Request) {
         const msg = await stream.finalMessage();
         const u = msg.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
         const inTok = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) * 1.25 + (u.cache_read_input_tokens || 0) * 0.05;
-        void logEvent('llm', null, { purpose: 'app:sample', model, tier, input: u.input_tokens, output: u.output_tokens, cache_read: u.cache_read_input_tokens, cache_write: u.cache_creation_input_tokens, usd: Math.round(costOf(model, inTok, u.output_tokens || 0) * 1e5) / 1e5 });
         if (msg.stop_reason === 'refusal') send({ t: 'err', code: 'refused' });
         else if (!wrote) send({ t: 'err', code: 'empty_completion' });
         else send({ t: 'end', truncated: msg.stop_reason === 'max_tokens', tier, model: named || undefined });
+        // The page has its answer. Now wait for the meter to record the call before the stream closes: a log fired
+        // without waiting is lost whenever the function is frozen right after the response, and then the dollar
+        // line under-counts.
+        await logEvent('llm', null, { purpose: 'app:sample', model, tier, input: u.input_tokens, output: u.output_tokens, cache_read: u.cache_read_input_tokens, cache_write: u.cache_creation_input_tokens, usd: Math.round(costOf(model, inTok, u.output_tokens || 0) * 1e5) / 1e5 }).catch(() => null);
       } catch (e) {
         if (req.signal.aborted) { /* the page stopped it */ }
         else if (e instanceof Anthropic.RateLimitError) send({ t: 'err', code: 'rate_limited' });

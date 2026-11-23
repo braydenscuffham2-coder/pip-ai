@@ -1,0 +1,63 @@
+Business|Industry|Pick|What it does|Spec|Evid|Build|Value|Total|Flag
+Bittercreek Alehouse|Restaurant|Order This Guide|Web chat that tells first-timers what to order|3|3|5|1|12|Generic
+Bittercreek Alehouse|Restaurant|Test Batch Notes|Guest scores for each basement test beer, matched to glasses sold|5|4|3|3|15|
+Bittercreek Alehouse|Restaurant|Event Intake Desk|Private event inquiries arrive with date, size and budget|3|4|4|4|15|
+Bittercreek Alehouse|Restaurant|First Visit Picks|Same menu-guide chat, plus Instagram messages|3|3|2|1|9|Duplicate
+Bittercreek Alehouse|Restaurant|Friday Group Desk|Takes group booking requests by chat and text|3|2|2|3|10|
+Bittercreek Alehouse|Restaurant|Kitchen Note Replies|Replies to reviews, sends dish complaints to the kitchen|3|3|1|3|10|Generic
+Bittercreek Alehouse|Restaurant|Patio Open Board (wild)|Camera counts open patio tables for a public page|4|2|1|2|9|
+Trillium Kitchen + Cocktails|Restaurant|Huddle Shoutout|Brings staff praise from reviews to a Friday huddle|4|3|2|2|11|
+Trillium Kitchen + Cocktails|Restaurant|Menu Clock|Chat that says which of six menus is on now, and where to park|4|4|4|2|14|
+Trillium Kitchen + Cocktails|Restaurant|Lobby Text Line|Hotel guests text a lobby sign for happy hour and breakfast tips|5|3|3|3|14|
+Trillium Kitchen + Cocktails|Restaurant|Idaho Plate Posts|Weekly Google posts on the Idaho trout, bison and potato story|4|3|1|3|11|
+Trillium Kitchen + Cocktails|Restaurant|Parking-Savvy Host Line|Phone line that explains the free parking|4|4|3|1|12|
+Trillium Kitchen + Cocktails|Restaurant|After-Dinner Ask|Review request after an OpenTable visit|2|3|1|3|9|Generic
+Trillium Kitchen + Cocktails|Restaurant|Season Swap Kit (wild)|One ingredient change updates all six menus|4|3|2|3|12|
+Idaho Street Dental|Dental|Quiet Night Desk|Chat so nervous adults can request a visit without calling|3|3|4|3|13|
+Idaho Street Dental|Dental|Scan Notes|Plain-words notes emailed after a 3D scan|4|2|1|2|9|
+Idaho Street Dental|Dental|Crown Day Slot|Tags crown requests with the chair time needed|3|2|4|1|10|
+Idaho Street Dental|Dental|Cosmetic First Questions|After-hours chat and social messages for cosmetic shoppers|3|3|2|3|11|
+Idaho Street Dental|Dental|No-Lecture Chat|Second chat for people who will not phone|2|3|5|2|12|Duplicate
+Idaho Street Dental|Dental|Checkout Thank-You|Review request after each visit|1|3|2|3|9|Generic
+Smiles On State Street|Dental|Plan Pointer|Answers insurance plan questions, points HMO callers to payment options|4|4|3|3|14|
+Smiles On State Street|Dental|Cost Letter Desk|Turns insurer breakdowns into a cost letter patients keep|4|4|2|4|14|
+Smiles On State Street|Dental|Plan Fit Answers|Second insurance-answers agent|4|4|3|2|13|Duplicate
+Smiles On State Street|Dental|Night Before Note|Tells first-time patients about blankets, TV and nitrous the night before|5|4|2|4|15|
+Smiles On State Street|Dental|Weekend Toothache Line|Answers toothache calls after the Friday 2 PM close|3|4|3|5|15|
+Smiles On State Street|Dental|Friday Early Bird|Offers Friday 7 AM slots to patients who need early times|4|2|1|2|9|
+Cloverdale Plumbing|Plumbing|Water Heater Range Guide|Explains the published $1,800 to $2,600 range from photos|5|4|4|4|17|
+Cloverdale Plumbing|Plumbing|Builder Bid Lane|A separate intake lane for builders' bid requests|4|3|3|4|14|
+Cloverdale Plumbing|Plumbing|Softener Nudge|Raises water softening on every water heater install|4|2|2|3|11|
+Cloverdale Plumbing|Plumbing|Heater Range Helper|Second water heater range chat|5|4|4|2|15|Duplicate
+Cloverdale Plumbing|Plumbing|Thank-You by Name|Review request naming the plumber, plus review replies|2|3|1|3|9|Generic
+Cloverdale Plumbing|Plumbing|Quiet Hours Desk|Late-night chat to request a visit|1|2|4|2|9|Generic
+Gary The Plumber|Plumbing|Far Town Check|Tells far-town callers whether Gary serves them|4|3|3|2|12|
+Gary The Plumber|Plumbing|Under-Sink Desk|Answers Gary's phone while he works, texts him real emergencies|4|3|3|5|15|
+Gary The Plumber|Plumbing|Sunday Slot|Books Sunday toilet installs from chat and photos|4|2|3|2|11|
+Gary The Plumber|Plumbing|Price Walkthrough|Explains what a first-timer's price covers|2|2|2|2|8|
+Gary The Plumber|Plumbing|After-Eight Line|Answers calls after 8 PM, where Google and the site disagree on hours|4|5|3|3|15|
+Gary The Plumber|Plumbing|Plain Price Note|Second price-explainer|2|2|3|1|8|Duplicate
+Graeber & Company|Salon|Match Then Book|Picks up after the stylist quiz and files the visit request|4|3|4|3|14|
+Graeber & Company|Salon|Stylist Bridge|Keeps a guest in-house when her stylist is booked out|4|2|2|4|12|
+Graeber & Company|Salon|Price Preview|Sends what is included and a price range before the visit|3|2|2|3|10|
+Graeber & Company|Salon|Service Guide|Second after-the-quiz chat that explains services|2|3|5|2|12|Duplicate
+Graeber & Company|Salon|Color Goals Card|Guest goals and photos reach the colorist before the chair|4|2|3|4|13|
+Graeber & Company|Salon|Every Chair Asked|Review request after every visit|1|2|2|3|8|Generic
+Madril Salon|Salon|Goal Check|Checks a new guest's color goal and photos before booking|4|3|3|4|14|
+Madril Salon|Salon|Before-Chair Price Range|Shows a color price range before booking, from the weighed-color data|5|5|2|4|16|
+Madril Salon|Salon|Day Three Check-In|Texts on day 3 so the free 7-day adjustment gets used|5|5|2|5|17|
+Madril Salon|Salon|Color Goal Precheck|Second color-goal check|4|3|4|2|13|Duplicate
+Madril Salon|Salon|The Director's First Hour|Gets a low review to the salon director fast with a reply ready|4|4|2|3|13|
+Madril Salon|Salon|Fade Note|Aftercare tied to the formula used, sent when fade starts|4|3|1|3|11|
+Templeton Real Estate Group|Real estate|Consult Brief|A one-page brief before each Calendly consult|3|2|3|3|11|
+Templeton Real Estate Group|Real estate|East Side Guide|Chat that answers East Boise neighborhood questions|3|3|3|2|11|
+Templeton Real Estate Group|Real estate|Listing Prep Pack|Drafts a prep plan before each listing visit|3|3|2|3|11|
+Templeton Real Estate Group|Real estate|Staging Check|Tells sellers if free staging may apply|5|4|5|3|17|
+Templeton Real Estate Group|Real estate|Friday Seller Letters|Weekly update to every active seller|3|3|2|4|12|
+Templeton Real Estate Group|Real estate|Pre-Consult Brief|Second pre-consult brief|3|2|3|1|9|Duplicate
+Sheila Smith Real Estate Group|Real estate|Listing Relay|Every team handoff gets an owner and a draft client update|3|2|2|3|10|
+Sheila Smith Real Estate Group|Real estate|Town Chooser|Chat that helps unsure buyers pick a town|3|2|4|2|11|
+Sheila Smith Real Estate Group|Real estate|Treasure Valley Guide|Second town-chooser chat|3|2|3|1|9|Duplicate
+Sheila Smith Real Estate Group|Real estate|Staging Proof Pack|Sends sellers staging before-and-afters when they ask|4|4|4|3|15|
+Sheila Smith Real Estate Group|Real estate|Keys Week Thanks|Review request the week of closing|2|3|2|3|10|Generic
+Sheila Smith Real Estate Group|Real estate|Your Street Report|A town-by-town market note to past clients|3|3|2|4|12|
