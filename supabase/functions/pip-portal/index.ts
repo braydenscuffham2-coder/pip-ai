@@ -656,9 +656,18 @@ async function founder(u: User, action: string, body: any) {
   const bid = cut(body.business_id, 40);
   if (action === "quote") {
     if (!UUID.test(bid)) throw new Fail(400, "bad_business");
-    const q = body.quote; if (!q || typeof q !== "object" || JSON.stringify(q).length > 15000) throw new Fail(400, "bad_quote");
     const { data: b } = await db.from("businesses").select("price_accepted_at,status").eq("id", bid).single();
     if (b.price_accepted_at) throw new Fail(409, "already_accepted", "This price was already accepted. A change needs a new acceptance.");
+    // The price comes from quote() (the price book), the same function the pricing email uses, so the two cannot
+    // disagree. Send { agents, connections?, opts? }. A hand-made { quote } is still taken, for prices set before it.
+    let q = body.quote;
+    if (Array.isArray(body.agents)) {
+      const opts = { ...(body.opts && typeof body.opts === "object" ? body.opts : {}), caller: "portal", business_id: bid };
+      const { data, error } = await db.rpc("quote", { p_agents: body.agents, p_connections: Array.isArray(body.connections) ? body.connections : [], p_opts: opts });
+      if (error || !data) throw new Fail(400, "bad_quote", String(error?.message || "quote failed").replace(/^quote: /, ""));
+      q = data;
+    }
+    if (!q || typeof q !== "object" || JSON.stringify(q).length > 15000) throw new Fail(400, "bad_quote");
     await db.from("businesses").update({ quote: q, status: "priced", updated_at: now() }).eq("id", bid);
     await log(bid, "system", "Your price is ready to review.", { actor: u.email });
     return json({ ok: true });

@@ -435,6 +435,36 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
       return { ok: true, provider: p, now: row ?? null };
     },
   },
+  pricing_quote: {
+    description: "Price a package for the pricing email, from Pip's price book (public.quote): the monthly price, the one-time setup fee, the hardware fee where a camera box applies, the usage included, and one plain line per agent and connection. The Portal's price comes from the same function, so the email and the Portal agree. agents: [{key, overrides?}] where key is a price_book key (web_chat, owner_alerts, calendar_booking, text_followup, email_followup, phone_agent, review_replies, camera_count, content_posting). connections: [{tool, kind}] with kind oauth, api, password, mfa or forbidden. Every quote is stored. You send the email; this never sends anything.",
+    inputSchema: { type: 'object', properties: {
+      agents: { type: 'array', items: { type: 'object' }, description: '[{key, overrides?: {runs_per_month, voice_minutes, messages, data_calls, ...}}]' },
+      connections: { type: 'array', items: { type: 'object' }, description: '[{tool, kind}]' },
+      order_id: { type: 'string', description: 'The order this quote is for, so it is stored against it.' },
+      registrations: { type: 'array', items: { type: 'string' }, description: 'Registration work in the setup fee, such as 10dlc.' },
+      camera_box: { type: 'boolean' }, customer_rank: { type: 'number', description: 'Which test customer this is (1, 2, 3 get the box at cost).' },
+      promo_pct: { type: 'number', description: "Loading-game discount on the first month, 0 to 5." },
+      active_agents: { type: 'number', description: 'Live agents across Pip, for the fixed platform share.' },
+    }, required: ['agents'], additionalProperties: false },
+    readOnly: false,
+    async run(a) {
+      const opts: Record<string, unknown> = { caller: 'email' };
+      for (const k of ['registrations', 'camera_box', 'customer_rank', 'promo_pct', 'active_agents']) if (a?.[k] !== undefined) opts[k] = a[k];
+      if (a?.order_id) { const id = uuid(a.order_id); if (!id) throw new Error('order_id must be an order id'); opts.order_id = id; }
+      const r = await fetch(`${SB_URL}/rest/v1/rpc/quote`, { method: 'POST', headers: { apikey: SB_KEY, authorization: `Bearer ${SB_KEY}`, 'content-type': 'application/json' }, body: JSON.stringify({ p_agents: a.agents, p_connections: a.connections ?? [], p_opts: opts }) });
+      const q = await r.json().catch(() => null);
+      if (!r.ok || !q || typeof q.monthly_usd !== 'number') throw new Error(String(q?.message || `quote failed (${r.status})`).replace(/^quote: /, ''));
+      const usd = (n: number) => `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
+      const lines = [
+        `Monthly: ${usd(q.monthly_usd)} a month${q.first_month_usd !== q.monthly_usd ? ` (first month ${usd(q.first_month_usd)} with the ${q.promo_pct}% you earned)` : ''}, including ${usd(q.included_usd)} of usage; usage above that is billed at the listed rates, and nothing is ever switched off.`,
+        `Setup, once: ${usd(q.setup_usd)}.`,
+        ...(q.hardware_usd != null ? [`On-site box, once: ${usd(q.hardware_usd)}.`] : []),
+        ...q.agents.map((x: any) => `- ${x.label}: ${usd(x.after_discount)} a month`),
+        ...q.connections.map((x: any) => `- Connecting ${x.tool}: ${usd(x.fee)} setup`),
+      ];
+      return { ...q, email_lines: lines, note: q.flags?.length ? `Check before sending: ${q.flags.join(', ')}.` : 'No flags.' };
+    },
+  },
   forge_settings: {
     description: 'Read or change the Forge\'s safety settings: fallback_hours (how long an order waits for the Board before the API key may build it), kill_switch (stops all API-key builds), daily_cap_usd.',
     inputSchema: { type: 'object', properties: { fallback_hours: { type: 'number', minimum: 0, maximum: 168 }, kill_switch: { type: 'boolean' }, daily_cap_usd: { type: 'number', minimum: 0, maximum: 200 } }, additionalProperties: false },
