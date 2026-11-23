@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { BUILDER_NOTE, canRun, type Catalog, checkBuild, declares, goLive, loadCatalog, NO_CATALOG, OLDER_SHAPE, saveBuild, stamp } from "./forge-check.ts";
 import { checkSpec } from "./teammate-spec.ts";
+import { compileForForge, PRIMITIVE_OF } from "./operate.ts";
 
 // deno-lint-ignore no-explicit-any
 type J = any;
@@ -365,7 +366,7 @@ test("canRun's rules are the ones pip-turn runs: the same function where it can 
     ["both", turn, 'return job.tools.find((x) => names.includes(x.tool) && x.records === row.record && (x.can as string[]).includes(row.level));'],
     // notYet is asked with "answering a customer" on a turn and without it in a job that started on its own
     ["POST /turn", oneTurn, 'if (!g || notYet(g, row, true)) continue;'],
-    ["POST /job", job, 'if (notYet(g, row, false)) continue;'],
+    ["POST /job", job, 'if (notYet(g, row, false, opRun)) continue;'],
     // an extra product: a reviewed row with block any_tool for that toolkit, matched to kit:<toolkit>
     ["POST /turn", oneTurn, '(catalog ?? []).filter((r: J) => r.block === "any_tool" && r.toolkit === x.toolkit)'],
     ["POST /turn", oneTurn, 'const g = grantFor(job, [`kit:${x.toolkit}`], row);'],
@@ -418,4 +419,39 @@ test("the builder's note states the rule and points at the contract and its exam
     assert.ok(m, url);
     assert.ok(existsSync(new URL(m![1], ROOT)), `${m![1]} is not in the repo`);
   }
+});
+
+
+// ---------- the operator lane in the Forge's checks ----------
+const OPSPEC = (use = PRIMITIVE_OF.review_requests) => compileForForge({ teammate: { name: "Pip" }, uses: [use, "email"] }, "Fork Plumbing").spec as J;
+test("saveBuild refuses an operate block while the lane is off, and saves it once the lane is on", () => {
+  const sp = OPSPEC();
+  const off = saveBuild({}, { contract: sp.contract, jobs: sp.jobs, operate: sp.operate }, { ready: true, at: AT }, TODAY);
+  assert.equal(off.ok, false);
+  assert.match(off.say, /Operators are not switched on/);
+  const on = saveBuild({}, { contract: sp.contract, jobs: sp.jobs, operate: sp.operate }, { ready: true, at: AT, operateLane: true }, TODAY);
+  assert.equal(on.ok, true, JSON.stringify(on));
+  assert.equal(saveBuild({ operate: sp.operate }, {}, { ready: false, at: AT }, TODAY).ok, false, "a stored operate block is held back too");
+});
+test("saveBuild is unchanged for a teammate with no operate block, whatever the lane says", () => {
+  const sent = { contract: example("front-desk.json").contract, jobs: example("front-desk.json").jobs };
+  for (const operateLane of [undefined, false, true]) assert.equal(JSON.stringify(saveBuild({}, sent, { ready: true, at: AT, operateLane }, TODAY)), JSON.stringify(saveBuild({}, sent, { ready: true, at: AT }, TODAY)));
+});
+test("goLive refuses an operator while the lane is off, and a posting operator until the owner has approved", () => {
+  const rev = OPSPEC(), post = OPSPEC(PRIMITIVE_OF.content_social);
+  assert.equal(goLive(rev, TODAY).ok, false);
+  assert.equal(goLive(rev, TODAY, { operateLane: false, approved: true }).ok, false);
+  assert.match(goLive(post, TODAY, { operateLane: true, approved: false }).why?.join(" ") ?? "", /has not approved/);
+  const on = goLive(rev, TODAY, { operateLane: true });
+  assert.doesNotMatch(on.ok ? "" : on.why.join(" "), /not switched on|has not approved/, "with the lane on, only the usual checks can stop it");
+});
+test("goLive for a teammate with no operate block ignores the operator options", () => {
+  const sp = { board: {}, ...example("daily-sheet-line.json") };
+  for (const o of [undefined, {}, { operateLane: false }, { operateLane: true, approved: false }]) assert.equal(goLive(sp, TODAY, o as J).ok, goLive(sp, TODAY).ok);
+});
+test("canRun does not call a case-driven job's message add 'not yet', but still does for any other job", () => {
+  const sp = OPSPEC();
+  const driven = new Set<string>(sp.jobs.map((j: J) => j.id));
+  const withCase = canRun(sp.jobs, TODAY, driven), without = canRun(sp.jobs, TODAY);
+  assert.equal(JSON.stringify(withCase) === JSON.stringify(without), false, "the operator flag must change something");
 });

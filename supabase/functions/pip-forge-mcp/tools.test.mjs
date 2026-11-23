@@ -17,6 +17,8 @@ const TOOLS = [
   "client_connect", "client_connections", "redteam_pack", "redteam_save",
   // Added November 23, 2026: the pricing email's numbers, from the same quote() the Portal uses.
   "pricing_quote",
+  // Added November 23, 2026: the only way a Claude chat starts a Brain scan now that scan-run refuses plain web requests.
+  "brain_scan",
 ];
 
 test("every tool the live connector offers is still offered", async () => {
@@ -175,4 +177,26 @@ test("pricing_quote passes a refusal from quote() back in plain words", async ()
   f.world.rpc.quote = () => null;
   const r = await f.tool("pricing_quote", { agents: [{ key: "nope" }] });
   assert.equal(r.ok, false);
+});
+
+// ---------- the Brain ----------
+test("brain_scan starts a scan the way only Pip may: the service key, and no visitor, so per-visitor limits skip the founder", async () => {
+  f.reset(tables()); f.world.fnCalls = [];
+  const r = await f.tool("brain_scan", { domain: "https://www.TestFork.example/menu", state: "id", says: "We run out of tables on Fridays." });
+  assert.equal(r.ok, true, r.text);
+  const [call] = f.world.fnCalls;
+  assert.equal(call.path, "/functions/v1/scan-run");
+  assert.deepEqual(call.query, { d: "testfork.example", start: "1", state: "ID", says: "We run out of tables on Fridays." });
+  assert.equal(call.headers.authorization, "Bearer test-service-role");
+  assert.equal(call.headers["x-pip-visitor"], "founder");
+});
+
+test("brain_scan reads a scan by id, and refuses an address that is not a website", async () => {
+  f.reset(tables()); f.world.fnCalls = [];
+  const r = await f.tool("brain_scan", { scan_id: "66666666-6666-4666-8666-666666666666" });
+  assert.equal(r.ok, true, r.text);
+  assert.deepEqual(f.world.fnCalls[0].query, { scan: "66666666-6666-4666-8666-666666666666" });
+  const bad = await f.tool("brain_scan", { domain: "not a site" });
+  assert.equal(bad.ok, false);
+  assert.match(bad.text, /website address/);
 });

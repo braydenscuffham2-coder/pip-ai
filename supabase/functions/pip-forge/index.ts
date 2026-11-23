@@ -16,7 +16,9 @@
 // deno-lint-ignore-file no-explicit-any
 import { buildOrder, checkOrder, runForgeJob, agentTurn, openaiModel, renderConsole, anthropicModel, primitive } from './forge.js';
 import type { ForgeDb, ForgeJob, SpecRow } from './forge.js';
+import { connectionGate } from '../_shared/golive-connections.ts';
 import { declares, goLive, loadCatalog, NO_CATALOG, stamp } from '../_shared/forge-check.ts';
+import { compileForForge, dryRun } from '../_shared/operate.ts';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
@@ -40,6 +42,8 @@ function chain() { EdgeRuntime.waitUntil(fetch(`${SELF}/run`, { method: 'POST' }
 
 // ---------- the DB adapter the stage machine uses ----------
 const forgeDb: ForgeDb = {
+  // The operator lane's switch. Anything that is not a clean true reads as off, including a failed read.
+  async flag(key) { try { return (await rows('rpc/portal_flag', { method: 'POST', body: JSON.stringify({ p_key: key, p_default: false }) })) === true; } catch { return false; } },
   async getSpec(id) { const r = await rows(`skill_specs?id=eq.${id}&select=*`); return (r?.[0] as SpecRow) ?? null; },
   // A spec the API-key engine saves is the older shape: its compile step keeps only the Skill Spec's own keys, so it
   // never carries jobs. The record says so (forge_check.declared = false), the same note a Board save leaves.
@@ -187,7 +191,7 @@ async function routeRun() {
     const job = Array.isArray(claimed) ? claimed[0] : claimed;
     if (!job || !job.id) return;
     try {
-      const r = await runForgeJob(job as ForgeJob, { model: m.model, reviewer: m.reviewer, db: forgeDb });
+      const r = await runForgeJob(job as ForgeJob, { model: m.model, reviewer: m.reviewer, db: forgeDb, operate: { compile: compileForForge, dryRun } });
       await patch('build_jobs', `id=eq.${job.id}`, { status: r.outcome === 'founder' ? 'needs_founder' : 'done', log: [...(job.log ?? []), { outcome: r.outcome, detail: r.detail, at: new Date().toISOString() }], updated_at: new Date().toISOString() });
       await insert('events', { kind: 'forge', domain: null, detail: { job: job.id, stage: job.stage, attempt: job.attempt, outcome: r.outcome, detail: r.detail } });
     } catch (e) {
@@ -214,8 +218,15 @@ async function routeConsole(req: Request, u: URL) {
     if (action === 'golive') {
       // The same gate as the connector's forge_golive: declared jobs must pass the contract now, and a job's required
       // tool must have something behind it. A teammate with no declared jobs goes live as before.
-      const gate = goLive((spec as any).spec, declares((spec as any).spec) ? await loadCatalog(rows) : NO_CATALOG);
+      // Only a teammate with an operate block reads the switch, so every older teammate goes live exactly as before.
+      const operates = !!(spec as any).spec?.operate;
+      const operateLane = operates ? await forgeDb.flag('operate_lane') : false;
+      const approved = operates ? (await rows('rpc/operator_approved_current', { method: 'POST', body: JSON.stringify({ p_spec: specId }) }).catch(() => false)) === true : true;
+      const gate = goLive((spec as any).spec, declares((spec as any).spec) ? await loadCatalog(rows) : NO_CATALOG, { operateLane, approved });
       if (!gate.ok) return json({ ok: false, error: gate.why.join(' ') }, 409);
+      // The same second refusal as the connector: a required connection must be connected and tested for this business.
+      const conn = await connectionGate(rows, specId, (spec as any).skill_id || '').catch((e: Error) => ({ ok: false as const, missing: [], why: `The connections could not be checked, so nothing was switched on: ${String(e.message || e).slice(0, 200)}` }));
+      if (!conn.ok) return json({ ok: false, error: conn.why }, 409);
       const m = models();
       const r = await runForgeJob({ id: 0, order_id: orderId || (spec as any).order_id, spec_id: specId, stage: 'golive', attempt: 1, status: 'queued', log: [] }, { model: m?.model ?? (async () => '{}'), reviewer: null, db: forgeDb });
       await insert('events', { kind: 'golive', domain: spec.domain, detail: { spec: specId, by: 'founder', note: String(b.note ?? '').slice(0, 500) } });

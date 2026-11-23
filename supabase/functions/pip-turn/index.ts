@@ -28,8 +28,11 @@
 // Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ANTHROPIC_API_KEY, COMPOSIO_API_KEY. Optional: PIP_FAST_MODEL.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { allows, type Ask, type Grant, isMoneyTool, type Job, jobForMessage, jobsOf, notYet, PIP_RECORDS, type Verdict } from "../_shared/teammate-spec.ts";
+import { clean, redact } from "../_shared/redact.ts";
 import { type ExecResult, runJob, type State, type Tool } from "../_shared/job-engine.ts";
 import { localDay } from "../_shared/schedule.ts";
+import { EMAIL_OPT_OUT_LINE, isStopRequest } from "../_shared/optout.ts";
+import { isOperatorRun, operatorSend } from "../_shared/operate-run.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!, SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const db = createClient(SB_URL, SERVICE, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -272,13 +275,17 @@ async function load(specId: string) {
 // ---------- one turn ----------
 async function turn(body: J, trace: boolean) {
   const id = typeof body?.skill === "string" ? body.skill : "";
-  const message = typeof body?.message === "string" ? body.message.trim().slice(0, 1000) : "";
+  // Card numbers, SSNs, passwords, one-time codes and bank numbers come out here, before the words are stored, sent to
+  // the model or copied into an owner alert. The teammate's "pii_scrub" tool is only a name; this is the code that does it.
+  const { text: message, kinds: redacted } = redact(typeof body?.message === "string" ? body.message.trim().slice(0, 1000) : "");
   const channel = ["web_chat", "sms", "voice", "email"].includes(body?.channel) ? body.channel : "web_chat";
   if (!/^[0-9a-f-]{36}$/i.test(id) || !message) return json({ error: "bad_request" }, 400);
   const c = await load(id);
   if (!c || !["live", "approved", "sandbox"].includes(c.s.status)) return json({ error: "not_found" }, 404);
   if (!c.runnable || !c.chat) return json({ error: "not_runnable" }, 409);
   if (c.biz && ["disconnected", "cancelled"].includes(c.biz.status)) return json({ error: "not_found" }, 404);
+  // What was removed is logged by kind only, never the value.
+  if (redacted.length && c.biz?.id) await db.from("compliance_events").insert({ business_id: c.biz.id, spec_id: id, kind: "pii_redacted", channel, detail: { kinds: redacted } });
 
   // conversation and history
   let conv = typeof body?.conversation === "string" && /^[0-9a-f-]{36}$/i.test(body.conversation) ? body.conversation : null;
@@ -295,10 +302,19 @@ async function turn(body: J, trace: boolean) {
   const tally = new Map<string, number>();
   for (const m of past ?? []) for (const a of Array.isArray(m.actions) ? m.actions : []) if (a?.tool && WORD[a.status]) { const k = `${String(a.tool).slice(0, 60)}: ${WORD[a.status]}`; tally.set(k, (tally.get(k) ?? 0) + 1); }
   const earlier = [...tally].slice(-20).map(([k, n]) => `- ${k}${n > 1 ? ` (${n} times)` : ""}`).join("\n");
-  const history = (past ?? []).slice(-16).map((m: J) => ({ role: m.role, content: String(m.content) }));
+  const history = (past ?? []).slice(-16).map((m: J) => ({ role: m.role, content: clean(String(m.content)) }));
   const first = !(past ?? []).some((m: J) => m.role === "assistant");
   const seen = new Set<string>();
   for (const m of [...(past ?? []).filter((m: J) => m.role === "user").map((m: J) => String(m.content)), message]) for (const e of m.match(EMAIL_RE) ?? []) seen.add(e.toLowerCase());
+
+  // Email from a customer: STOP (or "please stop emailing me") is recorded and ends all email to that address, with no
+  // reply and no model call. Anything else records that they wrote first. The address is the visitor, which only a
+  // trusted caller (the site, pip-run or a mail intake) can set. It is hashed in the database and never stored.
+  if (channel === "email" && c.biz?.id && typeof body?.visitor === "string" && EMAIL_ONE.test(body.visitor.trim())) {
+    const stop = isStopRequest(message);
+    const { data: ein } = await db.rpc("portal_email_in", { p_business: c.biz.id, p_spec: id, p_from: body.visitor.trim(), p_kind: stop ? "stop" : "message" });
+    if (stop || ein?.allowed !== true) return json({ conversation: conv, reply: "", actions: [], live: false, opted_out: true });
+  }
 
   // may this teammate act for real right now?
   const { data: sb } = await db.from("forge_settings").select("value").eq("key", "act_sandbox_businesses").maybeSingle();
@@ -463,9 +479,23 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
     }
     if (!real) { actions.push({ tool: name, status: "test_only" }); return { text: write ? "Test mode: nothing was changed. Tell the customer a team member will follow up." : "Test mode: no data was read. Tell the customer a team member will confirm." }; }
     args = { ...args, ...(meta.row.fixed ?? {}) };
+    let sentTo = "", sentBody = "";
     if (meta.row.guard === "email") {
       const key = ["body", "message_body", "content"].find((k) => typeof args[k] === "string");
       if (key && !AI_RE.test(args[key])) args[key] = `${args[key]}\n\nSent by ${c!.teammate}, an AI assistant for ${c!.name}.`;
+      if (key && !/reply stop/i.test(args[key])) args[key] = `${args[key]}\n${EMAIL_OPT_OUT_LINE}`;
+      // Before a send: has this person opted out of email? Fail closed: if the database cannot say yes, nothing is sent.
+      // An address the customer typed in this chat is recorded as consent (web_form) the first time.
+      const to = [args.recipient_email, args.to].find((v) => typeof v === "string" && EMAIL_ONE.test(v.trim()));
+      if (to && c!.biz?.id) {
+        const { data: gate } = await db.rpc("portal_email_gate", { p_business: c!.biz.id, p_spec: id, p_to: String(to).trim(), p_given_in_chat: seen.has(String(to).trim().toLowerCase()) });
+        if (gate?.allowed !== true) {
+          actions.push({ tool: name, status: "blocked" });
+          await log(`${c!.teammate} did not email a customer: ${gate?.reason === "opted_out" ? "they opted out of email" : "email permission could not be confirmed"}`, "skipped", meta.job);
+          return { text: gate?.reason === "opted_out" ? "Blocked: this person asked not to be emailed. Do not email them again. Tell them nothing was sent." : "Blocked: email permission could not be confirmed. Tell the customer a team member will follow up.", error: true };
+        }
+        sentTo = String(to).trim();
+      }
       // Gmail's send-only permission cannot look up the mailbox's own address, and the tool refuses to send without one.
       // Pip supplies it here; the model never sets it. Gmail swaps in the signed-in mailbox whenever the two differ,
       // so this cannot make a teammate send as anyone else.
@@ -516,6 +546,12 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
       return { text: `That did not work: ${err || "unknown error"}. Do not tell the customer it was done.`, error: true };
     }
     actions.push({ tool: name, status: "done" });
+    if (sentTo) {
+      // One record per email that really went out: which consent row covered it, and that it carried the AI line and the opt-out line.
+      const k = ["body", "message_body", "content"].find((x) => typeof args[x] === "string");
+      sentBody = k ? String(args[k]) : "";
+      await db.rpc("portal_outbound_sent", { p_business: c!.biz.id, p_spec: id, p_contact: sentTo, p_kind: "email", p_channel: "email", p_ai_disclosed: AI_RE.test(sentBody), p_opt_out_offered: /reply stop/i.test(sentBody) });
+    }
     if (write) await log(`${c!.teammate}: ${meta.row.label}`, "ok", meta.job);
     if (meta.row.shape === "busy_only") {
       const items = dig(r.j?.data, "items");
@@ -573,7 +609,7 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
     reply = reply || `Thanks for reaching out to ${c.name}! A team member will get back to you shortly.`;
   }
   if (first && !AI_RE.test(reply)) reply = `This is ${c.teammate}, an AI assistant for ${c.name}. ${reply}`;
-  reply = reply.slice(0, channel === "sms" ? 700 : 1400);
+  reply = clean(reply).slice(0, channel === "sms" ? 700 : 1400);
 
   await db.from("messages").insert([{ conversation_id: conv, role: "user", content: message }, { conversation_id: conv, role: "assistant", content: reply, actions }]);
   if (c.biz?.id && cost > 0) await db.from("usage_events").insert({ business_id: c.biz.id, spec_id: id, unit: channel === "sms" ? "sms" : channel === "voice" ? "voice_minute" : "conversation", qty: 0, cost_usd: Math.round(cost * 1e5) / 1e5, provider: "anthropic", meta: { conversation: conv, model: MODEL } });
@@ -627,6 +663,9 @@ async function jobRun(body: J) {
     const { data: sb } = await db.from("forge_settings").select("value").eq("key", "act_sandbox_businesses").maybeSingle();
     const real = c.s.status === "live" || (Array.isArray(sb?.value) && sb.value.includes(c.biz.id));
     const label = `job:${job.id}`;
+    // A customer operator's stage job may send an email, but only when pip-jobs started this run for a case. Anything
+    // else (a manual run, a different teammate) is held to the older rule that a job sends nothing to a customer.
+    const opRun = isOperatorRun(c.s.spec, job.id, run.input);
 
     // ---- tools: only what this job's permissions cover, only where a reviewed catalog row and a working connection exist ----
     const tools: Tool[] = [], how = new Map<string, J>(), have = new Set<string>(), gone = new Set<string>(), shut = new Set<string>();
@@ -655,7 +694,7 @@ async function jobRun(body: J) {
       if (!g) continue;
       const kind = `${g.tool}/${g.records}`;
       // Not open to jobs yet: sending, updates, and a read for a job that lists what it may see.
-      if (notYet(g, row, false)) continue;
+      if (notYet(g, row, false, opRun)) continue;
       const conn = (conns ?? []).find((x: J) => x.slot === slot.slot);
       if (!c.biz.composio_user_id || !conn || conn.status !== "active" || conn.choice !== row.toolkit || !conn.connected_account_id || paused.has(slot.label)) { gone.add(kind); continue; }
       // The product behind the building block is known now. A money product is refused, whatever name the job used.
@@ -670,6 +709,8 @@ async function jobRun(body: J) {
       // call, so a job that lists fields.add is held to it. Until field maps exist the names are the tool's own.
       tools.push({ name: row.slug, description: sc.description + fillOnly(g), tool: g.tool, records: g.records, level: row.level,
         ...(row.level === "add" ? { fields: argFields(hide) } : {}),
+        // Who a message is going to, so the engine can hold a send to its per-contact limit. Only a message has one.
+        ...(row.level === "add" && row.record === "message" ? { contact: (a: J) => { const v = [a?.recipient_email, a?.to].find((x) => typeof x === "string" && EMAIL_ONE.test(x.trim())); return typeof v === "string" ? v.trim().toLowerCase() : null; } } : {}),
         input_schema: visible(sc.input, hide) });
       how.set(row.slug, { row, conn, slot: slot.label });
     }
@@ -695,8 +736,35 @@ async function jobRun(body: J) {
       let r: { ok: boolean; status: number; err: string }, raw: J = null, slotLabel: string;
       if (m?.sheet) { r = await sheetRow(c, m.sheet, args?.row); slotLabel = m.sheet.job; }
       else {
-        const input = { ...Object.fromEntries(Object.entries(args ?? {}).filter(([k]) => !(m.row.hide ?? []).includes(k))), ...(m.row.fixed ?? {}) };
+        let input: J = { ...Object.fromEntries(Object.entries(args ?? {}).filter(([k]) => !(m.row.hide ?? []).includes(k))), ...(m.row.fixed ?? {}) };
+        let sentTo = "";
+        // A message to a customer: the touch is reserved first, the database and the consent gate both say yes, and
+        // only then does it go. Any step that cannot say yes sends nothing. (A text is never offered; see operate-run.ts.)
+        if (t.records === "message" && t.level === "add") {
+          if (!opRun || m.row.guard !== "email") return { outcome: "failed", text: "Blocked: a job may not message a customer outside an operator's case. Nothing was sent." };
+          const sent = await operatorSend({
+            caseId: async (spec, key) => { const { data } = await db.from("operator_cases").select("id").eq("spec_id", spec).eq("case_key", key).maybeSingle(); return data?.id ?? null; },
+            reserve: async (id, touch) => { const { data } = await db.rpc("operator_case_touch", { p_case: id, p_touch: touch, p_from: "08:00", p_to: "20:00", p_tz: c.biz.timezone || "America/Boise" }); return { ok: data?.ok === true, why: data?.why }; },
+            check: async (spec, key, channel, touch, to) => { const { data } = await db.rpc("operator_send_check", { p_spec: spec, p_case_key: key, p_channel: channel, p_touch: touch, p_recipient: to }); return { ok: data?.ok === true, why: data?.why, purpose: data?.purpose }; },
+            gate: async (to) => { const { data } = await db.rpc("portal_email_gate", { p_business: c.biz.id, p_spec: run.spec_id, p_to: to, p_given_in_chat: false }); return { allowed: data?.allowed === true, reason: data?.reason }; },
+          }, { spec: run.spec_id, input: run.input, channel: "email", args: input, teammate: c.teammate, business: c.name });
+          if (!sent.ok) {
+            await db.rpc("portal_log", { p_spec: run.spec_id, p_summary: `${c.teammate} did not email a customer: ${sent.text.replace(/^Blocked: /, "").split(". ")[0]}`, p_outcome: "skipped", p_job: label });
+            return { outcome: "failed", text: sent.text };
+          }
+          input = sent.args; sentTo = sent.to;
+          // Gmail's send-only permission cannot look up the mailbox's own address; Pip supplies it, never the model.
+          if (m.row.slug === "GMAIL_SEND_EMAIL") {
+            const from = String(m.conn.detail?.sender ?? c.biz.owner_email ?? "").trim();
+            if (EMAIL_ONE.test(from)) input.from_email = from;
+            input.include_signature = false;
+          }
+        }
         const x = await execTool(m.row.slug, m.conn.connected_account_id, c.biz.composio_user_id, input, m.row.toolkit, !write);
+        if (sentTo && x.ok && x.j?.successful !== false) {
+          const k = ["body", "message_body", "content"].find((key) => typeof input[key] === "string"), body = k ? String(input[k]) : "";
+          await db.rpc("portal_outbound_sent", { p_business: c.biz.id, p_spec: run.spec_id, p_contact: sentTo, p_kind: "email", p_channel: "email", p_ai_disclosed: AI_RE.test(body), p_opt_out_offered: /reply stop/i.test(body) });
+        }
         r = { ok: x.ok && x.j?.successful !== false, status: x.status, err: errText(x) }; raw = x.j?.data; slotLabel = m.slot;
       }
       const what = m?.sheet ? "added a row to the sheet" : m.row.label;

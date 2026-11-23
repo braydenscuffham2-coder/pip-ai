@@ -64,6 +64,8 @@ const BREAKS = [
     ["if (!g || notYet(g, row, true)) continue;", "if (!g) continue;"],
     ["if (!g || notYet(g, row, true) || tools.length >= 24) continue;", "if (!g || tools.length >= 24) continue;"]]],
   ["a row that adds, filed as a read, skips the email-address limit", ' || meta.row.level !== "read";', ";"],
+  ["a card number or password a customer types is stored and sent to the model", "const { text: message, kinds: redacted } = redact(", "const { text: message, kinds: redacted } = ((t: string) => ({ text: t, kinds: [] as string[] }))("],
+  ["a card number in an earlier message reaches the model again", "content: clean(String(m.content)) }));", "content: String(m.content) }));"],
   ["a money product behind a building block is opened on a turn", "return v.ok ? allowsProduct(job!, ask, products, PASSED) : v;", "return v;"],
   ["a money product behind a building block is opened in a job that started on its own", "[row.toolkit, conn.choice], PASSED).ok) { shut.add(kind); continue; }", "[], PASSED).ok) { shut.add(kind); continue; }"],
 ];

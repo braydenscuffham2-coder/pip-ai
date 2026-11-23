@@ -1,0 +1,2179 @@
+{
+ "gates": {
+  "plumbing": {
+   "c01": {
+    "candidateId": "c01",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "ai_disclosure"
+    ],
+    "needs": [],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1,
+    "repaired_uses": [
+     "web_chat",
+     "knowledge",
+     "handoff",
+     "ai_disclosure"
+    ]
+   },
+   "c02": {
+    "candidateId": "c02",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "tcpa",
+     "10dlc",
+     "ai_disclosure"
+    ],
+    "needs": [
+     "A2P 10DLC registration (2-4 weeks)",
+     "owner connects Calendar"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 3,
+    "repaired_uses": [
+     "sms",
+     "schedule",
+     "calendar",
+     "consent_ledger",
+     "ai_disclosure"
+    ]
+   },
+   "c03": {
+    "candidateId": "c03",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "ai_disclosure"
+    ],
+    "needs": [
+     "owner connects CRM",
+     "owner connects Something changes in their software"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2,
+    "repaired_uses": [
+     "email",
+     "crm",
+     "record_change",
+     "consent_ledger",
+     "ai_disclosure"
+    ]
+   },
+   "c04": {
+    "candidateId": "c04",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "ai_disclosure",
+     "two_party_consent",
+     "tcpa"
+    ],
+    "needs": [
+     "call-recording consent wording",
+     "owner connects Calendar"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2,
+    "repaired_uses": [
+     "voice",
+     "calendar",
+     "handoff",
+     "ai_disclosure"
+    ]
+   },
+   "c05": {
+    "candidateId": "c05",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "ai_disclosure",
+     "two_party_consent",
+     "tcpa"
+    ],
+    "needs": [
+     "call-recording consent wording",
+     "owner connects Booking software"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 3,
+    "repaired_uses": [
+     "realtime_voice",
+     "booking_app",
+     "ai_disclosure"
+    ]
+   },
+   "c06": {
+    "candidateId": "c06",
+    "status": "repair",
+    "errors": [
+     "unknown primitive ids: teleporter"
+    ],
+    "risk": [
+     "ai_disclosure"
+    ],
+    "needs": [],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1,
+    "repaired_uses": [
+     "web_chat",
+     "ai_disclosure"
+    ]
+   },
+   "c07": {
+    "candidateId": "c07",
+    "status": "drop",
+    "errors": [
+     "unknown primitive ids: teleporter",
+     "no usable primitives"
+    ],
+    "risk": [],
+    "needs": [],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1
+   },
+   "c08": {
+    "candidateId": "c08",
+    "status": "drop",
+    "errors": [
+     "no usable primitives"
+    ],
+    "risk": [],
+    "needs": [],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1
+   },
+   "c09": {
+    "candidateId": "c09",
+    "status": "repair",
+    "errors": [
+     "a sink (live_board, weekly_report) needs something that produces rows or events"
+    ],
+    "risk": [],
+    "needs": [],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2
+   },
+   "c10": {
+    "candidateId": "c10",
+    "status": "repair",
+    "errors": [
+     "anomaly_alert needs an input (timeseries) from another primitive"
+    ],
+    "risk": [],
+    "needs": [],
+    "lane": "code",
+    "tier": "build",
+    "effort": 2
+   },
+   "c11": {
+    "candidateId": "c11",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "camera_privacy",
+     "biometric_state_law"
+    ],
+    "needs": [
+     "signage at every entrance",
+     "on-site box and installer visit",
+     "owner connects Writes rows"
+    ],
+    "lane": "onprem",
+    "tier": "hardware",
+    "effort": 4
+   },
+   "c12": {
+    "candidateId": "c12",
+    "status": "drop",
+    "errors": [
+     "health_records outside a health business makes no sense"
+    ],
+    "risk": [
+     "hipaa_baa",
+     "ai_disclosure"
+    ],
+    "needs": [
+     "owner connects Health record systems"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 3,
+    "repaired_uses": [
+     "health_records",
+     "forms",
+     "web_chat",
+     "ai_disclosure"
+    ]
+   },
+   "c13": {
+    "candidateId": "c13",
+    "status": "repair",
+    "errors": [
+     "claim has a number not in the material: \"We save customers 47 minutes a day\""
+    ],
+    "risk": [
+     "ai_disclosure"
+    ],
+    "needs": [],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1,
+    "repaired_uses": [
+     "web_chat",
+     "knowledge",
+     "ai_disclosure"
+    ]
+   },
+   "c14": {
+    "candidateId": "c14",
+    "status": "drop",
+    "errors": [
+     "NEVER DESIGN: Texting, calling or emailing people who never opted in"
+    ],
+    "risk": [
+     "tcpa",
+     "10dlc"
+    ],
+    "needs": [
+     "A2P 10DLC registration (2-4 weeks)"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2,
+    "repaired_uses": [
+     "send_text",
+     "capture_lead",
+     "consent_ledger"
+    ]
+   },
+   "c15": {
+    "candidateId": "c15",
+    "status": "pass",
+    "errors": [],
+    "risk": [],
+    "needs": [
+     "owner connects Create a job in their software",
+     "owner connects Job software"
+    ],
+    "lane": "spec",
+    "tier": "needs_setup",
+    "effort": 3
+   },
+   "c16": {
+    "candidateId": "c16",
+    "status": "pass",
+    "errors": [],
+    "risk": [],
+    "needs": [],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2
+   },
+   "c17": {
+    "candidateId": "c17",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "google_tos"
+    ],
+    "needs": [
+     "Google terms: live fetch, attribution",
+     "owner connects Google Business Profile"
+    ],
+    "lane": "spec",
+    "tier": "needs_setup",
+    "effort": 2
+   },
+   "c18": {
+    "candidateId": "c18",
+    "status": "pass",
+    "errors": [],
+    "risk": [],
+    "needs": [
+     "owner connects Social posts"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2
+   },
+   "c19": {
+    "candidateId": "c19",
+    "status": "pass",
+    "errors": [],
+    "risk": [],
+    "needs": [
+     "owner connects CRM",
+     "owner connects Accounting"
+    ],
+    "lane": "spec",
+    "tier": "needs_setup",
+    "effort": 2
+   },
+   "c20": {
+    "candidateId": "c20",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "google_tos"
+    ],
+    "needs": [
+     "Google terms: live fetch, attribution"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2
+   },
+   "c21": {
+    "candidateId": "c21",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "pci"
+    ],
+    "needs": [
+     "owner connects Point of sale"
+    ],
+    "lane": "code",
+    "tier": "build",
+    "effort": 3
+   },
+   "c22": {
+    "candidateId": "c22",
+    "status": "repair",
+    "errors": [
+     "shift_optimizer needs demand_forecast in the same skill",
+     "shift_optimizer needs an input (timeseries or record) from another primitive"
+    ],
+    "risk": [],
+    "needs": [],
+    "lane": "code",
+    "tier": "build",
+    "effort": 3,
+    "repaired_uses": [
+     "shift_optimizer",
+     "weekly_report",
+     "owner_approval"
+    ]
+   },
+   "c23": {
+    "candidateId": "c23",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "ai_disclosure"
+    ],
+    "needs": [],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1,
+    "repaired_uses": [
+     "web_chat",
+     "translation",
+     "knowledge",
+     "ai_disclosure"
+    ]
+   },
+   "c24": {
+    "candidateId": "c24",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "ai_disclosure"
+    ],
+    "needs": [],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1,
+    "repaired_uses": [
+     "web_chat",
+     "knowledge",
+     "ai_disclosure"
+    ]
+   },
+   "c25": {
+    "candidateId": "c25",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "tcpa",
+     "10dlc",
+     "ai_disclosure"
+    ],
+    "needs": [
+     "A2P 10DLC registration (2-4 weeks)",
+     "owner connects Facebook and Instagram messages",
+     "owner connects WhatsApp",
+     "owner connects CRM"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 3,
+    "repaired_uses": [
+     "sms",
+     "email",
+     "social_dm",
+     "whatsapp",
+     "crm",
+     "consent_ledger",
+     "ai_disclosure"
+    ]
+   }
+  },
+  "health": {
+   "c01": {
+    "candidateId": "c01",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "ai_disclosure"
+    ],
+    "needs": [
+     "never confirm anyone is a patient; no clinical details on any channel"
+    ],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1,
+    "repaired_uses": [
+     "web_chat",
+     "knowledge",
+     "handoff",
+     "ai_disclosure"
+    ]
+   },
+   "c02": {
+    "candidateId": "c02",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "tcpa",
+     "10dlc",
+     "ai_disclosure"
+    ],
+    "needs": [
+     "A2P 10DLC registration (2-4 weeks)",
+     "owner connects Calendar",
+     "never confirm anyone is a patient; no clinical details on any channel"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 3,
+    "repaired_uses": [
+     "sms",
+     "schedule",
+     "calendar",
+     "consent_ledger",
+     "ai_disclosure"
+    ]
+   },
+   "c03": {
+    "candidateId": "c03",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "ai_disclosure"
+    ],
+    "needs": [
+     "owner connects CRM",
+     "owner connects Something changes in their software",
+     "never confirm anyone is a patient; no clinical details on any channel"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2,
+    "repaired_uses": [
+     "email",
+     "crm",
+     "record_change",
+     "consent_ledger",
+     "ai_disclosure"
+    ]
+   },
+   "c04": {
+    "candidateId": "c04",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "ai_disclosure",
+     "two_party_consent",
+     "tcpa"
+    ],
+    "needs": [
+     "call-recording consent wording",
+     "owner connects Calendar",
+     "never confirm anyone is a patient; no clinical details on any channel"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2,
+    "repaired_uses": [
+     "voice",
+     "calendar",
+     "handoff",
+     "ai_disclosure"
+    ]
+   },
+   "c05": {
+    "candidateId": "c05",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "ai_disclosure",
+     "two_party_consent",
+     "tcpa"
+    ],
+    "needs": [
+     "call-recording consent wording",
+     "owner connects Booking software",
+     "never confirm anyone is a patient; no clinical details on any channel"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 3,
+    "repaired_uses": [
+     "realtime_voice",
+     "booking_app",
+     "ai_disclosure"
+    ]
+   },
+   "c06": {
+    "candidateId": "c06",
+    "status": "repair",
+    "errors": [
+     "unknown primitive ids: teleporter"
+    ],
+    "risk": [
+     "ai_disclosure"
+    ],
+    "needs": [
+     "never confirm anyone is a patient; no clinical details on any channel"
+    ],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1,
+    "repaired_uses": [
+     "web_chat",
+     "ai_disclosure"
+    ]
+   },
+   "c07": {
+    "candidateId": "c07",
+    "status": "drop",
+    "errors": [
+     "unknown primitive ids: teleporter",
+     "no usable primitives"
+    ],
+    "risk": [],
+    "needs": [],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1
+   },
+   "c08": {
+    "candidateId": "c08",
+    "status": "drop",
+    "errors": [
+     "no usable primitives"
+    ],
+    "risk": [],
+    "needs": [],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1
+   },
+   "c09": {
+    "candidateId": "c09",
+    "status": "repair",
+    "errors": [
+     "a sink (live_board, weekly_report) needs something that produces rows or events"
+    ],
+    "risk": [],
+    "needs": [],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2
+   },
+   "c10": {
+    "candidateId": "c10",
+    "status": "repair",
+    "errors": [
+     "anomaly_alert needs an input (timeseries) from another primitive"
+    ],
+    "risk": [],
+    "needs": [],
+    "lane": "code",
+    "tier": "build",
+    "effort": 2
+   },
+   "c11": {
+    "candidateId": "c11",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "camera_privacy",
+     "biometric_state_law"
+    ],
+    "needs": [
+     "signage at every entrance",
+     "biometric-law review for TX",
+     "on-site box and installer visit",
+     "owner connects Writes rows"
+    ],
+    "lane": "onprem",
+    "tier": "hardware",
+    "effort": 4
+   },
+   "c12": {
+    "candidateId": "c12",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "hipaa_baa",
+     "ai_disclosure"
+    ],
+    "needs": [
+     "owner connects Health record systems",
+     "signed BAA with every vendor on the path, or scope to scheduling only",
+     "never confirm anyone is a patient; no clinical details on any channel"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 3,
+    "repaired_uses": [
+     "health_records",
+     "forms",
+     "web_chat",
+     "ai_disclosure"
+    ]
+   },
+   "c13": {
+    "candidateId": "c13",
+    "status": "repair",
+    "errors": [
+     "claim has a number not in the material: \"We save customers 47 minutes a day\""
+    ],
+    "risk": [
+     "ai_disclosure"
+    ],
+    "needs": [
+     "never confirm anyone is a patient; no clinical details on any channel"
+    ],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1,
+    "repaired_uses": [
+     "web_chat",
+     "knowledge",
+     "ai_disclosure"
+    ]
+   },
+   "c14": {
+    "candidateId": "c14",
+    "status": "drop",
+    "errors": [
+     "NEVER DESIGN: Texting, calling or emailing people who never opted in"
+    ],
+    "risk": [
+     "tcpa",
+     "10dlc"
+    ],
+    "needs": [
+     "A2P 10DLC registration (2-4 weeks)"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2,
+    "repaired_uses": [
+     "send_text",
+     "capture_lead",
+     "consent_ledger"
+    ]
+   },
+   "c15": {
+    "candidateId": "c15",
+    "status": "pass",
+    "errors": [],
+    "risk": [],
+    "needs": [
+     "owner connects Create a job in their software",
+     "owner connects Job software"
+    ],
+    "lane": "spec",
+    "tier": "needs_setup",
+    "effort": 3
+   },
+   "c16": {
+    "candidateId": "c16",
+    "status": "pass",
+    "errors": [],
+    "risk": [],
+    "needs": [],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2
+   },
+   "c17": {
+    "candidateId": "c17",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "google_tos"
+    ],
+    "needs": [
+     "Google terms: live fetch, attribution",
+     "owner connects Google Business Profile"
+    ],
+    "lane": "spec",
+    "tier": "needs_setup",
+    "effort": 2
+   },
+   "c18": {
+    "candidateId": "c18",
+    "status": "pass",
+    "errors": [],
+    "risk": [],
+    "needs": [
+     "owner connects Social posts"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2
+   },
+   "c19": {
+    "candidateId": "c19",
+    "status": "pass",
+    "errors": [],
+    "risk": [],
+    "needs": [
+     "owner connects CRM",
+     "owner connects Accounting"
+    ],
+    "lane": "spec",
+    "tier": "needs_setup",
+    "effort": 2
+   },
+   "c20": {
+    "candidateId": "c20",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "google_tos"
+    ],
+    "needs": [
+     "Google terms: live fetch, attribution"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2
+   },
+   "c21": {
+    "candidateId": "c21",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "pci"
+    ],
+    "needs": [
+     "owner connects Point of sale"
+    ],
+    "lane": "code",
+    "tier": "build",
+    "effort": 3
+   },
+   "c22": {
+    "candidateId": "c22",
+    "status": "repair",
+    "errors": [
+     "shift_optimizer needs demand_forecast in the same skill",
+     "shift_optimizer needs an input (timeseries or record) from another primitive"
+    ],
+    "risk": [],
+    "needs": [],
+    "lane": "code",
+    "tier": "build",
+    "effort": 3,
+    "repaired_uses": [
+     "shift_optimizer",
+     "weekly_report",
+     "owner_approval"
+    ]
+   },
+   "c23": {
+    "candidateId": "c23",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "ai_disclosure"
+    ],
+    "needs": [
+     "never confirm anyone is a patient; no clinical details on any channel"
+    ],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1,
+    "repaired_uses": [
+     "web_chat",
+     "translation",
+     "knowledge",
+     "ai_disclosure"
+    ]
+   },
+   "c24": {
+    "candidateId": "c24",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "ai_disclosure"
+    ],
+    "needs": [
+     "never confirm anyone is a patient; no clinical details on any channel"
+    ],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1,
+    "repaired_uses": [
+     "web_chat",
+     "knowledge",
+     "ai_disclosure"
+    ]
+   },
+   "c25": {
+    "candidateId": "c25",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "tcpa",
+     "10dlc",
+     "ai_disclosure"
+    ],
+    "needs": [
+     "A2P 10DLC registration (2-4 weeks)",
+     "owner connects Facebook and Instagram messages",
+     "owner connects WhatsApp",
+     "owner connects CRM",
+     "never confirm anyone is a patient; no clinical details on any channel"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 3,
+    "repaired_uses": [
+     "sms",
+     "email",
+     "social_dm",
+     "whatsapp",
+     "crm",
+     "consent_ledger",
+     "ai_disclosure"
+    ]
+   }
+  },
+  "restaurant": {
+   "c01": {
+    "candidateId": "c01",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "ai_disclosure"
+    ],
+    "needs": [],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1,
+    "repaired_uses": [
+     "web_chat",
+     "knowledge",
+     "handoff",
+     "ai_disclosure"
+    ]
+   },
+   "c02": {
+    "candidateId": "c02",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "tcpa",
+     "10dlc",
+     "ai_disclosure"
+    ],
+    "needs": [
+     "A2P 10DLC registration (2-4 weeks)",
+     "owner connects Calendar"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 3,
+    "repaired_uses": [
+     "sms",
+     "schedule",
+     "calendar",
+     "consent_ledger",
+     "ai_disclosure"
+    ]
+   },
+   "c03": {
+    "candidateId": "c03",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "ai_disclosure"
+    ],
+    "needs": [
+     "owner connects CRM",
+     "owner connects Something changes in their software"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2,
+    "repaired_uses": [
+     "email",
+     "crm",
+     "record_change",
+     "consent_ledger",
+     "ai_disclosure"
+    ]
+   },
+   "c04": {
+    "candidateId": "c04",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "ai_disclosure",
+     "two_party_consent",
+     "tcpa"
+    ],
+    "needs": [
+     "call-recording consent wording",
+     "owner connects Calendar"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2,
+    "repaired_uses": [
+     "voice",
+     "calendar",
+     "handoff",
+     "ai_disclosure"
+    ]
+   },
+   "c05": {
+    "candidateId": "c05",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "ai_disclosure",
+     "two_party_consent",
+     "tcpa"
+    ],
+    "needs": [
+     "call-recording consent wording",
+     "owner connects Booking software"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 3,
+    "repaired_uses": [
+     "realtime_voice",
+     "booking_app",
+     "ai_disclosure"
+    ]
+   },
+   "c06": {
+    "candidateId": "c06",
+    "status": "repair",
+    "errors": [
+     "unknown primitive ids: teleporter"
+    ],
+    "risk": [
+     "ai_disclosure"
+    ],
+    "needs": [],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1,
+    "repaired_uses": [
+     "web_chat",
+     "ai_disclosure"
+    ]
+   },
+   "c07": {
+    "candidateId": "c07",
+    "status": "drop",
+    "errors": [
+     "unknown primitive ids: teleporter",
+     "no usable primitives"
+    ],
+    "risk": [],
+    "needs": [],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1
+   },
+   "c08": {
+    "candidateId": "c08",
+    "status": "drop",
+    "errors": [
+     "no usable primitives"
+    ],
+    "risk": [],
+    "needs": [],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1
+   },
+   "c09": {
+    "candidateId": "c09",
+    "status": "repair",
+    "errors": [
+     "a sink (live_board, weekly_report) needs something that produces rows or events"
+    ],
+    "risk": [],
+    "needs": [],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2
+   },
+   "c10": {
+    "candidateId": "c10",
+    "status": "repair",
+    "errors": [
+     "anomaly_alert needs an input (timeseries) from another primitive"
+    ],
+    "risk": [],
+    "needs": [],
+    "lane": "code",
+    "tier": "build",
+    "effort": 2
+   },
+   "c11": {
+    "candidateId": "c11",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "camera_privacy",
+     "biometric_state_law"
+    ],
+    "needs": [
+     "signage at every entrance",
+     "biometric-law review for IL",
+     "on-site box and installer visit",
+     "owner connects Writes rows"
+    ],
+    "lane": "onprem",
+    "tier": "hardware",
+    "effort": 4
+   },
+   "c12": {
+    "candidateId": "c12",
+    "status": "drop",
+    "errors": [
+     "health_records outside a health business makes no sense"
+    ],
+    "risk": [
+     "hipaa_baa",
+     "ai_disclosure"
+    ],
+    "needs": [
+     "owner connects Health record systems"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 3,
+    "repaired_uses": [
+     "health_records",
+     "forms",
+     "web_chat",
+     "ai_disclosure"
+    ]
+   },
+   "c13": {
+    "candidateId": "c13",
+    "status": "repair",
+    "errors": [
+     "claim has a number not in the material: \"We save customers 47 minutes a day\""
+    ],
+    "risk": [
+     "ai_disclosure"
+    ],
+    "needs": [],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1,
+    "repaired_uses": [
+     "web_chat",
+     "knowledge",
+     "ai_disclosure"
+    ]
+   },
+   "c14": {
+    "candidateId": "c14",
+    "status": "drop",
+    "errors": [
+     "NEVER DESIGN: Texting, calling or emailing people who never opted in"
+    ],
+    "risk": [
+     "tcpa",
+     "10dlc"
+    ],
+    "needs": [
+     "A2P 10DLC registration (2-4 weeks)"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2,
+    "repaired_uses": [
+     "send_text",
+     "capture_lead",
+     "consent_ledger"
+    ]
+   },
+   "c15": {
+    "candidateId": "c15",
+    "status": "pass",
+    "errors": [],
+    "risk": [],
+    "needs": [
+     "owner connects Create a job in their software",
+     "owner connects Job software"
+    ],
+    "lane": "spec",
+    "tier": "needs_setup",
+    "effort": 3
+   },
+   "c16": {
+    "candidateId": "c16",
+    "status": "pass",
+    "errors": [],
+    "risk": [],
+    "needs": [],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2
+   },
+   "c17": {
+    "candidateId": "c17",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "google_tos"
+    ],
+    "needs": [
+     "Google terms: live fetch, attribution",
+     "owner connects Google Business Profile"
+    ],
+    "lane": "spec",
+    "tier": "needs_setup",
+    "effort": 2
+   },
+   "c18": {
+    "candidateId": "c18",
+    "status": "pass",
+    "errors": [],
+    "risk": [],
+    "needs": [
+     "owner connects Social posts"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2
+   },
+   "c19": {
+    "candidateId": "c19",
+    "status": "pass",
+    "errors": [],
+    "risk": [],
+    "needs": [
+     "owner connects CRM",
+     "owner connects Accounting"
+    ],
+    "lane": "spec",
+    "tier": "needs_setup",
+    "effort": 2
+   },
+   "c20": {
+    "candidateId": "c20",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "google_tos"
+    ],
+    "needs": [
+     "Google terms: live fetch, attribution"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 2
+   },
+   "c21": {
+    "candidateId": "c21",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "pci"
+    ],
+    "needs": [
+     "owner connects Point of sale"
+    ],
+    "lane": "code",
+    "tier": "build",
+    "effort": 3
+   },
+   "c22": {
+    "candidateId": "c22",
+    "status": "repair",
+    "errors": [
+     "shift_optimizer needs demand_forecast in the same skill",
+     "shift_optimizer needs an input (timeseries or record) from another primitive"
+    ],
+    "risk": [],
+    "needs": [],
+    "lane": "code",
+    "tier": "build",
+    "effort": 3,
+    "repaired_uses": [
+     "shift_optimizer",
+     "weekly_report",
+     "owner_approval"
+    ]
+   },
+   "c23": {
+    "candidateId": "c23",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "ai_disclosure"
+    ],
+    "needs": [],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1,
+    "repaired_uses": [
+     "web_chat",
+     "translation",
+     "knowledge",
+     "ai_disclosure"
+    ]
+   },
+   "c24": {
+    "candidateId": "c24",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "ai_disclosure"
+    ],
+    "needs": [],
+    "lane": "spec",
+    "tier": "ready",
+    "effort": 1,
+    "repaired_uses": [
+     "web_chat",
+     "knowledge",
+     "ai_disclosure"
+    ]
+   },
+   "c25": {
+    "candidateId": "c25",
+    "status": "pass",
+    "errors": [],
+    "risk": [
+     "tcpa",
+     "10dlc",
+     "ai_disclosure"
+    ],
+    "needs": [
+     "A2P 10DLC registration (2-4 weeks)",
+     "owner connects Facebook and Instagram messages",
+     "owner connects WhatsApp",
+     "owner connects CRM"
+    ],
+    "lane": "spec",
+    "tier": "build",
+    "effort": 3,
+    "repaired_uses": [
+     "sms",
+     "email",
+     "social_dm",
+     "whatsapp",
+     "crm",
+     "consent_ledger",
+     "ai_disclosure"
+    ]
+   }
+  }
+ },
+ "scored": {
+  "plumbing": {
+   "c01": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 1,
+    "score": 2
+   },
+   "c02": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.44099999999999995,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.294
+   },
+   "c03": {
+    "impact": 1.5,
+    "confidence": 0.5,
+    "feasibility": 0.5670000000000001,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.2126
+   },
+   "c04": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.63,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.63
+   },
+   "c05": {
+    "impact": 4,
+    "confidence": 1,
+    "feasibility": 0.63,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.84
+   },
+   "c06": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 1,
+    "score": 2
+   },
+   "c07": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 0,
+    "score": 0
+   },
+   "c08": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 0,
+    "score": 0
+   },
+   "c09": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.7,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.7
+   },
+   "c10": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.7,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.7
+   },
+   "c11": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.1125,
+    "effort": 4,
+    "risk_gate": 1,
+    "score": 0.0563
+   },
+   "c12": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.7,
+    "effort": 3,
+    "risk_gate": 0,
+    "score": 0
+   },
+   "c13": {
+    "impact": 1,
+    "confidence": 0.5,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 1,
+    "score": 0.5
+   },
+   "c14": {
+    "impact": 1,
+    "confidence": 0.5,
+    "feasibility": 0.7,
+    "effort": 2,
+    "risk_gate": 0,
+    "score": 0
+   },
+   "c15": {
+    "impact": 1,
+    "confidence": 1,
+    "feasibility": 0.81,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.27
+   },
+   "c16": {
+    "impact": 3,
+    "confidence": 1,
+    "feasibility": 0.7,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 1.05
+   },
+   "c17": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.9,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.9
+   },
+   "c18": {
+    "impact": 1,
+    "confidence": 0.5,
+    "feasibility": 0.7,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.175
+   },
+   "c19": {
+    "impact": 1,
+    "confidence": 0.5,
+    "feasibility": 0.81,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.2025
+   },
+   "c20": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.48999999999999994,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.49
+   },
+   "c21": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.63,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.42
+   },
+   "c22": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.7,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.4667
+   },
+   "c23": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 1,
+    "score": 2
+   },
+   "c24": {
+    "impact": 0,
+    "confidence": 0,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 1,
+    "score": 0
+   },
+   "c25": {
+    "impact": 3,
+    "confidence": 0.75,
+    "feasibility": 0.21608999999999995,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.1621
+   }
+  },
+  "health": {
+   "c01": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 1,
+    "score": 2
+   },
+   "c02": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.44099999999999995,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.294
+   },
+   "c03": {
+    "impact": 1.5,
+    "confidence": 0.5,
+    "feasibility": 0.5670000000000001,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.2126
+   },
+   "c04": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.63,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.63
+   },
+   "c05": {
+    "impact": 4,
+    "confidence": 1,
+    "feasibility": 0.63,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.84
+   },
+   "c06": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 1,
+    "score": 2
+   },
+   "c07": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 0,
+    "score": 0
+   },
+   "c08": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 0,
+    "score": 0
+   },
+   "c09": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.7,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.7
+   },
+   "c10": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.7,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.7
+   },
+   "c11": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.1125,
+    "effort": 4,
+    "risk_gate": 1,
+    "score": 0.0563
+   },
+   "c12": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.7,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.4667
+   },
+   "c13": {
+    "impact": 1,
+    "confidence": 0.5,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 1,
+    "score": 0.5
+   },
+   "c14": {
+    "impact": 1,
+    "confidence": 0.5,
+    "feasibility": 0.7,
+    "effort": 2,
+    "risk_gate": 0,
+    "score": 0
+   },
+   "c15": {
+    "impact": 1,
+    "confidence": 1,
+    "feasibility": 0.81,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.27
+   },
+   "c16": {
+    "impact": 3,
+    "confidence": 1,
+    "feasibility": 0.7,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 1.05
+   },
+   "c17": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.9,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.9
+   },
+   "c18": {
+    "impact": 1,
+    "confidence": 0.5,
+    "feasibility": 0.7,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.175
+   },
+   "c19": {
+    "impact": 1,
+    "confidence": 0.5,
+    "feasibility": 0.81,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.2025
+   },
+   "c20": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.48999999999999994,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.49
+   },
+   "c21": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.63,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.42
+   },
+   "c22": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.7,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.4667
+   },
+   "c23": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 1,
+    "score": 2
+   },
+   "c24": {
+    "impact": 0,
+    "confidence": 0,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 1,
+    "score": 0
+   },
+   "c25": {
+    "impact": 3,
+    "confidence": 0.75,
+    "feasibility": 0.21608999999999995,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.1621
+   }
+  },
+  "restaurant": {
+   "c01": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 1,
+    "score": 2
+   },
+   "c02": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.44099999999999995,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.294
+   },
+   "c03": {
+    "impact": 1.5,
+    "confidence": 0.5,
+    "feasibility": 0.5670000000000001,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.2126
+   },
+   "c04": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.63,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.63
+   },
+   "c05": {
+    "impact": 4,
+    "confidence": 1,
+    "feasibility": 0.63,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.84
+   },
+   "c06": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 1,
+    "score": 2
+   },
+   "c07": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 0,
+    "score": 0
+   },
+   "c08": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 0,
+    "score": 0
+   },
+   "c09": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.7,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.7
+   },
+   "c10": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.7,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.7
+   },
+   "c11": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.1125,
+    "effort": 4,
+    "risk_gate": 1,
+    "score": 0.0563
+   },
+   "c12": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.7,
+    "effort": 3,
+    "risk_gate": 0,
+    "score": 0
+   },
+   "c13": {
+    "impact": 1,
+    "confidence": 0.5,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 1,
+    "score": 0.5
+   },
+   "c14": {
+    "impact": 1,
+    "confidence": 0.5,
+    "feasibility": 0.7,
+    "effort": 2,
+    "risk_gate": 0,
+    "score": 0
+   },
+   "c15": {
+    "impact": 1,
+    "confidence": 1,
+    "feasibility": 0.81,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.27
+   },
+   "c16": {
+    "impact": 3,
+    "confidence": 1,
+    "feasibility": 0.7,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 1.05
+   },
+   "c17": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.9,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.9
+   },
+   "c18": {
+    "impact": 1,
+    "confidence": 0.5,
+    "feasibility": 0.7,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.175
+   },
+   "c19": {
+    "impact": 1,
+    "confidence": 0.5,
+    "feasibility": 0.81,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.2025
+   },
+   "c20": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.48999999999999994,
+    "effort": 2,
+    "risk_gate": 1,
+    "score": 0.49
+   },
+   "c21": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.63,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.42
+   },
+   "c22": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 0.7,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.4667
+   },
+   "c23": {
+    "impact": 2,
+    "confidence": 1,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 1,
+    "score": 2
+   },
+   "c24": {
+    "impact": 0,
+    "confidence": 0,
+    "feasibility": 1,
+    "effort": 1,
+    "risk_gate": 1,
+    "score": 0
+   },
+   "c25": {
+    "impact": 3,
+    "confidence": 0.75,
+    "feasibility": 0.21608999999999995,
+    "effort": 3,
+    "risk_gate": 1,
+    "score": 0.1621
+   }
+  }
+ },
+ "selection": {
+  "plumbing": {
+   "selected": [
+    "c01",
+    "c16",
+    "c06",
+    "c02",
+    "c17",
+    "c15"
+   ],
+   "wild": "c10",
+   "excluded": [
+    [
+     "c07",
+     "gate: unknown primitive ids: teleporter; no usable primitives"
+    ],
+    [
+     "c08",
+     "gate: no usable primitives"
+    ],
+    [
+     "c12",
+     "gate: health_records outside a health business makes no sense"
+    ],
+    [
+     "c14",
+     "gate: NEVER DESIGN: Texting, calling or emailing people who never opted in"
+    ],
+    [
+     "c24",
+     "no seen or inferred evidence"
+    ],
+    [
+     "c03",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c04",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c05",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c09",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c11",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c13",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c18",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c19",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c20",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c21",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c22",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c23",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c25",
+     "ranked below the cut or too similar to a selected idea"
+    ]
+   ]
+  },
+  "health": {
+   "selected": [
+    "c01",
+    "c16",
+    "c06",
+    "c02",
+    "c17",
+    "c15"
+   ],
+   "wild": "c10",
+   "excluded": [
+    [
+     "c07",
+     "gate: unknown primitive ids: teleporter; no usable primitives"
+    ],
+    [
+     "c08",
+     "gate: no usable primitives"
+    ],
+    [
+     "c14",
+     "gate: NEVER DESIGN: Texting, calling or emailing people who never opted in"
+    ],
+    [
+     "c24",
+     "no seen or inferred evidence"
+    ],
+    [
+     "c03",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c04",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c05",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c09",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c11",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c12",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c13",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c18",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c19",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c20",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c21",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c22",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c23",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c25",
+     "ranked below the cut or too similar to a selected idea"
+    ]
+   ]
+  },
+  "restaurant": {
+   "selected": [
+    "c01",
+    "c16",
+    "c06",
+    "c02",
+    "c17",
+    "c15"
+   ],
+   "wild": "c10",
+   "excluded": [
+    [
+     "c07",
+     "gate: unknown primitive ids: teleporter; no usable primitives"
+    ],
+    [
+     "c08",
+     "gate: no usable primitives"
+    ],
+    [
+     "c12",
+     "gate: health_records outside a health business makes no sense"
+    ],
+    [
+     "c14",
+     "gate: NEVER DESIGN: Texting, calling or emailing people who never opted in"
+    ],
+    [
+     "c24",
+     "no seen or inferred evidence"
+    ],
+    [
+     "c03",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c04",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c05",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c09",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c11",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c13",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c18",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c19",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c20",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c21",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c22",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c23",
+     "ranked below the cut or too similar to a selected idea"
+    ],
+    [
+     "c25",
+     "ranked below the cut or too similar to a selected idea"
+    ]
+   ]
+  }
+ }
+}

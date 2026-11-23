@@ -92,7 +92,10 @@ function install(env) {
       world.fundCalls.push({ body, internal: init.headers?.["x-pip-internal"] === world.env.SUPABASE_SERVICE_ROLE_KEY });
       return world.funds ? reply(200, world.funds(body)) : reply(500, { error: "not mocked" });
     }
-    if (u.pathname.startsWith("/functions/v1/")) return reply(200, { ok: true }); // the Forge kicking its own queue
+    if (u.pathname.startsWith("/functions/v1/")) { // the Forge kicking its own queue, or the connector starting a Brain scan
+      (world.fnCalls ??= []).push({ path: u.pathname, query: Object.fromEntries(u.searchParams), method, headers: { ...(init.headers || {}) } });
+      return reply(200, { ok: true });
+    }
     const path = u.pathname.replace("/rest/v1/", "");
     if (path.startsWith("rpc/")) {
       const name = path.slice(4);

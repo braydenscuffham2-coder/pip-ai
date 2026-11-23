@@ -14,6 +14,7 @@
 // teammate's `contract` and `jobs` at the top of its spec and refuses a save whose jobs fail the check; forge_golive
 // checks again at that moment. The decisions are in ../_shared/forge-check.ts; this file only reads and writes.
 // deno-lint-ignore-file no-explicit-any
+import { connectionGate } from '../_shared/golive-connections.ts';
 import { BUILDER_NOTE, type Catalog, declares, goLive, loadCatalog, NO_CATALOG, OLDER_SHAPE, saveBuild } from '../_shared/forge-check.ts';
 
 const SB_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -21,6 +22,8 @@ const SB_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const H = { apikey: SB_KEY, authorization: `Bearer ${SB_KEY}`, 'content-type': 'application/json' };
 
+// The operator lane's switch. Anything that is not a clean true reads as off, including a failed read.
+const operateOn = async () => (await rows('rpc/portal_flag', { method: 'POST', body: JSON.stringify({ p_key: 'operate_lane', p_default: false }) }).catch(() => false)) === true;
 async function rows(path: string, init: RequestInit = {}) {
   const r = await fetch(`${SB_URL}/rest/v1/${path}`, { ...init, headers: { ...H, ...((init.headers as Record<string, string>) || {}) } });
   const t = await r.text();
@@ -283,7 +286,8 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
       if (!spec) throw new Error('no such teammate on this order');
       // The contract on every build. Jobs sent now, or already on the record, are checked before anything is written.
       const catalog = declares({ ...(spec.spec ?? {}), ...(sent.contract !== undefined ? { contract: sent.contract } : {}), ...(sent.jobs !== undefined ? { jobs: sent.jobs } : {}) }) ? await loadCatalog(rows) : NO_CATALOG;
-      const build = saveBuild(spec.spec, sent, { ready: STATUS_MAP[st] === 'sandbox', at: now() }, catalog);
+      const operateLane = spec.spec?.operate !== undefined ? await operateOn() : false;
+      const build = saveBuild(spec.spec, sent, { ready: STATUS_MAP[st] === 'sandbox', at: now(), operateLane }, catalog);
       if (!build.ok) throw new Refused([build.say, ...build.errors.map((e) => `- ${e}`)].join('\n'));
       const stored = spec.spec?.board && typeof spec.spec.board === 'object' && !Array.isArray(spec.spec.board) ? spec.spec.board : {};
       await patch('skill_specs', `id=eq.${spec.id}`, {
@@ -326,7 +330,7 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
     },
   },
   forge_golive: {
-    description: 'Go live: Brayden\'s tap. Puts one teammate (agent_id) or every sandbox-ready teammate of the order live. Refused, with the list, while anything they need is still missing from the Shelf. A teammate with declared jobs is also refused, with the reasons, if its jobs do not pass the contract check at this moment or a job needs a tool that has nothing behind it yet. A teammate with no declared jobs goes live as before.',
+    description: 'Go live: Brayden\'s tap. Puts one teammate (agent_id) or every sandbox-ready teammate of the order live. Refused, with the list, while anything they need is still missing from the Shelf. A teammate with declared jobs is also refused, with the reasons, if its jobs do not pass the contract check at this moment or a job needs a tool that has nothing behind it yet. It is also refused, naming each one in plain words, while a connection its manifest marks required is not connected and tested for the business. A teammate with no declared jobs and no required connection goes live as before.',
     inputSchema: { type: 'object', properties: { order_id: { type: 'string' }, agent_id: { type: 'string' } }, required: ['order_id'], additionalProperties: false },
     async run(a) {
       const id = uuid(a?.order_id); if (!id) throw new Error('order_id must be an order id');
@@ -339,8 +343,13 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
         try {
           // The contract, checked again now: it may have tightened since the build, and what exists may have changed.
           if (declares(s.spec)) catalog ??= await loadCatalog(rows);
-          const gate = goLive(s.spec, catalog ?? NO_CATALOG);
+          const operateLane = s.spec?.operate ? await operateOn() : false;
+          const approved = s.spec?.operate ? (await rows('rpc/operator_approved_current', { method: 'POST', body: JSON.stringify({ p_spec: s.id }) }).catch(() => false)) === true : true;
+          const gate = goLive(s.spec, catalog ?? NO_CATALOG, { operateLane, approved });
           if (!gate.ok) { out.push({ id: s.skill_id, live: false, declared_jobs: true, why: gate.why.join(' ') }); continue; }
+          // A connection the manifest marks required must be connected and tested for this business. Read fails closed.
+          const conn = await connectionGate(rows, s.id, s.skill_id);
+          if (!conn.ok) { out.push({ id: s.skill_id, live: false, missing_connections: conn.missing.map((m) => m.label), why: conn.why }); continue; }
           await patch('skill_specs', `id=eq.${s.id}`, { status: 'live', forge_stage: 'live', updated_at: now() }); out.push({ id: s.skill_id, live: true, declared_jobs: gate.check.declared });
         } catch (e) { out.push({ id: s.skill_id, live: false, why: String((e as Error).message || e).replace(/^shelf: /, '') }); }
       }
@@ -463,6 +472,26 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
         ...q.connections.map((x: any) => `- Connecting ${x.tool}: ${usd(x.fee)} setup`),
       ];
       return { ...q, email_lines: lines, note: q.flags?.length ? `Check before sending: ${q.flags.join(', ')}.` : 'No flags.' };
+    },
+  },
+  brain_scan: {
+    description: "Start a Brain scan of a business website (the Imagination Engine: what agents it should get), or read one you started. Start: give domain, and optionally state (two letters) and says (what the owner said). Read: give scan_id. A new scan counts against the Brain's day and month limits; one already running for the same site is reused. This is the only way to start a scan from a Claude chat: a plain web request to scan-run is refused.",
+    inputSchema: { type: 'object', properties: { domain: { type: 'string' }, state: { type: 'string', description: 'Two-letter US state, for state rules.' }, says: { type: 'string', description: 'What the owner said about the business, up to 500 characters.' }, scan_id: { type: 'string', description: 'Read a scan you started instead of starting one.' } }, additionalProperties: false },
+    async run(a) {
+      const base = `${SB_URL}/functions/v1/scan-run`;
+      const headers = { authorization: `Bearer ${SB_KEY}`, 'x-pip-visitor': 'founder' };
+      if (a?.scan_id) {
+        const id = uuid(a.scan_id); if (!id) throw new Error('scan_id must be a scan id');
+        const r = await fetch(`${base}?scan=${id}`, { headers, signal: AbortSignal.timeout(20000) });
+        return await r.json().catch(() => ({ ok: false, error: `scan-run answered ${r.status}` }));
+      }
+      const d = String(a?.domain || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split(/[/?#]/)[0];
+      if (!/^([a-z0-9-]+\.)+[a-z]{2,}$/.test(d)) throw new Error('domain must be a website address such as example.com');
+      const q = new URLSearchParams({ d, start: '1' });
+      if (typeof a?.state === 'string' && /^[A-Za-z]{2}$/.test(a.state)) q.set('state', a.state.toUpperCase());
+      if (typeof a?.says === 'string' && a.says.trim()) q.set('says', a.says.trim().slice(0, 500));
+      const r = await fetch(`${base}?${q}`, { headers, signal: AbortSignal.timeout(20000) });
+      return await r.json().catch(() => ({ ok: false, error: `scan-run answered ${r.status}` }));
     },
   },
   forge_settings: {

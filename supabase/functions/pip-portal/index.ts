@@ -10,6 +10,9 @@
 // - verify_jwt is off because /signin is public; this file checks the session itself.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { abilitiesOf } from "../_shared/abilities.ts";
+import { checkOperate, operatePlainWords } from "../_shared/operate.ts";
+import { checkAsk, mayApprove, mayRevoke } from "../_shared/operate-approval.ts";
+import { vaultRefusal } from "../_shared/vault-input.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -525,7 +528,8 @@ async function ack(u: User, bid: string, body: any) {
 async function vault(u: User, bid: string, body: any) {
   const r = await access(u, bid); need(r, "owner"); await unlocked(bid, r);
   // Closed until an external vault and its login service exist. Nothing secret is accepted, stored or logged.
-  for (const k of Object.keys(body || {})) if (/pass|secret|token|code|otp|pin/i.test(k)) throw new Fail(400, "vault_closed", "The vault is not open yet, so do not send a password.");
+  // Field names, values, and the link: a password typed anywhere, or a link with a sign-in in it, is refused.
+  const no = vaultRefusal(body); if (no) throw new Fail(400, no.code, no.message);
   const tool = cut(body.tool_name, 120); if (tool.length < 2) throw new Fail(400, "bad_tool");
   const order = await firstOrder(bid);
   await db.from("portal_issues").insert({ business_id: bid, opened_by: u.email, body: `Password-only tool to connect when the vault opens: ${tool}${body.login_url ? ` (${cut(body.login_url, 200)})` : ""}` });
@@ -562,6 +566,55 @@ async function pause(u: User, bid: string, sid: string, body: any) {
   const s = await specOf(bid, sid);
   await pauseSpec(bid, s, r.role === "staff" ? "staff" : r.role === "founder" ? "founder" : "owner", cut(body.why, 300) || null, u.email);
   await log(bid, "pause", `${s.skill_id} was paused by ${u.email}.`, { spec_id: s.id, agent: s.skill_id, actor: u.email, outcome: "paused" });
+  return json({ ok: true });
+}
+// ---- operators: what one does in plain words, and the owner's approvals ----
+// The whole surface is dark while operate_lane is off, so it cannot be reached or probed before the lane ships.
+async function operatorSpec(bid: string, sid: string) {
+  const { data: on } = await db.rpc("portal_flag", { p_key: "operate_lane", p_default: false });
+  if (on !== true) throw new Fail(404, "not_found");
+  const s = await specOf(bid, sid);
+  const { data } = await db.from("skill_specs").select("spec").eq("id", s.id).maybeSingle();
+  return { s, spec: data?.spec };
+}
+async function operatorView(u: User, bid: string, sid: string) {
+  await access(u, bid);
+  const { s, spec } = await operatorSpec(bid, sid);
+  const c = checkOperate(spec);
+  if (!c.ok || !c.operate) throw new Fail(404, "not_found");
+  const [{ data: rows }, { data: ok }] = await Promise.all([
+    db.from("operator_approvals").select("id,kind,subject,status,version,voice,approved_at,revoked_at").eq("spec_id", s.id).order("id"),
+    db.rpc("operator_approved_current", { p_spec: s.id }),
+  ]);
+  return json({ ok: true, process: c.operate.process, words: operatePlainWords(c.operate), approvals: rows ?? [], approved: ok === true });
+}
+async function operatorApproval(u: User, bid: string, sid: string, body: any) {
+  const r = await access(u, bid);
+  const { s, spec } = await operatorSpec(bid, sid);
+  const ask = checkAsk(spec, body);
+  if (!ask.ok) throw new Fail(400, "bad_request", ask.why);
+  if (ask.do === "request") {
+    need(r, "owner"); // the owner, or the founder asking on the owner's behalf; staff cannot
+    const { data: id } = await db.rpc("operator_approval_request", { p_spec: s.id, p_kind: ask.kind, p_subject: ask.subject, p_voice: ask.voice });
+    if (!id) throw new Fail(409, "cannot_request");
+    await log(bid, "approval", `${s.skill_id}: ${ask.kind === "brand_voice" ? "its brand voice" : `the ${ask.subject} account`} is waiting for the owner to approve.`, { spec_id: s.id, agent: s.skill_id, actor: u.email, outcome: "info" });
+    return json({ ok: true, id });
+  }
+  // The approval has to be one of THIS teammate's, for this business.
+  const { data: row } = await db.from("operator_approvals").select("id,kind,subject").eq("id", ask.id).eq("spec_id", s.id).eq("business_id", bid).maybeSingle();
+  if (!row) throw new Fail(404, "not_found");
+  if (ask.do === "approve") {
+    if (!mayApprove(r.role, r.admin)) throw new Fail(403, "owner_only", "Only the owner can approve this.");
+    needFresh(u);
+    const { data: done } = await db.rpc("operator_approval_approve", { p_id: ask.id, p_by: u.email });
+    if (done !== true) throw new Fail(409, "cannot_approve", "That approval is not waiting for you any more.");
+    await log(bid, "approval", `${u.email} approved ${row.kind === "brand_voice" ? "the brand voice" : `the ${row.subject} account`} for ${s.skill_id}.`, { spec_id: s.id, agent: s.skill_id, actor: u.email, outcome: "ok" });
+    return json({ ok: true });
+  }
+  if (!mayRevoke(r.role)) throw new Fail(403, "owner_only");
+  const { data: gone } = await db.rpc("operator_approval_revoke", { p_id: ask.id, p_by: u.email });
+  if (gone !== true) throw new Fail(409, "cannot_revoke", "That approval is already taken back.");
+  await log(bid, "approval", `${u.email} took back ${row.kind === "brand_voice" ? "the brand voice" : `the ${row.subject} account`} approval for ${s.skill_id}. ${s.skill_id} stops posting until it is approved again.`, { spec_id: s.id, agent: s.skill_id, actor: u.email, outcome: "paused" });
   return json({ ok: true });
 }
 async function resume(u: User, bid: string, sid: string) {
@@ -756,6 +809,7 @@ Deno.serve(async (req) => {
       if (!a && req.method === "GET") return await business(u, bid);
       if (a === "activity" && req.method === "GET") return await activity(u, bid, url);
       if (a === "tools" && req.method === "GET") return await toolSearch(u, bid, url);
+      if (a === "agents" && p[3] && p[4] === "operator" && req.method === "GET") return await operatorView(u, bid, p[3]);
       if (req.method !== "POST") throw new Fail(405, "method");
       if (a === "profile") return await setProfile(u, bid, body);
       if (a === "accept") return await accept(u, bid, body);
@@ -774,6 +828,7 @@ Deno.serve(async (req) => {
       if (a === "disconnect") return await disconnect(u, bid, body);
       if (a === "agents" && p[3] && p[4] === "pause") return await pause(u, bid, p[3], body);
       if (a === "agents" && p[3] && p[4] === "resume") return await resume(u, bid, p[3]);
+      if (a === "agents" && p[3] && p[4] === "operator-approval") return await operatorApproval(u, bid, p[3], body);
     }
     throw new Fail(404, "not_found");
   } catch (e) {
