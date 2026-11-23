@@ -458,10 +458,15 @@ export function allows(job: Job, ask: Ask, passed: string[] = []): Verdict {
  *     the rule that an address must have been typed by the customer is the check on who it reaches.
  * This is the one copy. pip-turn uses it for POST /turn and POST /job, and the Forge's check uses it for go-live, so
  * what the founder is told a job can do is what the runtime will really offer.
+ * `operator` is true only for a job that an operator's case drives (isCaseDriven in ./operate.ts); it opens an email or a
+ * text, never a call, an update or a narrowed read.
  */
-export function notYet(g: Pick<Grant, "fields" | "purpose">, row: { record?: unknown; level?: unknown; guard?: unknown }, conversation: boolean): boolean {
+export function notYet(g: Pick<Grant, "fields" | "purpose">, row: { record?: unknown; level?: unknown; guard?: unknown }, conversation: boolean, operator = false): boolean {
   if (row.level === "update" || (row.level === "read" && !!g.fields?.read)) return true;
   if (row.record !== "message" && row.record !== "call") return false;
+  // An operator's job (one a case drives, see operate.ts) may send an email or a text. The runtime still asks the case
+  // for the touch, the purpose and the consent row before each send; this only says the tool may be offered at all.
+  if (operator && row.record === "message" && row.level === "add" && (row.guard === "email" || row.guard === "sms")) return false;
   return !(conversation && row.record === "message" && row.level === "add" && g.purpose === "reply" && row.guard === "email");
 }
 

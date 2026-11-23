@@ -1,0 +1,124 @@
+{
+  "contract": "teammate/1",
+  "jobs": [
+    {
+      "id": "ask_review",
+      "name": "Ask for a review",
+      "does": "After a job for Example Plumbing is finished, asks that customer for a review with one link, and sends one reminder.",
+      "instructions": "A job was just finished. Look up the customer on this job. Write a short, warm message thanking them and giving the review link the owner set. Ask every customer the same way. Never ask only some customers, never ask about how happy they were first, never offer anything in return. If they reply, do not answer; the owner will. If they say stop, never message them again.",
+      "triggers": [
+        {
+          "type": "event",
+          "from": "field_service",
+          "event": "record_changed",
+          "records": "job",
+          "if": {
+            "field": "status",
+            "is": "completed"
+          }
+        }
+      ],
+      "tools": [
+        {
+          "tool": "field_service",
+          "records": "job",
+          "can": [
+            "read"
+          ],
+          "required": false
+        },
+        {
+          "tool": "crm",
+          "records": "contact",
+          "can": [
+            "read"
+          ],
+          "required": false
+        },
+        {
+          "tool": "email",
+          "records": "message",
+          "can": [
+            "add"
+          ],
+          "purpose": "transactional"
+        },
+        {
+          "tool": "pip",
+          "records": "handoff",
+          "can": [
+            "add"
+          ]
+        }
+      ],
+      "limits": {
+        "per_run": {
+          "steps": 8,
+          "actions": 3
+        },
+        "per_day": {
+          "runs": 60,
+          "actions": 120
+        },
+        "each": [
+          {
+            "tool": "email",
+            "records": "message",
+            "per_run": 1,
+            "per_day": 80,
+            "per_contact_per_day": 1
+          }
+        ]
+      },
+      "pause": {
+        "after_failures": 2,
+        "on_limit": "pause",
+        "when": [
+          "a customer complains or asks for something other than a review"
+        ]
+      }
+    }
+  ],
+  "operate": {
+    "version": "operate/1",
+    "process": "review_requests",
+    "goal": "Ask every Example Plumbing customer for a review after a finished job, once, with one reminder.",
+    "case": {
+      "from": {
+        "tool": "field_service",
+        "records": "job"
+      },
+      "closes_when": [
+        "replied",
+        "opted_out",
+        "completed",
+        "max_touches",
+        "max_days"
+      ]
+    },
+    "touches": {
+      "max": 2,
+      "min_gap_hours": 72,
+      "channels": [
+        "email"
+      ]
+    },
+    "audience": {
+      "who": "every_customer"
+    },
+    "public": {
+      "posts": false
+    },
+    "approvals": {
+      "brand_voice": false,
+      "accounts": []
+    },
+    "stages": [
+      {
+        "id": "ask",
+        "job": "ask_review",
+        "does": "Asks the customer for a review, then once more three days later if they have not answered."
+      }
+    ]
+  }
+}

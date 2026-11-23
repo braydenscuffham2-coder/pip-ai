@@ -1,0 +1,101 @@
+# Operator changes to the Brain, for the Pip artifact in the Claude app. NOT APPLIED. Nothing under claude-app/ was changed.
+#
+# What this is: the exact source-level change that Job 3 made to the Brain used by the edge function
+# (supabase/functions/scan-run/brain.js, commit 5cfa815). It teaches the gate, scorer, selection and the Forge about the
+# three operator primitives by id, behind a lane flag, and leaves the prompts the model reads unchanged
+# (a golden corpus in tests/brain proves nothing else moved).
+#
+# Why it is not a patch you can `git apply`: claude-app/modules/brain.js is a minified one-line build extracted from
+# claude-app/pip.html ("Edit the build, not this copy"). Its text differs from the edge bundle, so these hunks do not
+# match it (patch --dry-run: 8 of 8 hunks fail). Rebuild the artifact's Brain from the same source instead, then run
+# tests/brain against it. The artifact is the live Pip and is Brayden's to update.
+#
+# Until that is done, the artifact keeps working as it does today: it never proposes operators. That is also what the
+# edge function does today, because operators are deliberately not in the prompt list (see "Known limits" in
+# docs/contracts/operate-spec.md).
+#
+diff --git a/supabase/functions/scan-run/brain.js b/supabase/functions/scan-run/brain.js
+index 529e3dc..e20115b 100644
+--- a/supabase/functions/scan-run/brain.js
++++ b/supabase/functions/scan-run/brain.js
+@@ -71,7 +71,12 @@ var d = (e) => e, B = [
+   d({ id: "consent_ledger", kind: "guard", label: "Opt-in ledger", how: "Records who agreed to texts, emails and calls, honors STOP, and blocks any message to someone who never opted in", limits: "Every outbound message checks it first. Never bypassed.", runtime: "shared", tier: "ready", effort: 1, cost_band: "none", risk: [], needs_hardware: !1, needs_baa: !1, needs_owner_oauth: !1, providers: [{ name: "pip", role: "guard" }], inputs: ["record"], outputs: ["event"], test_strategy: "unit" }),
+   d({ id: "ai_disclosure", kind: "guard", label: "Says it is AI", how: "Adds the right disclosure wording for the state and channel to every first message and call", limits: "Never removed.", runtime: "shared", tier: "ready", effort: 1, cost_band: "none", risk: [], needs_hardware: !1, needs_baa: !1, needs_owner_oauth: !1, providers: [{ name: "pip", role: "guard" }], inputs: ["message"], outputs: ["message"], test_strategy: "unit" }),
+   d({ id: "pii_scrub", kind: "guard", label: "Keeps secrets out", how: "Strips card numbers, SSNs and IDs from anything a teammate stores or sends", limits: "Never removed.", runtime: "shared", tier: "ready", effort: 1, cost_band: "none", risk: [], needs_hardware: !1, needs_baa: !1, needs_owner_oauth: !1, providers: [{ name: "pip", role: "guard" }], inputs: ["message", "record"], outputs: ["message", "record"], test_strategy: "unit" })
+-], E = [...B, ...be, ..._e], Fe = E.map((e) => e.id), ve = new Map(E.map((e) => [e.id, e])), k = (e) => ve.get(e), We = B.map((e) => e.id);
++], OPS = [
++  // Operators (Job 3). Known to the gate, scorer and Forge by id; deliberately not in E, so the prompts the model reads are unchanged.
++  d({ id: "operate_content_social", kind: "operate", label: "Run the business's social posting", how: "Plans a week of posts in the owner's approved voice, sends them for the owner's decision, and publishes the approved ones.", limits: "Posts only to accounts the owner approved. The first posts, and any post with a price, offer, guarantee or customer in it, need the owner. Three posts a week at most. Never invents a review.", runtime: "shared", tier: "build", effort: 3, cost_band: "low", risk: ["public_post"], needs_hardware: !1, needs_baa: !1, needs_owner_oauth: !1, providers: [{ name: "meta", role: "posting" }], inputs: ["event", "record"], outputs: ["document", "event"], test_strategy: "conversation_sim", requires: ["social_posting", "owner_approval", "draft_for_approval"] }),
++  d({ id: "operate_review_requests", kind: "operate", label: "Ask finished-job customers for a review", how: "When a job is marked completed, asks that customer for a review, once, then once more if they have not answered.", limits: "Two asks at most, three days apart, inside calling hours, only to customers with a consent record. Stops at a reply, a STOP, or fourteen days.", runtime: "shared", tier: "build", effort: 3, cost_band: "low", risk: ["ai_disclosure", "consent"], needs_hardware: !1, needs_baa: !1, needs_owner_oauth: !1, providers: [], inputs: ["event", "record"], outputs: ["message", "event"], test_strategy: "conversation_sim", outbound: !0, requires: ["consent_ledger", "email", "handoff"] }),
++  d({ id: "operate_quote_followup", kind: "operate", label: "Follow up on quotes that went quiet", how: "When a deal reaches quote sent, follows up with that customer until they answer or the window ends.", limits: "Three follow-ups at most, three days apart, inside calling hours. Never mentions an amount. Stops at a reply, a STOP, or fourteen days.", runtime: "shared", tier: "build", effort: 3, cost_band: "low", risk: ["ai_disclosure", "consent"], needs_hardware: !1, needs_baa: !1, needs_owner_oauth: !1, providers: [], inputs: ["event", "record"], outputs: ["message", "event"], test_strategy: "conversation_sim", outbound: !0, requires: ["consent_ledger", "email", "handoff"] })
++], OPSENT = /\b(?:only|just)\b[^.]{0,40}\b(?:happy|satisfied|delighted|positive|best|good|great|5[- ]?stars?)\b|\b(?:happy|satisfied|delighted)\s+customers?\b|\bnps\b|\bpromoters?\b|\bsentiment\b[^.]{0,40}\b(?:filter|screen|gate|before)/i, E = [...B, ...be, ..._e], Fe = E.map((e) => e.id), ve = new Map([...E, ...OPS].map((e) => [e.id, e])), k = (e) => ve.get(e), We = B.map((e) => e.id);
+ var q = E.filter((e) => e.outbound).map((e) => e.id), P = E.filter((e) => e.kind === "sink").map((e) => e.id);
+ function U(e) {
+   return E.filter(e ?? (() => !0)).map((t) => `- ${t.id}: ${t.label} (${t.how}). Rules: ${t.limits}${t.needs_hardware ? " Needs hardware on site." : ""}`).join(`
+@@ -104,7 +109,7 @@ function xe(e, t) {
+   return (e.match(/\d+(?:[.,]\d+)?/g) || []).every((r) => t.includes(r) || Number(r.replace(",", "")) <= 12);
+ }
+ function Ie(e) {
+-  return e.some((t) => t.runtime === "onprem") ? "onprem" : e.some((t) => t.runtime === "custom") ? "code" : "spec";
++  return e.some((t) => t.runtime === "onprem") ? "onprem" : e.some((t) => t.kind === "operate") ? "operate" : e.some((t) => t.runtime === "custom") ? "code" : "spec";
+ }
+ async function $(e, t) {
+   let s = [], r = /* @__PURE__ */ new Set(), n = Array.from(new Set(e.uses.filter((a) => typeof a == "string"))), o = n.filter((a) => !k(a));
+@@ -122,6 +127,14 @@ async function $(e, t) {
+   let c = !1, w = (a) => {
+     n.includes(a) || (n.push(a), c = !0);
+   };
++  let OP = n.filter((a) => k(a).kind === "operate");
++  if (OP.length) {
++    let drop = (m) => ({ candidateId: e.id, status: "drop", errors: [...s, m], risk: [], needs: [], lane: "spec", tier: "ready", effort: 1 });
++    if (!t.operateLane) return drop("operators are not switched on yet");
++    if (n.some((a) => k(a).runtime === "onprem" || k(a).needs_hardware)) return drop("operators run in the cloud; remove the camera box");
++    for (let a of OP) for (let b of k(a).requires ?? []) k(b) && w(b);
++    OPSENT.test([e.name, ...e.claims.map((l) => l.text), e.why_personal].join(" ")) && s.push("NEVER DESIGN: an operator may not choose who to ask by how happy they are");
++  }
+   for (let a of n.slice()) {
+     let l = k(a);
+     for (let b of l.requires ?? []) {
+@@ -142,6 +155,7 @@ async function $(e, t) {
+     g.filter((b) => b.id !== a.id && b.outputs.some((v) => a.inputs.includes(v))).length || s.push(`${a.id} needs an input (${a.inputs.join(" or ")}) from another primitive`);
+   let u = /* @__PURE__ */ new Set();
+   for (let a of g) a.risk.forEach((l) => u.add(l));
++  u.has("public_post") && r.add("owner approves the brand voice and the accounts once");
+   u.has("camera_privacy") && r.add("signage at every entrance"), u.has("biometric_state_law") && t.state && Se.has(t.state.toUpperCase()) && r.add(`biometric-law review for ${t.state.toUpperCase()}`), u.has("10dlc") && r.add("A2P 10DLC registration (2-4 weeks)"), u.has("two_party_consent") && r.add("call-recording consent wording"), u.has("google_tos") && r.add("Google terms: live fetch, attribution");
+   for (let a of g)
+     a.needs_owner_oauth && r.add(`owner connects ${a.label}`), a.needs_hardware && r.add("on-site box and installer visit");
+@@ -173,7 +187,7 @@ async function $(e, t) {
+ // src/score.ts
+ var Ee = { seen: 1, inferred: 0.5, unknown: 0 }, Te = { ready: 1, needs_setup: 0.9, build: 0.7, hardware: 0.5 };
+ function H(e, t, s) {
+-  let n = s.get(e.moment)?.severity ?? 1, o = e.claims.map((i) => Ee[i.status] ?? 0), c = o.reduce((i, p) => i + p, 0) * n, w = o.length ? o.reduce((i, p) => i + p, 0) / o.length : 0, m = (t.repaired_uses ?? e.uses).map((i) => k(i)).filter(Boolean).reduce((i, p) => i * Te[p.tier], 1), u = Math.max(1, t.effort), f = t.status === "drop" ? 0 : 1, h = f * (c * w * m) / u;
++  let n = s.get(e.moment)?.severity ?? 1, o = e.claims.map((i) => Ee[i.status] ?? 0), c = o.reduce((i, p) => i + p, 0) * n, w = o.length ? o.reduce((i, p) => i + p, 0) / o.length : 0, m = ((ms) => ms.some((i) => i.kind === "operate") ? Math.min(...ms.map((i) => Te[i.tier])) * 0.85 : ms.reduce((i, p) => i * Te[p.tier], 1))((t.repaired_uses ?? e.uses).map((i) => k(i)).filter(Boolean)), u = Math.max(t.lane === "operate" ? 3 : 1, t.effort), f = t.status === "drop" ? 0 : 1, h = f * (c * w * m) / u;
+   return { impact: c, confidence: w, feasibility: m, effort: u, risk_gate: f, score: Number(h.toFixed(4)) };
+ }
+ function F(e, t) {
+@@ -211,6 +225,7 @@ function J(e, t) {
+     let l = null;
+     for (let b of y) {
+       if ((p.get(b.candidate.power) ?? 0) >= r) continue;
++      if (b.gate.lane === "operate" && i.filter((x) => x.gate.lane === "operate").length >= 2) continue;
+       let v = h(b);
+       for (let A of i) {
+         let we = A.candidate.moment === b.candidate.moment, ye = Ae(A.gate.repaired_uses ?? A.candidate.uses, b.gate.repaired_uses ?? b.candidate.uses);
+@@ -221,7 +236,7 @@ function J(e, t) {
+     if (!l) break;
+     i.push(l.s), p.set(l.s.candidate.power, (p.get(l.s.candidate.power) ?? 0) + 1), y = y.filter((b) => b !== l.s);
+   }
+-  let _ = y.filter((l) => l.gate.lane !== "spec");
++  let _ = y.filter((l) => l.gate.lane !== "spec" && l.gate.lane !== "operate");
+   _.sort((l, b) => b.score.impact - l.score.impact);
+   let a = _[0] ?? null;
+   for (let l of y)
+@@ -668,7 +683,7 @@ async function ge(e, t) {
+       break;
+     }
+     case "gate": {
+-      let n = e.profile.industry || "other", o = e.candidates ?? [], c = await x(t, me(o, R), "haiku", "gate:never").catch(() => ({ hits: {} })), w = { industry: n, state: s.state, material: r, neverDesign: void 0 }, g = {}, m = 0;
++      let n = e.profile.industry || "other", o = e.candidates ?? [], c = await x(t, me(o, R), "haiku", "gate:never").catch(() => ({ hits: {} })), w = { industry: n, state: s.state, material: r, operateLane: !!s.operateLane, neverDesign: void 0 }, g = {}, m = 0;
+       for (let h = 0; h < o.length; h++) {
+         let i = o[h], p = await $(i, { ...w, neverDesign: async () => c.hits?.[i.id] || null });
+         if (p.status === "repair") {

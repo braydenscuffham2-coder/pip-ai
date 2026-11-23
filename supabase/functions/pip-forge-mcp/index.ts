@@ -22,6 +22,8 @@ const SB_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const H = { apikey: SB_KEY, authorization: `Bearer ${SB_KEY}`, 'content-type': 'application/json' };
 
+// The operator lane's switch. Anything that is not a clean true reads as off, including a failed read.
+const operateOn = async () => (await rows('rpc/portal_flag', { method: 'POST', body: JSON.stringify({ p_key: 'operate_lane', p_default: false }) }).catch(() => false)) === true;
 async function rows(path: string, init: RequestInit = {}) {
   const r = await fetch(`${SB_URL}/rest/v1/${path}`, { ...init, headers: { ...H, ...((init.headers as Record<string, string>) || {}) } });
   const t = await r.text();
@@ -284,7 +286,8 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
       if (!spec) throw new Error('no such teammate on this order');
       // The contract on every build. Jobs sent now, or already on the record, are checked before anything is written.
       const catalog = declares({ ...(spec.spec ?? {}), ...(sent.contract !== undefined ? { contract: sent.contract } : {}), ...(sent.jobs !== undefined ? { jobs: sent.jobs } : {}) }) ? await loadCatalog(rows) : NO_CATALOG;
-      const build = saveBuild(spec.spec, sent, { ready: STATUS_MAP[st] === 'sandbox', at: now() }, catalog);
+      const operateLane = spec.spec?.operate !== undefined ? await operateOn() : false;
+      const build = saveBuild(spec.spec, sent, { ready: STATUS_MAP[st] === 'sandbox', at: now(), operateLane }, catalog);
       if (!build.ok) throw new Refused([build.say, ...build.errors.map((e) => `- ${e}`)].join('\n'));
       const stored = spec.spec?.board && typeof spec.spec.board === 'object' && !Array.isArray(spec.spec.board) ? spec.spec.board : {};
       await patch('skill_specs', `id=eq.${spec.id}`, {
@@ -340,7 +343,9 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
         try {
           // The contract, checked again now: it may have tightened since the build, and what exists may have changed.
           if (declares(s.spec)) catalog ??= await loadCatalog(rows);
-          const gate = goLive(s.spec, catalog ?? NO_CATALOG);
+          const operateLane = s.spec?.operate ? await operateOn() : false;
+          const approved = s.spec?.operate ? (await rows('rpc/operator_approved_current', { method: 'POST', body: JSON.stringify({ p_spec: s.id }) }).catch(() => false)) === true : true;
+          const gate = goLive(s.spec, catalog ?? NO_CATALOG, { operateLane, approved });
           if (!gate.ok) { out.push({ id: s.skill_id, live: false, declared_jobs: true, why: gate.why.join(' ') }); continue; }
           // A connection the manifest marks required must be connected and tested for this business. Read fails closed.
           const conn = await connectionGate(rows, s.id, s.skill_id);

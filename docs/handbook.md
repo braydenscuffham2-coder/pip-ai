@@ -109,6 +109,10 @@ Full gap list and the reasoning: https://claude.ai/artifact/DivuHf23JD9t4gpCcS63
 - **TEST Fork** is the test business: id `38794f73-3586-475b-b428-da75f29e6a27`, teammate Hallie `3b5b8524-c712-4cee-82ec-97e1565f33ff`. Its calendar, email and sheet are connected to Brayden's own Google.
 - A mock suite for `pip-turn` and a render suite for the Portal page exist only in an old chat's sandbox. Lane 09 moves them into `tests/`.
 
+## Operators
+
+Operators run a whole recurring process (social posts, review requests, quote follow-ups) and keep a record of every case. They are off until `operate_lane` is turned on, which is Brayden's call. Never turn it on to test. The rules are in `docs/contracts/operate-spec.md`; tests are `tests/operate/`, `tests/db/operate.test.mjs`, `_shared/operate*.test.ts` and `pip-forge/operate.test.mjs`. Two mutation proofs (`tests/pip-turn/prove.mjs`, `tests/operate/prove.mjs`) must pass before a change to the send guard or the case rules merges.
+
 ## Working together
 
 Eleven lanes build at once. These rules keep them from breaking each other.
