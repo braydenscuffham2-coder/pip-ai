@@ -65,6 +65,11 @@ EDITS = [
     ("render-fields",
      'risk:d.gate.risk,needs:d.gate.needs,moment:d.candidate.moment,wild:d===r.wild}',
      'risk:d.gate.risk,needs:d.candidate.new_capability?[...d.gate.needs,`Pip builds: ${d.candidate.new_capability}`]:d.gate.needs,pip_builds:d.candidate.new_capability||void 0,moment:d.candidate.moment,wild:d===r.wild}'),
+    # Page only (not in the readable Brain copy). A pick that needs a part Pip has not built yet must not
+    # promise a date. Everywhere the page would say "Ready in 2-3 weeks" it says "Built for you" instead.
+    ("page:honest-badge",
+     'match:Math.round(rm(n.match,50,98)??75),effort:i.effort,custom:a||void 0,',
+     'match:Math.round(rm(n.match,50,98)??75),effort:n.pip_builds?"Built for you":i.effort,builds:V(n.pip_builds,160)||void 0,custom:a||void 0,'),
     # A handle for the tests in tests/site/brain-inpage.test.mjs.
     ("test-handle",
      'globalThis.__pipBrain={design:qe,PRIMITIVES:x,version:3,',
@@ -105,12 +110,19 @@ def patch(text: str, strict: bool = True):
     else:
         text = text[:a] + js_string(PROMPT) + text[b:]
         report.append(f"prompt: replaced ({len(current)} -> {len(PROMPT)} chars)")
+    is_page = text.lstrip()[:15].lower().startswith('<!doctype html')
     for name, old, new in EDITS:
+        want = 1
+        if "*" in name:
+            name, times = name.split("*")
+            want = int(times)
+        if name.startswith("page:") and not is_page:
+            continue
         if new in text:
             report.append(f"{name}: already in place")
             continue
         n = text.count(old)
-        if n != 1:
+        if n != want:
             msg = f"{name}: anchor found {n} times"
             if strict:
                 raise SystemExit(msg)
