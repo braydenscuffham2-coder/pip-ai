@@ -84,3 +84,54 @@ test("a spec the API-key engine compiles still saves, and its record says it has
   assert.equal(typeof s.spec.forge_check.at, "string");
   assert.deepEqual(f.world.outside, []);
 });
+
+// ---------- the second refusal: a required connection that is not connected and tested ----------
+const BIZ = "11111111-1111-4111-8111-111111111111";
+const booking = { slot: "booking", label: "Booking software", required: true };
+const connected = (conns, man = { teammate: "Weekend Call Desk", connections: [booking] }) => {
+  const t = tables();
+  t.skill_specs[0].spec = { board: BOARD }; t.skill_specs[0].status = "sandbox";
+  t.agent_manifests = man ? [{ spec_id: IDS.spec, business_id: BIZ, skill_id: "front-desk", manifest: man }] : [];
+  t.businesses = [{ id: BIZ, name: "Boise River Dental" }];
+  t.business_connections = conns.map((c) => ({ business_id: BIZ, checked_at: null, ...c }));
+  f.reset(t);
+};
+
+test("the console's Go live is refused while a required connection is not ready, and says which", async () => {
+  for (const c of [[], [{ slot: "booking", status: "needed" }], [{ slot: "booking", status: "link_made" }], [{ slot: "booking", status: "active", checked_at: null }]]) {
+    connected(c);
+    const r = await f.console("golive", IDS.spec);
+    assert.equal(r.status, 409);
+    assert.equal(r.json.ok, false);
+    assert.match(r.json.error, /^Boise River Dental still needs to connect Booking software \(.+\), which Weekend Call Desk needs before it can go live\.$/);
+    assert.equal(spec().status, "sandbox");
+    assert.deepEqual(f.changes(), []);
+  }
+});
+
+test("the console's Go live works once the required connection is connected and tested", async () => {
+  connected([{ slot: "booking", status: "active", checked_at: "2026-11-22T10:00:00Z" }]);
+  const r = await f.console("golive", IDS.spec);
+  assert.deepEqual([r.status, r.json], [200, { ok: true, outcome: "done" }]);
+  assert.equal(spec().status, "live");
+});
+
+test("the console's Go live ignores an optional connection, and a teammate with no manifest", async () => {
+  connected([], { teammate: "Weekend Call Desk", connections: [{ slot: "google_profile", label: "Google Business Profile", required: false }] });
+  assert.equal((await f.console("golive", IDS.spec)).status, 200);
+  connected([], null);
+  assert.equal((await f.console("golive", IDS.spec)).status, 200);
+});
+
+test("the console's Go live fails closed when the connections cannot be read", async () => {
+  connected([]);
+  const real = globalThis.fetch;
+  globalThis.fetch = (url, init) => (String(url).includes("business_connections") ? Promise.resolve(new Response(JSON.stringify({ message: "database down" }), { status: 500 })) : real(url, init));
+  try {
+    const r = await f.console("golive", IDS.spec);
+    assert.equal(r.status, 409);
+    assert.match(r.json.error, /could not be checked, so nothing was switched on: .*database down/);
+    assert.equal(spec().status, "sandbox");
+    assert.deepEqual(f.changes(), []);
+  } finally { globalThis.fetch = real; }
+});

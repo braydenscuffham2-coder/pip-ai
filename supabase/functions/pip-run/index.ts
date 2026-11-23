@@ -189,10 +189,16 @@ async function answerText(line: any, r: any, from: string, to: string, text: str
     await db.from("notifications").insert({ spec_id: line.spec, kind: "notify_owner", body: { args: { summary: `A text message could not be answered by ${line.teammate ?? "the teammate"}: "${text.slice(0, 160)}"`, urgency: "urgent" }, approval: "none", conversation: r.conversation, business: line.name, channel: "sms" } });
     reply = `This is an AI assistant for ${String(line.name ?? "the business").replace(/\s*[(\[][^)\]]*[)\]]/g, "").trim()}. We got your message and a team member will reply soon.`;
   }
+  // The first reply to a texter says it is an AI (pip-turn guarantees that line) and how to opt out.
   if (r.first) reply += " Reply STOP to opt out.";
   reply = reply.slice(0, 1200);
   if (await sendText(to, from, reply)) {
-    await db.rpc("portal_sms_out", { p_business: line.business, p_spec: line.spec, p_segments: Math.max(1, Math.ceil(text.length / 153)) + Math.ceil(reply.length / 153) });
+    // One call counts the segments for billing and writes the "sent" record that cites the consent_ledger row relied on.
+    // The texter's number goes in only so the database can hash it; it is never stored.
+    await db.rpc("portal_sms_out", {
+      p_business: line.business, p_spec: line.spec, p_segments: Math.max(1, Math.ceil(text.length / 153)) + Math.ceil(reply.length / 153),
+      p_to: from, p_ai_disclosed: r.first === true, p_opt_out_offered: r.first === true,
+    });
   }
 }
 

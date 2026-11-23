@@ -16,6 +16,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { buildOrder, checkOrder, runForgeJob, agentTurn, openaiModel, renderConsole, anthropicModel, primitive } from './forge.js';
 import type { ForgeDb, ForgeJob, SpecRow } from './forge.js';
+import { connectionGate } from '../_shared/golive-connections.ts';
 import { declares, goLive, loadCatalog, NO_CATALOG, stamp } from '../_shared/forge-check.ts';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
@@ -216,6 +217,9 @@ async function routeConsole(req: Request, u: URL) {
       // tool must have something behind it. A teammate with no declared jobs goes live as before.
       const gate = goLive((spec as any).spec, declares((spec as any).spec) ? await loadCatalog(rows) : NO_CATALOG);
       if (!gate.ok) return json({ ok: false, error: gate.why.join(' ') }, 409);
+      // The same second refusal as the connector: a required connection must be connected and tested for this business.
+      const conn = await connectionGate(rows, specId, (spec as any).skill_id || '').catch((e: Error) => ({ ok: false as const, missing: [], why: `The connections could not be checked, so nothing was switched on: ${String(e.message || e).slice(0, 200)}` }));
+      if (!conn.ok) return json({ ok: false, error: conn.why }, 409);
       const m = models();
       const r = await runForgeJob({ id: 0, order_id: orderId || (spec as any).order_id, spec_id: specId, stage: 'golive', attempt: 1, status: 'queued', log: [] }, { model: m?.model ?? (async () => '{}'), reviewer: null, db: forgeDb });
       await insert('events', { kind: 'golive', domain: spec.domain, detail: { spec: specId, by: 'founder', note: String(b.note ?? '').slice(0, 500) } });

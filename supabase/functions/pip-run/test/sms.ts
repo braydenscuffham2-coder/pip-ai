@@ -48,7 +48,10 @@ ok("a TEST business's line is answered by the teammate named on the line", w.tur
 ok("the first reply says AI in its first sentence and how to opt out", /^This is Hallie, an AI assistant/.test(w.sent[0]?.Body) && / Reply STOP to opt out\.$/.test(w.sent[0]?.Body), w.sent[0]?.Body);
 ok("the reply goes from the Pip number to the texter", w.sent[0]?.From === "+12085550100" && w.sent[0]?.To === "+12085551234");
 ok("the text is counted for billing", w.usage.length === 1 && w.usage[0].p_segments >= 2);
+ok("the same call records the send for the texter, with the AI line and the opt-out line flagged", w.usage[0].p_to === "+12085551234" && w.usage[0].p_ai_disclosed === true && w.usage[0].p_opt_out_offered === true, JSON.stringify(w.usage[0]));
+ok("every send has exactly one record", w.usage.length === w.sent.length);
 await text("thanks");
+ok("a later reply is recorded too, without claiming a new AI line or opt-out line", w.usage.length === 2 && w.usage[1].p_ai_disclosed === false && w.usage[1].p_opt_out_offered === false && w.usage[1].p_to === "+12085551234", JSON.stringify(w.usage[1]));
 ok("a later reply does not repeat the opt-out line", w.sent.length === 2 && !/STOP/.test(w.sent[1].Body));
 
 reset(); w.test = false;
@@ -63,6 +66,7 @@ for (const s of ["STOP", "stop.", "Unsubscribe", "please stop texting me"]) {
 }
 await text("are you still there?");
 ok("after STOP, a normal message is not answered", w.sent.length === 0 && w.turns.length === 0);
+ok("and nothing is recorded as sent to someone who opted out", w.usage.length === 0);
 await text("START");
 ok("START is recorded and gets no reply from Pip (Twilio sends its own)", w.consent.at(-1).p_kind === "start" && w.sent.length === 0);
 await text("ok I am back");
