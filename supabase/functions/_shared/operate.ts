@@ -416,3 +416,96 @@ export function operatePlainWords(op: Operate): { what: string[]; stops: string[
   }
   return { what, stops, needsYou };
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// What the Forge calls. `compileForForge` turns the Brain's candidate (the operator primitive in `uses`) into a full
+// teammate spec, with no model. `dryRun` is the operator lane's test stage: fake cases through every rule, in fake time.
+// ---------------------------------------------------------------------------------------------------------------
+/** The process an agent's primitives name, if any. More than one operator in one teammate is refused: they are separate teammates. */
+export function processOfUses(uses: unknown): { process: Process | null; error?: string } {
+  const have = PROCESSES.filter((p) => Array.isArray(uses) && uses.includes(PRIMITIVE_OF[p]));
+  return have.length === 1 ? { process: have[0] } : have.length > 1 ? { process: null, error: "One teammate runs one operator. Split these into separate teammates." } : { process: null };
+}
+export type ForgeAgent = { name?: string; teammate?: unknown; uses?: unknown; operate_accounts?: unknown; operate_stage?: unknown };
+export function compileForForge(agent: ForgeAgent, business: string): { ok: boolean; spec: J | null; errors: string[]; needs: string[] } {
+  const p = processOfUses(agent?.uses);
+  if (!p.process) return { ok: false, spec: null, errors: [p.error ?? "This teammate has no operator primitive."], needs: [] };
+  const uses = (agent.uses as string[]) ?? [];
+  const t = agent.teammate as J, teammate = typeof t === "string" ? t : typeof t?.name === "string" ? t.name : "Pip";
+  const channels = p.process === "content_social"
+    ? [...new Set((["facebook", "instagram", "google_business"] as const).filter((c) => uses.includes("social_posting") && (c !== "google_business" || uses.includes("google_profile"))))]
+    : (["email", "sms"] as const).filter((c) => uses.includes(c === "sms" ? "send_text" : "email") || (c === "sms" && uses.includes("sms")));
+  const accounts = Array.isArray(agent.operate_accounts) ? (agent.operate_accounts as unknown[]).filter((x): x is string => typeof x === "string") : undefined;
+  const c = compileOperator(p.process, {
+    business: String(business || "the business").slice(0, 120), teammate: String(teammate).slice(0, 60),
+    ...(p.process === "content_social" ? { accounts: accounts?.length ? accounts : channels.slice(0, 1), channels: channels.length ? channels : ["facebook"] } : { channels: channels.length ? [...channels] : ["email"] }),
+    ...(p.process === "quote_followup" && typeof agent.operate_stage === "string" ? { audience: { who: "named_stage" as const, stage: agent.operate_stage } } : {}),
+  });
+  const spec = { contract: CONTRACT, name: String(agent.name || `${teammate} the ${p.process.replace(/_/g, " ")} operator`).slice(0, 120), version: 1, jobs: c.jobs, operate: c.operate };
+  const base = checkSpec(spec), op = checkOperate(spec);
+  const errors = [...(base.ok ? [] : base.errors), ...(op.ok ? [] : op.errors)];
+  return { ok: !errors.length, spec: errors.length ? null : spec, errors, needs: c.needs };
+}
+
+export type DryCase = { name: string; ok: boolean; detail: string };
+const D = 86400000, H = 3600000;
+/**
+ * Fake cases through every rule, in fake time. It uses the same pure rules the database repeats, so a pass here and a
+ * pass in tests/db/operate.test.mjs mean the same thing. Returns the shape the Forge's other test stage returns.
+ */
+export function dryRun(spec: unknown): { ok: boolean; passed: number; total: number; ratio: number; must_not_promise_ok: boolean; cases: DryCase[]; ran: string } {
+  const cases: DryCase[] = [], add = (name: string, ok: boolean, detail: string) => cases.push({ name, ok, detail });
+  const c = checkOperate(spec);
+  if (!c.ok || !c.operate) { add("the operate block is valid", false, c.errors.join(" | ")); return done(cases); }
+  const op = c.operate, r = RULES[op.process], tz = "America/Boise", hours = { from: "08:00", to: "20:00" };
+  const rules = { max_touches: op.touches.max, min_gap_hours: op.touches.min_gap_hours, max_days: r.max_days };
+  const t0 = Date.parse("2026-11-02T17:00:00Z"); // 10:00 in Boise
+  if (r.reaches === "customer") {
+    // 1. left alone, a case ends after at most max touches, spaced at least the gap apart, inside the window
+    for (let k = 1; k <= 3; k++) {
+      const st = { status: "open" as const, touches: 0, opened_at: new Date(t0).toISOString(), last_touch_at: null as string | null };
+      let now = t0, n = 0, bad = "";
+      for (let step = 0; step < 40 && !bad; step++) {
+        const ok = touchDecision(st as never, rules, new Date(now), st.touches + 1, hours, tz);
+        if (ok.ok) { st.touches++; if (st.last_touch_at && now - Date.parse(st.last_touch_at) < r.min_gap_hours * H) bad = "touches closer than the gap"; st.last_touch_at = new Date(now).toISOString(); n++; }
+        now += 6 * H + k * H;
+      }
+      if (n > op.touches.max) bad ||= `${n} touches, more than ${op.touches.max}`;
+      if (n === 0) bad ||= "never reached the customer";
+      add(`case ${k}: left alone, it stops at the limit`, !bad, bad || `${n} touch${n === 1 ? "" : "es"}, then stopped`);
+    }
+    // 2. a touch outside the hours, a touch too soon, and a touch out of order are each refused
+    const fresh = { status: "open" as const, touches: 0, opened_at: new Date(t0).toISOString(), last_touch_at: null };
+    const night = touchDecision(fresh, rules, new Date(t0 + 11 * H), 1, hours, tz);
+    add("a touch at night is refused", !night.ok && night.why === "outside_hours", night.ok ? "it was allowed" : night.why);
+    const soon = touchDecision({ ...fresh, touches: 1, last_touch_at: new Date(t0).toISOString() }, rules, new Date(t0 + 24 * H), 2, hours, tz);
+    add("a second touch inside the gap is refused", op.touches.max < 2 || (!soon.ok && soon.why === "too_soon"), soon.ok ? "it was allowed" : soon.why);
+    const skip = touchDecision(fresh, rules, new Date(t0), 2, hours, tz);
+    add("a touch out of order is refused", !skip.ok && skip.why === "wrong_touch", skip.ok ? "it was allowed" : skip.why);
+    const old = touchDecision({ ...fresh, touches: 1, last_touch_at: new Date(t0).toISOString() }, rules, new Date(t0 + (r.max_days + 1) * D), 2, hours, tz);
+    add("a case past its window is refused", !old.ok && old.why === "expired", old.ok ? "it was allowed" : old.why);
+    // 3. the stops
+    const s0 = { status: "open" as const, touches: 1, opened_at: new Date(t0).toISOString(), last_touch_at: new Date(t0).toISOString() };
+    add("STOP closes the case, whatever the spec lists", closeReason(s0, rules, [], new Date(t0 + H), { opted_out: true }) === "opted_out", "STOP");
+    add("a reply closes the case", !op.case.closes_when.includes("replied") || closeReason(s0, rules, op.case.closes_when, new Date(t0 + H), { replied: true }) === "replied", "reply");
+    add("the audience has no happiness filter", !SENTIMENT.test(JSON.stringify(op.audience ?? {})) && !SENTIMENT.test(op.goal), "no filter");
+    add("every channel has a purpose that fits the rules", op.touches.channels.every((ch) => ch in r.purposes), op.touches.channels.join(", "));
+  } else {
+    const ctx = { approved: true, ownerApproved: false, published: 0, thisWeek: 0, rules: { first_n: r.first_n ?? 5, weekly_cap: r.max_touches, always: op.public.approval === "always" } };
+    const plain = { text: "Spring is here. Book your tune-up before the rush." };
+    add("the first posts go to the owner", postVerdict(plain, ctx).action === "owner", postVerdict(plain, ctx).why);
+    add("past the first posts, a plain post may go out", postVerdict(plain, { ...ctx, published: ctx.rules.first_n }).action === (ctx.rules.always ? "owner" : "publish"), "after the first posts");
+    for (const [what, text] of [["a price", "Drain cleaning from $99 this week"], ["an offer", "Free estimate for new customers, limited time"], ["a guarantee", "We guarantee the job done right"]] as const)
+      add(`a post with ${what} goes to the owner`, postVerdict({ text }, { ...ctx, published: 20 }).action === "owner", what);
+    add("a made-up testimonial is refused", postVerdict({ text: "One of our customers said we saved her kitchen." }, { ...ctx, published: 20, ownerApproved: true }).action === "refuse", "testimonial");
+    add("a before-and-after claim is refused", postVerdict({ text: "See the before and after of this bathroom" }, { ...ctx, published: 20, ownerApproved: true }).action === "refuse", "before and after");
+    add("the weekly limit holds even for an approved post", postVerdict(plain, { ...ctx, published: 20, ownerApproved: true, thisWeek: r.max_touches }).action === "refuse", `${r.max_touches} a week`);
+    add("without the owner's approved voice and accounts, nothing posts", postVerdict(plain, { ...ctx, approved: false, published: 20, ownerApproved: true }).action === "refuse", "approvals");
+    add("the plan job cannot publish", !((c.operate.stages.find((s) => s.job === "plan_week") && (spec as J).jobs.find((j: J) => j.id === "plan_week")?.tools?.some((t: J) => t.tool === "social_posting"))), "plan_week holds no posting tool");
+  }
+  return done(cases);
+  function done(cs: DryCase[]) {
+    const passed = cs.filter((x) => x.ok).length;
+    return { ok: passed === cs.length && cs.length > 0, passed, total: cs.length, ratio: cs.length ? passed / cs.length : 0, must_not_promise_ok: passed === cs.length && cs.length > 0, cases: cs, ran: "dry run with fake cases and a fake clock; nothing was sent or posted" };
+  }
+}

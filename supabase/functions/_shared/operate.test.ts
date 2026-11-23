@@ -3,7 +3,8 @@
 // No network, no database, no keys.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CEIL, checkOperate, closeReason, compileOperator, isCaseDriven, localClock, OPERATE, operatorJobs, operatePlainWords, PRIMITIVE_OF, PROCESSES, riskOfPost, RULES, postVerdict, touchDecision, inventsEvidence } from "./operate.ts";
+import { CEIL, checkOperate, closeReason, compileOperator, isCaseDriven, localClock, OPERATE, operatorJobs, operatePlainWords, PRIMITIVE_OF, PROCESSES, riskOfPost, RULES, postVerdict, touchDecision, inventsEvidence, compileForForge, dryRun, processOfUses } from "./operate.ts";
+import { notYet } from "./teammate-spec.ts";
 import { checkSpec, CONTRACT } from "./teammate-spec.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -234,4 +235,66 @@ test("checkOperate never throws on strange input", () => {
   for (const s of strange) assert.doesNotThrow(() => checkOperate(s));
   const base = specFor("quote_followup");
   for (const key of Object.keys(base.operate)) for (const v of [null, 0, "", [], {}, true]) { const s = clone(base); s.operate[key] = v; assert.doesNotThrow(() => checkOperate(s)); assert.equal(checkOperate(s).ok, false, `${key}=${JSON.stringify(v)} should not pass`); }
+});
+
+
+// ---------- what the Forge calls: compile and dry run ----------
+const agentOf = (p: (typeof PROCESSES)[number], more: J = {}): J => ({ name: "", teammate: { name: "Pip" }, uses: [PRIMITIVE_OF[p], ...(p === "content_social" ? ["social_posting"] : ["email"])], ...more });
+test("processOfUses names the one operator, none, or refuses two", () => {
+  for (const p of PROCESSES) assert.deepEqual(processOfUses([PRIMITIVE_OF[p], "email"]), { process: p });
+  assert.deepEqual(processOfUses(["email", "calendar"]), { process: null });
+  assert.equal(processOfUses([PRIMITIVE_OF.review_requests, PRIMITIVE_OF.quote_followup]).process, null);
+  assert.match(processOfUses([PRIMITIVE_OF.review_requests, PRIMITIVE_OF.quote_followup]).error ?? "", /separate teammates/);
+  for (const v of [null, undefined, 1, "x", {}, [1, null]]) assert.deepEqual(processOfUses(v), { process: null });
+});
+test("compileForForge builds a valid spec for each process, with no model, the same every time", () => {
+  for (const p of PROCESSES) {
+    const a = compileForForge(agentOf(p), "Fork Plumbing"), b = compileForForge(agentOf(p), "Fork Plumbing");
+    assert.equal(a.ok, true, a.errors.join(" | "));
+    assert.equal(JSON.stringify(a), JSON.stringify(b));
+    assert.equal(checkOperate(a.spec).ok, true);
+    assert.equal(checkSpec(a.spec).ok, true);
+  }
+});
+test("compileForForge refuses a teammate with no operator or two, and never throws on junk", () => {
+  assert.equal(compileForForge({ uses: ["email"] }, "x").ok, false);
+  assert.equal(compileForForge({ uses: [PRIMITIVE_OF.review_requests, PRIMITIVE_OF.quote_followup] }, "x").ok, false);
+  for (const a of [null, undefined, 1, "x", [], { uses: "x" }, { uses: [PRIMITIVE_OF.content_social], operate_accounts: [1, null, {}] }, { uses: [PRIMITIVE_OF.quote_followup], operate_stage: 5 }]) assert.doesNotThrow(() => compileForForge(a as J, null as J));
+});
+test("compileForForge carries a named quote stage and the owner's accounts, and says what it needs", () => {
+  const q = compileForForge(agentOf("quote_followup", { operate_stage: "quote_sent" }), "Fork Plumbing");
+  assert.equal(q.ok, true, q.errors.join(" | "));
+  const c = compileForForge(agentOf("content_social", { operate_accounts: ["facebook_page"] }), "Fork Plumbing");
+  assert.equal(c.ok, true, c.errors.join(" | "));
+  const t = compileForForge(agentOf("review_requests", { uses: [PRIMITIVE_OF.review_requests, "email", "send_text"] }), "Fork Plumbing");
+  assert.ok(t.needs.some((n) => /10DLC/.test(n)));
+});
+test("the dry run passes for every process and sends nothing", () => {
+  for (const p of PROCESSES) {
+    const r = dryRun(compileForForge(agentOf(p), "Fork Plumbing").spec);
+    assert.equal(r.ok, true, JSON.stringify(r.cases.filter((c) => !c.ok)));
+    assert.equal(r.passed, r.total);
+    assert.equal(r.ratio, 1);
+    assert.equal(r.must_not_promise_ok, true);
+    assert.ok(r.total >= 8, `${p} ran only ${r.total} checks`);
+  }
+});
+test("the dry run fails a spec whose limits were loosened past the ceiling", () => {
+  const s = clone(compileForForge(agentOf("quote_followup"), "Fork Plumbing").spec);
+  s.operate.touches.max = 9;
+  const r = dryRun(s);
+  assert.equal(r.ok, false);
+  assert.ok(r.cases.some((c) => !c.ok));
+  assert.equal(dryRun(null).ok, false);
+  for (const v of [undefined, 1, "x", [], {}]) assert.doesNotThrow(() => dryRun(v));
+});
+test("notYet: an operator's job may be offered an email or text add, and nothing else opens", () => {
+  const g = { fields: undefined, purpose: "reply" } as J;
+  const send = { record: "message", level: "add", guard: "email" };
+  assert.equal(notYet(g, send, false), true, "a job that is not a conversation, and not an operator's, still cannot send");
+  assert.equal(notYet(g, send, false, true), false);
+  assert.equal(notYet(g, { ...send, guard: "sms" }, false, true), false);
+  assert.equal(notYet(g, { record: "message", level: "update", guard: "email" }, false, true), true);
+  assert.equal(notYet(g, { record: "call", level: "add" }, false, true), notYet(g, { record: "call", level: "add" }, false, false), "the flag changes nothing about calls");
+  assert.equal(notYet(g, { record: "message", level: "add", guard: "other" }, true, true), true);
 });
