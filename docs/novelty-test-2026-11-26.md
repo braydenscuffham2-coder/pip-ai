@@ -20,7 +20,7 @@ opening screen to Lock it in. Nothing was submitted and no business was contacte
 ## What the ideas show
 
 The Brain is specific in lines of work it was never tuned on. Examples: for the vet, pausing reminders and autoship
-for one pet after a family loses it (the clinic's worst review is about exactly that); for the bookstore, reading the
+for one pet after a family loses it (a public review of the clinic describes a family calling to stop exactly that); for the bookstore, reading the
 handwritten staff notes on the shelves into the online picks page; for the machinery maker, finding a part from a
 photo by indexing drawings under the shop's own job numbers.
 
