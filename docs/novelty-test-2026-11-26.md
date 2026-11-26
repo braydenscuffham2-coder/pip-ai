@@ -13,7 +13,7 @@ opening screen to Lock it in. Nothing was submitted and no business was contacte
 | Veterinary clinic (CO) | fossilridgeah.com | reached Lock it in, console clean | 240 s | 15 | 7 |
 | Brewery taproom (NC) | theradbrewco.com | reached Lock it in, console clean | 176 s | 14 | 3 |
 | Bookstore (AZ) | antigonebooks.com | reached Lock it in, console clean | 209 s | 15 | 6 |
-| Custom machinery maker (MI) | hillmachinery.com | engine and write-ups finished; the walk to Lock it in was still running when this was written | 188 s | 14 | 3 |
+| Custom machinery maker (MI) | hillmachinery.com | reached Lock it in, console clean | 188 s | 14 | 3 |
 
 58 ideas, 19 of them built around a part that does not exist yet.
 
