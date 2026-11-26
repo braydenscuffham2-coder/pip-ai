@@ -107,7 +107,7 @@ function boardAgent(a: any) {
     id: cut(a.id, 60), name: cut(a.name, 80), tagline: cut(a.tagline, 240), power: cut(a.power, 30), lane, wild: !!a.wild,
     teammate: { name: cut(a.teammate?.name, 30), role: cut(a.teammate?.role, 60), ...(a.teammate?.house ? { house: cut(a.teammate.house, 2) } : {}) },
     uses: strs(a.uses, 24, 40), how: strs(a.how, 6, 400), wont: strs(a.wont, 6, 300), asks: strs(a.asks, 6, 300), data_needed: strs(a.data_needed, 8, 200),
-    concept: cut(a.concept, 1200), measure: cut(a.measure, 240), why_personal: cut(a.why_personal || a.why, 400),
+    concept: cut(a.concept, 1200), measure: cut(a.measure, 240), builds: cut(a.builds || a.pip_builds || a.new_capability, 300) || undefined, why_personal: cut(a.why_personal || a.why, 400),
     moment: a.moment && typeof a.moment === 'object' ? { when: cut(a.moment.when, 120), what: cut(a.moment.what, 400) } : cut(a.moment, 300), claims,
   };
 }

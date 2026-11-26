@@ -171,6 +171,7 @@ function U(e) {
     setup_steps: e.setup ?? [],
     asks: e.asks ?? [],
     measure: e.measure ?? "",
+    builds: typeof e.builds == "string" && e.builds.trim() ? e.builds.replace(/\s+/g, " ").trim().slice(0, 300) : void 0,
     data_contract: e.data_contract ?? null,
     presented: { tagline: e.tagline, how: e.how, wont: e.wont, faq: e.faq, story: e.story, demo: e.demo, impact: e.impact, why: e.why }
   };
@@ -569,6 +570,54 @@ async function Z(e, n, t, s) {
 
 // src/forge/stages.ts
 var we = 3;
+// The part a teammate needs that Pip has not built before. The Brain names it ("builds"); before any spec is written the
+// Forge thinks through how Pip gets there and keeps the answer on the spec (quote.part), so an invention is never
+// silently dropped on its way to a build and the teammate never pretends to have it.
+var PART_ROUTES = ["compose", "connect", "provider", "hardware", "founder"];
+function partPrompt(e, n) {
+  let t = b.filter((s) => s.kind !== "guard").map((s) => `${s.id}: ${s.label}`).join("\n");
+  return `A teammate for ${n} was designed around one part Pip has not built before. Think through how Pip gets there. Be concrete and honest: this is read by the person who has to build it.
+
+THE TEAMMATE
+${JSON.stringify({ name: e.name, role: e.teammate?.role, tagline: e.presented?.tagline, how: e.presented?.how, moment: e.moment, measure: e.measure })}
+
+THE NEW PART, in the designer's words
+${e.builds}
+
+PARTS PIP HAS TODAY (id: what it does)
+${t}
+
+Answer with one JSON object and nothing else:
+{"part": "a short name for the part, 60 characters or fewer",
+ "does": "one sentence: what the part does for this business",
+ "route": "compose | connect | provider | hardware | founder",
+ "built_from": ["ids from the list above that the part can stand on"],
+ "needs": ["each thing still missing, in plain words, five at most"],
+ "day_one": "one sentence: what the teammate honestly does on day one, before the part exists",
+ "proof": "one sentence: what a test would have to show for the part to count as working",
+ "risk": "one sentence: the main way this could go wrong for the business or its customers"}
+
+Routes. compose: every step can be assembled today from the listed parts. connect: it needs the owner's own tool or account connected, and you name it in needs. provider: it needs an outside data or API service Pip does not own yet, and you name the kind of service in needs. hardware: it needs a device on site. founder: it needs new code that only Pip's builder can write.
+Rules. Never say the part exists. Choose compose only when no step is left uncovered. If the idea cannot be done safely or lawfully, say so in risk and choose founder. No prices and no dates.`;
+}
+function partPlan(e, n) {
+  let t = e && typeof e == "object" && !Array.isArray(e) ? e : null, s = (r, i) => typeof r == "string" ? r.replace(/\s+/g, " ").trim().slice(0, i) : "";
+  if (!t || !s(t.does, 10)) return { part: s(n, 60), does: s(n, 300), route: "founder", built_from: [], needs: [s(n, 200)], day_one: "", proof: "", risk: "", thought: !1 };
+  let r = (Array.isArray(t.built_from) ? t.built_from : []).filter((o) => typeof o == "string" && !!w(o) && w(o).kind !== "guard"), i = PART_ROUTES.includes(t.route) ? t.route : "founder";
+  i === "compose" && !r.length && (i = "founder");
+  let o = (Array.isArray(t.needs) ? t.needs : []).map((l) => s(l, 200)).filter(Boolean).slice(0, 5);
+  return i !== "compose" && !o.length && o.push(s(n, 200)), { part: s(t.part, 60) || s(n, 60), does: s(t.does, 300), route: i, built_from: Array.from(new Set(r)).slice(0, 12), needs: o, day_one: s(t.day_one, 300), proof: s(t.proof, 300), risk: s(t.risk, 300), thought: !0 };
+}
+async function thinkPart(e, n, t, s) {
+  let r = null;
+  try { r = x(await t(partPrompt(e, n), "opus", `forge:part:${s}`)); } catch { r = null; }
+  return partPlan(r, e.builds);
+}
+var partNote = (e) => e ? `
+
+ONE PART IS NOT BUILT YET
+Pip has not built "${e.part}" (${e.does}). Compile the teammate for what it does on day one: ${e.day_one || "only the work the allowed blocks cover"}. Use only the allowed blocks. Add a guardrails.never rule that it never says or implies it can already do this part, and write no test that depends on it.` : "";
+
 async function _e(e, n) {
   let t = n.db, s = n.maxAttempts ?? we, r = await t.getSpec(e.spec_id);
   if (!r) return { outcome: "founder", detail: "spec row missing" };
@@ -577,6 +626,8 @@ async function _e(e, n) {
   if (o === "operate" && e.stage !== "provision" && e.stage !== "golive" && !(await t.flag?.("operate_lane"))) return await stop("operate_off", "The operator lane is not switched on yet.");
   switch (e.stage) {
     case "compile": {
+      let part = r.quote?.part ?? null;
+      if (i.builds && !part) part = await thinkPart(i, r.business, n.model, r.skill_id), r.quote = { ...r.quote ?? {}, part }, await t.updateSpec(r.id, { quote: r.quote });
       if (o === "operate") {
         if (!n.operate) return await stop("compile_failed", "This build has no operator compiler.");
         let h = n.operate.compile(i, r.business);
@@ -585,12 +636,13 @@ async function _e(e, n) {
       }
       if (o !== "spec")
         return await t.updateSpec(r.id, { forge_stage: "skipped_compile" }), await t.enqueue({ order_id: e.order_id, spec_id: r.id, stage: "stage", attempt: 1 }), { outcome: "next", detail: `${o} lane: no spec to compile` };
-      let l = e.log?.at(-1), d = z({ ...i.presented, name: i.name, teammate: i.teammate, uses: i.uses, power: i.power, asks: i.asks, measure: i.measure, setup: i.setup_steps }, { business: r.business, facts: r.brain.facts ?? [], qa: r.brain.qa ?? [] }, l), u = await n.model(d, e.attempt >= 2 ? "opus" : "sonnet", `forge:compile:${r.skill_id}`), h = V(x(u), r.business);
+      let l = e.log?.at(-1), d = z({ ...i.presented, name: i.name, teammate: i.teammate, uses: i.uses, power: i.power, asks: i.asks, measure: i.measure, setup: i.setup_steps }, { business: r.business, facts: r.brain.facts ?? [], qa: r.brain.qa ?? [] }, l), u = await n.model(d + partNote(part), e.attempt >= 2 ? "opus" : "sonnet", `forge:compile:${r.skill_id}`), h = V(x(u), r.business);
+      part && part.route !== "compose" && h.waitingOn && h.waitingOn.push({ id: "new_part", label: part.part, setup: part.needs.join("; ") });
       if (!h.ok || !h.spec) {
         let g = { errors: h.errors, failed: [], previous: x(u) };
         return e.attempt < s ? (await t.enqueue({ order_id: e.order_id, spec_id: r.id, stage: "compile", attempt: e.attempt + 1, log: [...e.log ?? [], g] }), { outcome: "retry", detail: h.errors.join("; ") }) : (await t.updateSpec(r.id, { status: "needs_review", forge_stage: "compile_failed", tests: { errors: h.errors } }), await t.notify(r.id, "needs_founder", { stage: "compile", errors: h.errors }), { outcome: "founder", detail: h.errors.join("; ") });
       }
-      return await t.updateSpec(r.id, { spec: h.spec, status: "testing", forge_stage: "compiled", quote: { tier: h.tier, waitingOn: h.waitingOn } }), await t.enqueue({ order_id: e.order_id, spec_id: r.id, stage: "test", attempt: e.attempt, log: e.log }), { outcome: "next", detail: `spec v${h.spec.version}, tier ${h.tier}, waiting on ${h.waitingOn.map((g) => g.id).join(", ") || "nothing"}` };
+      return await t.updateSpec(r.id, { spec: h.spec, status: "testing", forge_stage: "compiled", quote: { ...part ? { part } : {}, tier: h.tier, waitingOn: h.waitingOn } }), await t.enqueue({ order_id: e.order_id, spec_id: r.id, stage: "test", attempt: e.attempt, log: e.log }), { outcome: "next", detail: `spec v${h.spec.version}, tier ${h.tier}, waiting on ${h.waitingOn.map((g) => g.id).join(", ") || "nothing"}` };
     }
     case "test": {
       if (o === "operate") {
@@ -689,6 +741,7 @@ function ke(e, n, t, s) {
 <tr><th>Owner still needs to</th><td>${u.length ? `<ul style="margin:0;padding-left:18px">${u.map((m) => `<li>${c(m)}</li>`).join("")}</ul>` : '<span class="muted">nothing</span>'}${g.length ? `<p class="muted" style="margin:6px 0 0">Connections: ${g.map((m) => `${c(m.primitive)} (${c(m.who)})`).join(", ")}</p>` : ""}</td></tr>
 <tr><th>Est. monthly run cost</th><td>${c(xe(n.uses ?? []))}</td></tr>
 ${v?.waitingOn?.length ? `<tr><th>Blocks not ready yet</th><td>${v.waitingOn.map((m) => `${c(m.label)}${m.setup ? ` — ${c(m.setup)}` : ""}`).join("<br>")}</td></tr>` : ""}
+${v?.part ? `<tr><th>Pip builds</th><td><b>${c(v.part.part)}</b> \xB7 ${c(v.part.route)}${v.part.thought ? "" : ' \xB7 <span class="pill warn">not thought through, read the idea</span>'}<br>${c(v.part.does)}${v.part.needs?.length ? `<br>Still missing: ${v.part.needs.map((m) => c(m)).join("; ")}` : ""}${v.part.day_one ? `<br>Day one: ${c(v.part.day_one)}` : ""}${v.part.proof ? `<br>Proof: ${c(v.part.proof)}` : ""}${v.part.risk ? `<br>Risk: ${c(v.part.risk)}` : ""}</td></tr>` : ""}
 ${v?.box_id ? `<tr><th>Box</th><td>${c(v.box_id)} \xB7 flash the golden image, ship, calibrate zones on site, 24 h soak</td></tr>` : ""}
 ${t?.spec ? `<tr><th>Spec</th><td><details><summary>${c(t.spec.goal ?? "")}</summary><pre>${c(JSON.stringify(t.spec, null, 2))}</pre></details></td></tr>` : ""}
 </table>
@@ -769,5 +822,8 @@ export {
   ge as openaiModel,
   w as primitive,
   ye as renderConsole,
-  _e as runForgeJob
+  _e as runForgeJob,
+  partPlan,
+  partPrompt,
+  thinkPart
 };

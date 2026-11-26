@@ -76,6 +76,11 @@ EDITS = [
     ("page:no-object-image",
      'const src=me?K6.logo:kit?.logo;if(src){let im=new Image();',
      'const src0=me?K6.logo:kit?.logo,src=typeof src0=="string"?src0:null;if(src){let im=new Image();'),
+    # The order tells the Forge which part Pip has to build for a teammate. Before this the page showed "Pip builds: ..."
+    # to the owner and then left it out of the order, so the Forge built the ordinary version without knowing.
+    ("page:order-builds",
+     'why_personal:c(J.why_personal||J.why,300)||void 0,moment:J.moment&&',
+     'why_personal:c(J.why_personal||J.why,300)||void 0,builds:c(J.builds||J.pip_builds,300)||void 0,moment:J.moment&&'),
     # A handle for the tests in tests/site/brain-inpage.test.mjs.
     ("test-handle",
      'globalThis.__pipBrain={design:qe,PRIMITIVES:x,version:3,',
