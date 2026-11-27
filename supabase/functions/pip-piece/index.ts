@@ -4,7 +4,7 @@
 //                        and its public form, with the business's name. Nothing else about the piece or its records.
 //   POST /p/<piece id>   One submission of the public form. It becomes a record at the piece's starting stage, and
 //                        Pip's event "form_submitted" (door: the piece's name) so a teammate's job can act on it.
-//   POST /draft          Internal (service key): the Forge writes a piece for an idea. The answer is checked against
+//   POST /draft          Internal (service key, or a founder test ticket for a TEST business): the Forge writes a piece for an idea. The answer is checked against
 //                        the contract and run in the sandbox here; nothing is saved.
 //   POST /save           Internal: check, run the sandbox, and only if every line passes keep the piece as "staged"
 //                        and file its shape in the parts library. Going live is a separate tap that is not here.
@@ -62,6 +62,18 @@ async function submit(req: Request, id: string) {
   return json({ ok: true, ref: r.ref }, 200, h);
 }
 
+async function setting(key: string): Promise<any> { const { data } = await db.from("forge_settings").select("value").eq("key", key).maybeSingle(); return data?.value; }
+async function ticketOk(ticket: string | null): Promise<boolean> {
+  if (!ticket || ticket.length < 24 || ticket.length > 200) return false;
+  const v = await setting("run_ticket");
+  if (!v?.hash || !v.expires || new Date(v.expires).getTime() <= Date.now()) return false;
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ticket));
+  return same([...new Uint8Array(d)].map((x) => x.toString(16).padStart(2, "0")).join(""), String(v.hash));
+}
+async function onTestList(business: unknown): Promise<boolean> {
+  const list = await setting("act_sandbox_businesses");
+  return typeof business === "string" && UUID.test(business) && Array.isArray(list) && list.includes(business);
+}
 async function library(): Promise<LibraryPart[]> {
   const { data } = await db.from("parts_library").select("id,name,does,words,shape,uses").eq("status", "ready").eq("kind", "piece").order("uses", { ascending: false }).limit(300);
   return (data ?? []) as LibraryPart[];
@@ -126,8 +138,12 @@ Deno.serve(async (req) => {
     if (m && req.method === "POST") return await submit(req, m[1]);
     if (req.method !== "POST") return json({ ok: false, error: "not_found" }, 404);
     const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-    if (!bearer || !same(bearer, SERVICE)) return json({ ok: false, error: "not_found" }, 404);
     const b = await req.json().catch(() => ({}));
+    // Pip's own functions use the service key. A founder's short-lived test ticket (the one pip-jobs accepts: only its
+    // hash is stored, with an expiry) may also draft and save, for a business on the TEST list and no other.
+    if (!bearer || !same(bearer, SERVICE)) {
+      if (!(await ticketOk(req.headers.get("x-pip-ticket"))) || !(await onTestList(b?.business))) return json({ ok: false, error: "not_found" }, 404);
+    }
     if (path === "/draft") return await draft(b);
     if (path === "/save") return await save(b);
     return json({ ok: false, error: "not_found" }, 404);
