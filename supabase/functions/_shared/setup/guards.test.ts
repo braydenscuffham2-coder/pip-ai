@@ -2,7 +2,7 @@
 //   node --test supabase/functions/_shared/setup/guards.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { allowAction, canScreenshot, costOf, isCaptchaUrl, isSecretField, leaks, sessionMinutes, sliceHashes, siteOf } from "./guards.ts";
+import { allowAction, canScreenshot, costOf, isCaptchaUrl, isSecretField, leaks, sessionMinutes, signInHostOk, sliceHashes, siteOf } from "./guards.ts";
 
 test("the model sees the page only in its own states, never while the owner has control", () => {
   for (const s of ["find_login", "verify", "configuring", "testing"]) assert.equal(canScreenshot(s), true, s);
@@ -76,4 +76,15 @@ test("a browser session defaults to 15 minutes (the Free plan's limit) and only 
   assert.equal(sessionMinutes("45"), 45);
   assert.equal(sessionMinutes(1), 5, "never under 5 minutes");
   assert.equal(sessionMinutes(100000), 360, "never over 6 hours");
+});
+
+test("a saved login may be typed only on the sign-in page's exact host, or a host the owner signed in on", () => {
+  const login = "https://acme.example-crm.com/login";
+  assert.equal(signInHostOk("https://acme.example-crm.com/login?next=/home", login), true);
+  assert.equal(signInHostOk("https://anyone-else.example-crm.com/login", login), false, "another customer's subdomain of the same tool");
+  assert.equal(signInHostOk("https://example-crm.com/login", login), false);
+  assert.equal(signInHostOk("http://acme.example-crm.com/login", login), false, "never over plain http");
+  assert.equal(signInHostOk("https://acme.example-crm.com.evil.test/login", login), false);
+  assert.equal(signInHostOk("https://sso.example-crm.com/start", login, ["sso.example-crm.com"]), true);
+  for (const bad of ["", "about:blank", "javascript:alert(1)", "not a url"]) assert.equal(signInHostOk(bad, login), false, bad);
 });
