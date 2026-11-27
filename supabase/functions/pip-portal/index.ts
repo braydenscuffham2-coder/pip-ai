@@ -17,6 +17,7 @@ import { vaultRefusal } from "../_shared/vault-input.ts";
 import { setupOpen } from "../_shared/setup/gate.ts";
 import { checkPiece, ownerAdd, ownerUpdate } from "../_shared/piece.ts";
 import { dbStore } from "../_shared/piece-store.ts";
+import { cleanBasics } from "../_shared/basics.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -202,7 +203,7 @@ async function withAbilities(agents: any[], operateOn = false): Promise<any[]> {
 }
 async function business(u: User, bid: string) {
   const r = await access(u, bid);
-  const { data: b } = await db.from("businesses").select("id,name,domain,industry,health_lane,state,timezone,status,quote,price_accepted_at,terms_version,terms_accepted_at,alert_prefs,created_at").eq("id", bid).maybeSingle();
+  const { data: b } = await db.from("businesses").select("id,name,domain,industry,health_lane,state,timezone,status,quote,price_accepted_at,terms_version,terms_accepted_at,alert_prefs,basics,created_at").eq("id", bid).maybeSingle();
   if (!b) throw new Fail(404, "not_found");
   const [cl, ag, people, issues, phone, text, rules, hm, agr, termsUrl] = await Promise.all([
     db.rpc("portal_checklist", { p_business: bid }),
@@ -354,6 +355,16 @@ async function setProfile(u: User, bid: string, body: any) {
   await db.from("businesses").update({ state, timezone: tz, updated_at: now() }).eq("id", bid);
   await log(bid, "owner", `Business location set to ${state}. Local call, text and privacy rules now apply.`, { actor: u.email });
   return json({ ok: true, state, timezone: tz });
+}
+// What the business tells its team (hours, address, parking and so on). Every teammate is given these on every
+// channel (pip-turn), as facts. Only the known fields are kept, cleaned and cut to length (_shared/basics.ts).
+async function setBasics(u: User, bid: string, body: any) {
+  const r = await access(u, bid); need(r, "owner");
+  const basics = cleanBasics(body?.basics);
+  const { error } = await db.from("businesses").update({ basics, updated_at: now() }).eq("id", bid);
+  if (error) throw new Fail(500, "not_saved");
+  await log(bid, "owner", "You updated what your team knows about the business.", { actor: u.email });
+  return json({ ok: true, basics });
 }
 async function accept(u: User, bid: string, body: any) {
   const r = await access(u, bid); need(r, "owner"); needFresh(u);
@@ -1086,6 +1097,7 @@ Deno.serve(async (req) => {
       if (a === "agents" && p[3] && p[4] === "operator-cases" && req.method === "GET") return await operatorCases(u, bid, p[3]);
       if (req.method !== "POST") throw new Fail(405, "method");
       if (a === "profile") return await setProfile(u, bid, body);
+      if (a === "basics") return await setBasics(u, bid, body);
       if (a === "accept") return await accept(u, bid, body);
       if (a === "connect") return await connect(u, bid, body);
       if (a === "connect-tool") return await connectTool(u, bid, body);

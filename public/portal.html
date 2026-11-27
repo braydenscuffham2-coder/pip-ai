@@ -403,6 +403,12 @@ html.has-dock{--dock-h:78px}
 
 /* setup */
 .state-row{display:flex;gap:10px;margin-top:14px}
+.knows-grid{display:grid;grid-template-columns:1fr;gap:16px;margin-top:18px}
+.knows-grid .area{min-height:92px}
+@media (min-width:760px){.knows-grid{grid-template-columns:1fr 1fr}.knows-grid .field:has(.area){grid-column:1 / -1}}
+.knows-list{display:grid;grid-template-columns:1fr;gap:4px 16px;margin-top:14px}
+.knows-list dt{font:500 11px/1.2 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2);margin-top:10px}
+.knows-list dd{margin:0;line-height:1.45}
 .state-row .sel{flex:1}
 .steps{position:relative;display:flex;flex-direction:column}
 .step{position:relative;border-top:1px solid var(--line)}
@@ -1937,6 +1943,34 @@ function stepBody(s, i) {
   }
   return kids;
 }
+// What the owner tells the team: hours, address, parking and the rest. Every teammate is given these on every channel
+// (a phone teammate that does not know the hours is not much of an employee). The same fields, in the same order and
+// with the same lengths, as supabase/functions/_shared/basics.ts; tests/portal-basics.test.mjs holds the two together.
+const BASICS = [
+  ["hours", "Hours", "Mon to Thu 5 to 9, Fri and Sat 5 to 10, closed Sunday", 400],
+  ["address", "Address", "123 Main St, Boise", 200],
+  ["phone", "Phone for customers", "The number customers should call", 40],
+  ["website", "Website", "example.com", 120],
+  ["parking", "Parking and getting in", "Free lot behind the building", 200],
+  ["payments", "Payment", "Cards and cash, no checks", 200],
+  ["booking", "How to book", "Reservations for 6 or more; walk-ins welcome", 300],
+  ["notes", "Anything else your team should know", "Dogs welcome on the patio. Kitchen closes 30 minutes before closing.", 800],
+];
+function knowsCard() {
+  const b = S.data.business, id = S.bid, have = b.basics || {}, filled = BASICS.filter((f) => have[f[0]]).length;
+  if (!isOwner()) return filled ? h("div", { class: "card rise", style: { "--i": 2 }, "data-k": "knows" }, kick("What your team knows"), h("dl", { class: "knows-list" }, BASICS.filter((f) => have[f[0]]).map((f) => [h("dt", {}, f[1]), h("dd", {}, have[f[0]])]))) : null;
+  const boxes = BASICS.map((f) => {
+    const long = f[3] > 200, el = h(long ? "textarea" : "input", { class: long ? "area" : "in", id: "kn-" + f[0], "data-k": "kn-" + f[0], maxlength: String(f[3]), placeholder: f[2], rows: long ? "2" : null, type: long ? null : "text", autocomplete: "off" });
+    el.value = have[f[0]] || "";
+    return [f[0], el, h("label", { class: "field", for: "kn-" + f[0] }, h("span", { class: "lab" }, f[1]), el)];
+  });
+  const save = () => { const basics = {}; boxes.forEach((x) => { const v = x[1].value.trim(); if (v) basics[x[0]] = v; }); run(() => api("/business/" + id + "/basics", { basics }), "Saved. Your team knows."); };
+  return h("section", { class: "card" + (filled ? "" : " warm") + " rise", style: { "--i": 2 }, "data-k": "knows", "aria-label": "What your team knows" },
+    h("div", { class: "card-h" }, h("div", {}, kick("What your team knows"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, filled ? "The basics your team answers from" : "Tell your team the basics")), filled ? pill(filled + " of " + BASICS.length, filled === BASICS.length ? "good" : "") : null),
+    h("p", { class: "small", style: { marginTop: "6px" } }, "Hours, address, parking. Whoever answers your phone, texts and email uses exactly what you write here, and says so when they do not know. Leave blank anything that does not apply."),
+    h("div", { class: "knows-grid" }, boxes.map((x) => x[2])),
+    h("div", { class: "btns" }, h("button", { class: "btn pri", "data-k": "kn-save", onclick: save }, icon("check"), "Save")));
+}
 function setupTab() {
   const d = S.data, b = d.business, id = S.bid, need = d.checklist.filter((s) => s.status !== "active"), locked = !d.setup_unlocked && d.role !== "founder";
   const st = h("select", { class: "sel", id: "st-pick", "data-k": "st-pick" }, [h("option", { value: "" }, "Pick your state")].concat(STATES.map((x) => h("option", { value: x, selected: b.state === x }, x))));
@@ -1946,6 +1980,7 @@ function setupTab() {
     h("div", { class: "card" + (b.state ? "" : " warm") + " rise", style: { "--i": 1 } },
       kick("Your location"), h("h2", { class: "h-s" , style: { marginTop: "10px" } }, "Where is your business?"), h("p", { class: "small", style: { marginTop: "6px" } }, "Call, text, recording and camera rules differ by state. Your teammates follow the rules for yours."),
       isOwner() ? h("div", { class: "state-row" }, h("label", { class: "sr-only", for: "st-pick" }, "Your state"), st, h("button", { class: "btn " + (b.state ? "ghost" : "pri"), "data-k": "st-save", "data-pip": b.state ? null : "state", onclick: () => st.value && run(() => api("/business/" + id + "/profile", { state: st.value }), "Saved.") }, "Save")) : h("p", { class: "lead", style: { marginTop: "12px" } }, b.state || "Not set yet")),
+    knowsCard(),
     h("section", { class: "card rise", style: { "--i": 2 }, "aria-label": "Setup steps" },
       h("div", { class: "card-h" }, h("div", {}, kick(d.checklist.length ? done + " of " + d.checklist.length + " done" : "Setup"), h("h2", { class: "h-s" }, need.length || !d.checklist.length ? "Connect your tools" : "Every step is done")), d.checklist.length && !need.length ? pill("Done", "good") : null),
       d.checklist.length ? null : h("p", { class: "small", style: { marginTop: "12px" } }, "Nothing to connect yet."),

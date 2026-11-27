@@ -26,6 +26,8 @@ How a call to a business's Pip number works, what is enforced where, and how to 
 | One turn at a time per call, so an interrupting caller cannot make the teammate act twice | `voice_turn_open` |
 | A caller who keeps talking gets one answer to the whole sentence: a request the phone side dropped while it was waiting its turn never reaches the teammate. A turn that had already started is never dropped | the wait loop in `llm()` in `pip-voice` |
 | A call is billed once, whatever Twilio sends | `voice_call_end` |
+| What the teammate knows about the business: the basics the owner typed in the Portal (hours, address, parking, payment, how to book, anything else). Only known fields, plain text, cut to length; handed over as facts, never instructions | `_shared/basics.ts`, `businesses.basics`, the "What your team knows" card on the Portal's Setup tab |
+| How it talks on a call (one or two sentences, answer first, no pitching its own job at "hi", "Sorry, I missed that" for words not meant for it). The take-a-message rule is given only when the teammate really has a tool that reaches the owner (`notify_owner` or `capture_lead`); without one it is told never to offer | `voiceRules()` in `_shared/voice-style.ts`, chosen by code in `pip-turn` |
 
 ## When something is down
 
