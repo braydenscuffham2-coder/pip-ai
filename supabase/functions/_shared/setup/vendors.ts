@@ -11,6 +11,22 @@ async function bb(cfg: BrowserbaseCfg, path: string, init: RequestInit = {}) {
   return j as any;
 }
 
+/**
+ * What a new session is asked for. Captcha solving and recording are ON by default at Browserbase, so both are turned
+ * off here on purpose. keepAlive is a paid setting (Browserbase Developer and up): with it a browser survives a
+ * connection closing, which the Setup Agent and a sign-in from the vault both need, because more than one request
+ * talks to the same browser. On the Free plan it must stay off or the session is refused. The timeout still ends
+ * every session, kept alive or not, so one can never be left running.
+ */
+export function sessionBody(projectId: string | undefined, contextId: string, minutes: number, keepAlive: boolean) {
+  return {
+    ...(projectId ? { projectId } : {}),
+    browserSettings: { context: { id: contextId, persist: true }, solveCaptchas: false, recordSession: false, viewport: { width: 1280, height: 800 } },
+    timeout: Math.max(60, Math.min(minutes * 60, 21600)), region: "us-west-2",
+    ...(keepAlive ? { keepAlive: true } : {}),
+  };
+}
+
 export const browserbase = (cfg: BrowserbaseCfg) => ({
   /** A context keeps one business's sign-in to one tool between sessions (cookies, local storage). */
   async context(): Promise<string> { return (await bb(cfg, "/contexts", { method: "POST", body: JSON.stringify(cfg.projectId ? { projectId: cfg.projectId } : {}) })).id; },
@@ -18,12 +34,8 @@ export const browserbase = (cfg: BrowserbaseCfg) => ({
    * A new session. Captcha solving and recording are ON by default at Browserbase, so both are turned off here on
    * purpose: Pip never defeats a captcha, and no recording of a sign-in is kept anywhere.
    */
-  async session(contextId: string, minutes = 15): Promise<{ id: string; connectUrl: string }> {
-    const j = await bb(cfg, "/sessions", { method: "POST", body: JSON.stringify({
-      ...(cfg.projectId ? { projectId: cfg.projectId } : {}),
-      browserSettings: { context: { id: contextId, persist: true }, solveCaptchas: false, recordSession: false, viewport: { width: 1280, height: 800 } },
-      timeout: Math.max(60, Math.min(minutes * 60, 21600)), region: "us-west-2",
-    }) });
+  async session(contextId: string, minutes = 15, keepAlive = false): Promise<{ id: string; connectUrl: string }> {
+    const j = await bb(cfg, "/sessions", { method: "POST", body: JSON.stringify(sessionBody(cfg.projectId, contextId, minutes, keepAlive)) });
     return { id: j.id, connectUrl: j.connectUrl };
   },
   async connectUrl(sessionId: string): Promise<string | null> {

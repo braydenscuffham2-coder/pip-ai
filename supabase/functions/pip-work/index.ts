@@ -90,7 +90,7 @@ function depsFor(seq: { n: number }, kind: string): WorkDeps {
     browser: {
       async open(contextId) {
         const ctx = contextId || await bb.context();
-        const s = await bb.session(ctx, Math.min(sessionMinutes(await setting("setup_session_minutes")), 15));
+        const s = await bb.session(ctx, Math.min(sessionMinutes(await setting("setup_session_minutes")), 15), (await setting("browser_keep_alive")) === true);
         return { sessionId: s.id, contextId: ctx };
       },
       page: pageOf,

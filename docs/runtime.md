@@ -117,6 +117,7 @@ What that breaks today, and what it does not:
 Two ways forward (Brayden's decision, parked as the last step on Nov 27):
 
 1. Browserbase Developer, $20 a month: set `keepAlive: true` when a session is made and everything above works as
+   **Ready as a switch (Nov 27):** `forge_settings.browser_keep_alive` (false). After the plan is upgraded, set it to true. No deploy is needed. Then run the probe (`setup-run /probe`); it reports `keep_alive: true` and should show `running_after_second_left: true`. On the Free plan the switch must stay false, or Browserbase refuses to open a browser. Every session still ends at its time limit, kept alive or not.
    built. It also gives 100 browser hours instead of 1.
 2. Stay on Free: rebuild sign-in so one request holds the only connection and does everything, with the owner's page
    talking to that one request over a live socket, and the vault writer doing a whole sign-in in a browser of its own.
