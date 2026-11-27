@@ -40,9 +40,10 @@ const same = (a: string, b: string) => { if (a.length !== b.length) return false
 const setting = async (key: string) => (await rows(`forge_settings?key=eq.${key}&select=value`))?.[0]?.value;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// One open socket per browser session per call; all closed when the call ends.
-const sockets = new Map<string, Cdp>();
-async function pageOf(sessionId: string) {
+// One open socket per browser session per knock, closed when that knock ends. Each knock has its own set: on a plan
+// where a browser ends when any connection leaves it, another request finishing must never close a working job's socket.
+type Sockets = Map<string, Cdp>;
+async function pageIn(sockets: Sockets, sessionId: string) {
   try {
     let c = sockets.get(sessionId);
     if (!c) { const url = await bb.connectUrl(sessionId); if (!url) return null; c = await Cdp.connect(url); sockets.set(sessionId, c); }
@@ -82,7 +83,7 @@ const screenDeps: ScreenDeps = {
   async take(usd) { const why = await rpc("pip_take", { p_kind: "work_usd", p_units: Math.round(usd * 10000) / 10000, p_room: 0 }); return typeof why === "string" ? why : null; },
 };
 
-function depsFor(seq: { n: number }, kind: string): WorkDeps {
+function depsFor(seq: { n: number }, kind: string, sockets: Sockets): WorkDeps {
   return {
     ...(kind === "screen" || kind === "skill_verify" ? { work: (job, identity, page, deps) => screenStep(job, identity, page, deps, screenDeps) } : {}),
     async identity(id) { return (await rows(`tool_identities?id=eq.${id}&select=id,business_id,tool,tool_key,login_url,site,signin_hosts,browser_context_id,vault_item_id,totp,state,silent_signins`))?.[0] ?? null; },
@@ -93,8 +94,9 @@ function depsFor(seq: { n: number }, kind: string): WorkDeps {
         const s = await bb.session(ctx, Math.min(sessionMinutes(await setting("setup_session_minutes")), 15), (await setting("browser_keep_alive")) === true);
         return { sessionId: s.id, contextId: ctx };
       },
-      page: pageOf,
-      async close(id) { sockets.get(id)?.close(); sockets.delete(id); await bb.release(id); },
+      page: (id) => pageIn(sockets, id),
+      // Ask the browser to end first, so its context keeps the sign-in; then drop our own connection.
+      async close(id) { await bb.release(id); sockets.get(id)?.close(); sockets.delete(id); },
     },
     vaultFill: (identity, session) => vault("fill", identity, session),
     vaultCode: (identity, session) => vault("code", identity, session),
@@ -116,9 +118,9 @@ async function ownersOf(business: string): Promise<string[]> {
 }
 
 /** Runs one claimed job until it ends, waits for a person, or this knock is out of time. */
-async function runJob(job: WorkJob, worker: string, deadline: number) {
+async function runJob(job: WorkJob, worker: string, deadline: number, sockets: Sockets) {
   const seq = { n: (await rows(`work_steps?job_id=eq.${job.id}&select=seq&order=seq.desc&limit=1`))?.[0]?.seq + 1 || 0 };
-  const deps = depsFor(seq, job.kind);
+  const deps = depsFor(seq, job.kind, sockets);
   let out: Out = { patch: {}, next: "again" };
   if (job.kind === "screen" && job.identity_id) {
     const plan = job.plan as ScreenPlan;
@@ -231,13 +233,16 @@ async function alertFailures() {
 
 async function tick() {
   const worker = crypto.randomUUID().slice(0, 12), deadline = Date.now() + TICK_MS;
+  const sockets: Sockets = new Map();
   let ran = 0;
-  while (Date.now() + 25_000 < deadline) {
-    const job = ((await rpc("work_claim", { p_worker: worker, p_seconds: LEASE_S })) as WorkJob[] | null)?.[0];
-    if (!job) break;
-    ran++;
-    await runJob(job, worker, deadline);
-  }
+  try {
+    while (Date.now() + 25_000 < deadline) {
+      const job = ((await rpc("work_claim", { p_worker: worker, p_seconds: LEASE_S })) as WorkJob[] | null)?.[0];
+      if (!job) break;
+      ran++;
+      await runJob(job, worker, deadline, sockets);
+    }
+  } finally { for (const c of sockets.values()) c.close(); sockets.clear(); }
   const alerted = await alertFailures().catch(() => 0);
   const more = await rows(`work_jobs?status=eq.queued&run_after=lte.${new Date(Date.now() + 5000).toISOString()}&select=id&limit=1`);
   if (ran && more?.length) EdgeRuntime.waitUntil(fetch(`${SELF}/tick`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).then((r) => r.body?.cancel()).catch(() => {}));
@@ -280,8 +285,5 @@ Deno.serve(async (req) => {
   } catch (e) {
     console.error("[pip-work]", path, String((e as Error)?.message ?? e).slice(0, 160));
     return json({ ok: false, error: "server" }, 500);
-  } finally {
-    for (const c of sockets.values()) c.close();
-    sockets.clear();
   }
 });

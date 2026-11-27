@@ -3,10 +3,17 @@
 //   POST /setup-run/step  { setup_id }   internal (service key): run one step, then chain the next unless it waits
 //   POST /setup-run/live  { setup_id }   internal (service key): the live-view link for pip-portal to hand the owner
 //   POST /setup-run/hold  { setup_id }   internal: connect to this setup's browser and stay connected until the setup
-//                                        lets go. On the free Browserbase plan a browser closes the moment the last
-//                                        connection drops, and each step is its own request (see _shared/setup/hold.ts).
+//                                        lets go. Only used when the browser is kept alive by the plan (see below).
 //   POST /setup-run/probe {}             internal, or a founder test ticket: opens a throwaway browser for a few seconds and reports whether a
 //                                        second connection can come and go without closing it. No page is opened.
+//                                        {mode:"stay"}: can a second connection join and stay? {mode:"linger",seconds}:
+//                                        holds an empty browser open and returns its live view, to test what watching
+//                                        does. {check:<session id>}: is that browser still running?
+//
+// Two ways to keep the browser open, chosen by forge_settings 'browser_keep_alive':
+//   true   (Browserbase Developer and up) the browser survives a connection leaving, so each step is its own request.
+//   false  (the Free plan) the browser ends when ANY connection leaves. One request, the runner, connects once and
+//          does every step itself (_shared/setup/solo.ts). /step only makes sure a runner is alive.
 //   POST /setup-run/stop  { setup_id }   internal (service key): close the browser and stop
 //
 // The steps themselves live in ../_shared/setup/engine.ts and the limits in ../_shared/setup/guards.ts.
@@ -14,6 +21,7 @@
 // only vault-writer holds that.
 import { type Deps, type SetupRow, step } from "../_shared/setup/engine.ts";
 import { hold, RELEASED } from "../_shared/setup/hold.ts";
+import { BROWSER_STATES, runSolo, SOLO } from "../_shared/setup/solo.ts";
 import { Cdp, openPage } from "../_shared/setup/cdp.ts";
 import { browserbase } from "../_shared/setup/vendors.ts";
 import { type Action, leaks, sessionMinutes, siteOf } from "../_shared/setup/guards.ts";
@@ -33,15 +41,17 @@ const rows = async (path: string) => { const r = await db(path); return r.ok ? a
 const rpc = async (fn: string, args: unknown) => { const r = await db(`rpc/${fn}`, { method: "POST", body: JSON.stringify(args) }); return r.ok ? await r.json().catch(() => null) : null; };
 const same = (a: string, b: string) => { if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; };
 
-// One open socket per session per call; closed when the call ends.
-const sockets = new Map<string, Cdp>();
-async function pageOf(sessionId: string) {
+// One open socket per session per call, closed when the call ends. Each call (and each runner) has its own set, so
+// one request ending can never close a connection another is using.
+type Sockets = Map<string, Cdp>;
+async function pageIn(sockets: Sockets, sessionId: string) {
   try {
     let c = sockets.get(sessionId);
     if (!c) { const url = await bb.connectUrl(sessionId); if (!url) return null; c = await Cdp.connect(url); sockets.set(sessionId, c); }
     return await openPage(c);
   } catch { return null; }
 }
+const closeAll = (sockets: Sockets) => { for (const c of sockets.values()) c.close(); sockets.clear(); };
 
 async function setting(key: string) { return (await rows(`forge_settings?key=eq.${key}&select=value`))?.[0]?.value; }
 
@@ -95,7 +105,7 @@ async function rememberIdentity(row: SetupRow) {
   if (id) await db(`work_jobs?identity_id=eq.${id}&status=eq.waiting_owner`, { method: "PATCH", body: JSON.stringify({ status: "queued", state: "start", run_after: t, reason: null, updated_at: t }) }).then((x) => x.body?.cancel());
 }
 
-const deps: Deps = {
+const depsFor = (sockets: Sockets): Deps => ({
   async paused() { return (await setting("kill_switch")) === true || (await setting("setup_paused")) === true; },
   async take(usd) { const why = await rpc("pip_take", { p_kind: "setup_usd", p_units: Math.round(usd * 10000) / 10000, p_room: 0 }); return typeof why === "string" ? why : null; },
   async terms(key) { return (await rows(`tool_terms?tool_key=eq.${encodeURIComponent(key)}&select=automation`))?.[0]?.automation ?? "unknown"; },
@@ -116,8 +126,9 @@ const deps: Deps = {
       const s = await bb.session(contextId, sessionMinutes(await setting("setup_session_minutes")), (await setting("browser_keep_alive")) === true);
       return { sessionId: s.id, contextId };
     },
-    page: pageOf,
-    async close(id) { sockets.get(id)?.close(); sockets.delete(id); await bb.release(id); },
+    page: (id) => pageIn(sockets, id),
+    // Ask the browser to end first, so its context keeps the sign-in; then drop our own connection.
+    async close(id) { await bb.release(id); sockets.get(id)?.close(); sockets.delete(id); },
   },
   model,
   async composioTest(row) {
@@ -136,13 +147,63 @@ const deps: Deps = {
     const owners = await rows(`members?business_id=eq.${row.business_id}&role=eq.owner&status=neq.removed&select=email`);
     for (const o of owners ?? []) await db("portal_outbox", { method: "POST", headers: { prefer: "return=minimal" }, body: JSON.stringify({ business_id: row.business_id, to_email: o.email, template: "setup_resignin", data: { tool: row.tool, setup_id: row.id } }) }).then((r) => r.body?.cancel());
   },
-};
+});
 
 async function load(id: string): Promise<SetupRow | null> { return (await rows(`setup_sessions?id=eq.${id}&select=*`))?.[0] ?? null; }
 async function save(id: string, patch: Partial<SetupRow>) {
   await db(`setup_sessions?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }) }).then((r) => r.body?.cancel());
 }
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+// ---------- one connection for the whole setup (the Free plan) ----------
+/** Writes a step's result only while the row is still in the state the step started from. */
+async function saveIf(id: string, patch: Partial<SetupRow>, ifState: string): Promise<boolean> {
+  const r = await db(`setup_sessions?id=eq.${id}&state=eq.${encodeURIComponent(ifState)}`, { method: "PATCH", headers: { prefer: "return=representation" }, body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }) });
+  if (!r.ok) { await r.body?.cancel(); throw new Error("save failed"); }
+  return ((await r.json()) as unknown[]).length === 1;
+}
+/** Take the setup for this runner, if no runner has said it is alive lately. */
+async function claimRunner(id: string, runner: string): Promise<boolean> {
+  const stale = new Date(Date.now() - SOLO.stale).toISOString();
+  const r = await db(`setup_sessions?id=eq.${id}&or=(runner_beat.is.null,runner_beat.lt.${encodeURIComponent(stale)})`, { method: "PATCH", headers: { prefer: "return=representation" }, body: JSON.stringify({ runner_id: runner, runner_beat: new Date().toISOString() }) });
+  if (!r.ok) { await r.body?.cancel(); return false; }
+  return ((await r.json()) as unknown[]).length === 1;
+}
+async function beatRunner(id: string, runner: string): Promise<boolean> {
+  const r = await db(`setup_sessions?id=eq.${id}&runner_id=eq.${runner}`, { method: "PATCH", headers: { prefer: "return=representation" }, body: JSON.stringify({ runner_beat: new Date().toISOString() }) });
+  if (!r.ok) { await r.body?.cancel(); return true; }               // a failed write is not a lost claim
+  return ((await r.json()) as unknown[]).length === 1;
+}
+async function freeRunner(id: string, runner: string) {
+  await db(`setup_sessions?id=eq.${id}&runner_id=eq.${runner}`, { method: "PATCH", body: JSON.stringify({ runner_id: null, runner_beat: null }) }).then((r) => r.body?.cancel()).catch(() => {});
+}
+/** The runner: every step of one setup's time in the browser, on one connection that only it holds. */
+async function runner(id: string, me: string) {
+  const sockets: Sockets = new Map();
+  const d = depsFor(sockets);
+  let end = "error";
+  try {
+    end = await runSolo({
+      async load() { const r = await db(`setup_sessions?id=eq.${id}&select=*`); if (!r.ok) { await r.body?.cancel(); throw new Error("read failed"); } return (await r.json())?.[0] ?? null; },
+      step: (row) => step(row, d),
+      save: (patch, ifState) => saveIf(id, patch, ifState),
+      beat: () => beatRunner(id, me),
+      closeBrowser: (sid) => d.browser.close(sid),
+      sleep, now: () => Date.now(),
+    });
+  } catch (e) {
+    console.error("[setup-run] runner", id, String((e as Error)?.message ?? e).slice(0, 160)); // never a typed value: steps hold none
+    const row = await load(id).catch(() => null);
+    if (row && BROWSER_STATES.has(row.state)) {
+      if (row.browser_session_id) await d.browser.close(row.browser_session_id).catch(() => {});
+      await saveIf(id, { state: "failed", browser_session_id: null, reason: "Something went wrong in the secure browser. Pip saved where it got to." }, row.state).catch(() => false);
+    }
+  } finally {
+    closeAll(sockets);
+    await freeRunner(id, me);
+    console.log("[setup-run] runner", id, end);
+  }
+}
 /** The setup's row for the holder. Throws when the read fails, so a network blip never looks like "the setup ended". */
 async function rowForHold(id: string) {
   const r = await db(`setup_sessions?id=eq.${id}&select=state,browser_session_id`);
@@ -156,9 +217,36 @@ async function startHold(id: string): Promise<boolean> {
   return j?.ok === true;
 }
 /** Does a second connection end the browser when it leaves? Measured, not assumed. Uses a few seconds of browser time. */
-async function probe() {
+async function probe(body: Record<string, unknown> = {}) {
   const out: Record<string, unknown> = { ok: false, at: "context" };
   let sid = "";
+  if (typeof body.check === "string" && /^[A-Za-z0-9_-]{8,80}$/.test(body.check)) return { ok: true, running: !!(await bb.connectUrl(body.check)) };
+  if (body.mode === "linger") {
+    // An empty browser held open on one connection for a short while, with its live view, so what watching does to
+    // it can be measured from outside. No page is opened and nothing is typed.
+    const secs = Math.max(10, Math.min(Number(body.seconds) || 40, 120));
+    const s = await bb.session(await bb.context(), 3, false);
+    const a = await Cdp.connect(s.connectUrl);
+    EdgeRuntime.waitUntil((async () => { await sleep(secs * 1000); const alive = await a.send("Browser.getVersion", {}, undefined, 8000).then(() => true).catch(() => false); console.log("[setup-run] probe linger", s.id, "first connection alive at end:", alive); await bb.release(s.id).catch(() => {}); a.close(); })());
+    return { ok: true, session: s.id, live: await bb.liveView(s.id), seconds: secs };
+  }
+  if (body.mode === "stay") {
+    // Can a second connection join and stay, with the browser alive and both working? (Leaving is what ends it.)
+    try {
+      const s = await bb.session(await bb.context(), 2, false); sid = s.id; out.at = "first_connection";
+      const a = await Cdp.connect(s.connectUrl); out.at = "second_connection";
+      const b = await Cdp.connect(s.connectUrl); out.second_connected = await b.send("Browser.getVersion", {}, undefined, 8000).then(() => true).catch(() => false); out.at = "both_stay";
+      await sleep(20000);
+      out.running_with_both = !!(await bb.connectUrl(sid));
+      out.first_works = await a.send("Browser.getVersion", {}, undefined, 8000).then(() => true).catch(() => false);
+      out.second_works = await b.send("Browser.getVersion", {}, undefined, 8000).then(() => true).catch(() => false); out.at = "release";
+      await bb.release(sid); await sleep(4000);
+      out.running_after_release = !!(await bb.connectUrl(sid));
+      a.close(); b.close(); out.ok = true; out.at = "done"; sid = "";
+    } catch (e) { out.error = String((e as Error)?.message ?? e).slice(0, 160); }
+    if (sid) await bb.release(sid).catch(() => {});
+    return out;
+  }
   try {
     const keep = (await setting("browser_keep_alive")) === true; out.keep_alive = keep;
     const s = await bb.session(await bb.context(), 1, keep); sid = s.id; out.at = "first_connection";
@@ -194,9 +282,11 @@ Deno.serve(async (req) => {
   // The probe opens no page and touches no business, so a founder's short-lived test ticket may run it too (the same
   // ticket pip-jobs accepts: only its hash is stored, in forge_settings 'run_ticket', with an expiry).
   const internal = !!SB_KEY && same(bearer, SB_KEY);
-  if (path === "/probe" && (internal || await ticketOk(req.headers.get("x-pip-ticket")))) return json(BBKEY ? await probe() : { ok: false, error: "not_configured" });
+  if (path === "/probe" && (internal || await ticketOk(req.headers.get("x-pip-ticket")))) return json(BBKEY ? await probe(await req.json().catch(() => ({}))) : { ok: false, error: "not_configured" });
   if (!internal) return json({ error: "forbidden" }, 403);
   const body = await req.json().catch(() => ({}));
+  const sockets: Sockets = new Map();
+  const deps = depsFor(sockets);
   const id = typeof body?.setup_id === "string" && /^[0-9a-f-]{36}$/i.test(body.setup_id) ? body.setup_id : "";
   if (!id) return json({ error: "bad_request" }, 400);
   const row = await load(id);
@@ -220,9 +310,16 @@ Deno.serve(async (req) => {
     }
     if (path !== "/step") return json({ error: "not_found" }, 404);
     if (!ANTHROPIC || !BBKEY) { await save(id, { state: "failed", reason: "The Setup Agent is not configured yet." }); return json({ ok: false, error: "not_configured" }, 503); }
+    if ((await setting("browser_keep_alive")) !== true && BROWSER_STATES.has(row.state)) {
+      // One connection for the whole setup. This request only makes sure a runner is alive: a live one notices the
+      // owner's tap by itself, and a dead one took its browser with it, so a new one starts (and says so if it is gone).
+      const me = crypto.randomUUID();
+      if (await claimRunner(id, me)) EdgeRuntime.waitUntil(runner(id, me));
+      return json({ ok: true, state: row.state, next: "runner" });
+    }
     const out = await step(row, deps);
     await save(id, out.patch);
-    // A browser was just opened in this request. It must have a holder before this request lets go of it.
+    // A browser was just opened in this request (kept-alive plans only). It must have a holder before this request lets go of it.
     const opened = typeof out.patch.browser_session_id === "string" && out.patch.browser_session_id !== row.browser_session_id && !RELEASED.has(String(out.patch.state ?? row.state));
     if (opened && !(await startHold(id))) {
       await deps.browser.close(out.patch.browser_session_id as string).catch(() => {});
@@ -236,7 +333,6 @@ Deno.serve(async (req) => {
     await save(id, { state: "failed", reason: "Something went wrong in the secure browser. Pip saved where it got to." });
     return json({ ok: false, error: "server" }, 500);
   } finally {
-    for (const c of sockets.values()) c.close();
-    sockets.clear();
+    closeAll(sockets);
   }
 });
