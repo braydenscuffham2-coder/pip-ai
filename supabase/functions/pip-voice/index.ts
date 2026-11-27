@@ -22,6 +22,7 @@
 // Setting: forge_settings 'voice' = {"agent_id":"agent_..."} (the ElevenLabs agent that speaks; not a secret).
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { decide, greeting as openingLine, type Rule } from "../_shared/call-notices.ts";
+import { ACK_MS, ackFor, afterAck, HOLD, HOLD_MS, SAME_TURN_MS, sameTurn } from "../_shared/voice-turns.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!, SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const db = createClient(SB_URL, SERVICE, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -29,11 +30,16 @@ const SELF = `${SB_URL}/functions/v1/pip-voice`;
 const EL = (Deno.env.get("ELEVENLABS_BASE_URL") || "https://api.elevenlabs.io").replace(/\/+$/, "");
 const TW = (Deno.env.get("TWILIO_BASE_URL") || "https://api.twilio.com").replace(/\/+$/, "");
 const WORDING = "v2-by-state"; // the opening line is chosen per call by _shared/call-notices.ts from jurisdiction_rules
-// How long the caller waits in silence before a holding phrase. It was 700 ms when a turn took 2.4 seconds, so nearly
-// every answer began with "One moment." A person at a front desk does not say that before giving the opening hours.
-// A turn with no tool now comes back in about a second, so the phrase is kept for turns that really take a while.
-const HOLD_MS = 1500;
-const HOLD = ["One moment.", "Let me check.", "Okay, one second.", "Sure, just a moment."];
+// What the caller hears while the teammate works (the timings and the words are in _shared/voice-turns.ts): a short
+// acknowledgement after 0.8 s, and a holding phrase only after 3.2 s. On the real call of Nov 27 "One moment." played
+// before every answer, 1.5 s in, and the answer itself took 4 to 5 s.
+//
+// One call's turns, remembered by this running copy of the function, so a second request for the same words (the phone
+// side sends most sentences twice) is given the first one's answer and the teammate is asked once. Keyed by the
+// call's pass hash; kept a few seconds; another copy of the function falls back to waiting, as before.
+const FLIGHT = new Map<string, { heard: string; done: Promise<Said> }>();
+const RECENT = new Map<string, { heard: string; out: Said; at: number }>();
+const forget = () => { const old = Date.now() - 60000; for (const [k, v] of RECENT) if (v.at < old) RECENT.delete(k); };
 const TURN_TIMEOUT_MS = 20000;
 // deno-lint-ignore no-explicit-any
 type J = any;
@@ -133,6 +139,9 @@ async function incoming(req: Request) {
     if (error) console.error("[voice] start", error.message.slice(0, 160));
     return sayBye(start?.reason === "paused" || start?.reason === "no_teammate" ? CLOSED(spoken) : DOWN(spoken));
   }
+  // The greeting takes a few seconds to say. In that time the teammate's function is woken, so the caller's first
+  // words are not the ones that pay for its start (0.7 s on the real call of Nov 27).
+  later(fetch(`${SB_URL}/functions/v1/pip-turn/diag`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${SERVICE}` }, body: "{}", signal: AbortSignal.timeout(5000) }).then((r) => r.body?.cancel()));
   const key = Deno.env.get("ELEVENLABS_API_KEY") ?? "", agent = (await settings()).agent_id;
   let xml = "", why = "";
   if (!key || !agent) why = "not_set_up";
@@ -265,13 +274,22 @@ async function llm(req: Request) {
 
   later((async () => {
     put({ role: "assistant", content: "" });
-    let held = false, skipped = false;
+    let held = false, skipped = false, reused = false, ack = "";
     const turn = Number(open?.turn ?? 0);
-    const hold = setTimeout(() => { held = true; put({ content: `${HOLD[turn % HOLD.length]} ` }); }, Math.max(0, HOLD_MS - (Date.now() - t0)));
+    const said = (text: string) => put({ content: `${text} ` });
+    // Heard, but not answered yet: a short acknowledgement first, a holding phrase only after a real wait.
+    const ackTimer = setTimeout(() => { ack = ackFor(heard, turn, GOODBYE.test(heard)); if (ack) said(ack); }, Math.max(0, ACK_MS - (Date.now() - t0)));
+    const hold = setTimeout(() => { held = true; said(HOLD[turn % HOLD.length]); }, Math.max(0, HOLD_MS - (Date.now() - t0)));
     let out: Said;
     try {
-      if (open?.reason === "ending") out = { say: "" };
-      else if (open?.reason === "too_long") {
+      // The same words again while the first request for them is still being answered: take that answer.
+      const flying = open?.busy ? FLIGHT.get(hash) : undefined;
+      if (flying && sameTurn(flying.heard, heard)) { out = await flying.done; reused = true; }
+      else if (open?.reason === "ending") {
+        // The turn that ended the call may have been these same words, sent twice: the caller still hears its goodbye.
+        const last = RECENT.get(hash);
+        out = last && Date.now() - last.at < SAME_TURN_MS && sameTurn(last.heard, heard) ? (reused = true, last.out) : { say: "" };
+      } else if (open?.reason === "too_long") {
         await db.rpc("voice_turn_close", { p_call: open.call, p_next: canEnd ? "hangup" : null, p_outcome: "too_long" });
         out = { say: "I need to end this call here. The team has my notes. Goodbye.", end: canEnd ? "hangup" : undefined };
       } else {
@@ -283,6 +301,7 @@ async function llm(req: Request) {
           if (gone) break;
           open = (await db.rpc("voice_turn_open", { p_pass_hash: hash })).data;
         }
+        const last = waited ? RECENT.get(hash) : undefined;
         if (gone && waited) {
           // While this request waited, the phone side dropped it: the caller kept talking, and a newer request carries
           // their whole sentence. Step aside without asking the teammate, so one sentence gets one answer (found on the
@@ -291,17 +310,28 @@ async function llm(req: Request) {
           if (open?.ok && !open.busy && open.call) await db.rpc("voice_turn_close", { p_call: open.call, p_next: null, p_outcome: null });
           skipped = true;
           out = { say: "" };
+        } else if (last && Date.now() - last.at < SAME_TURN_MS && sameTurn(last.heard, heard)) {
+          // It waited for a turn that turned out to be these same words: that answer is the answer.
+          if (open?.ok && !open.busy && open.call) await db.rpc("voice_turn_close", { p_call: open.call, p_next: null, p_outcome: null });
+          out = last.out; reused = true;
         } else if (!open?.ok || open?.busy) out = { say: open?.reason === "ending" ? "" : "Sorry, could you say that again?" };
-        else out = await answer(open, heard, canEnd);
+        else {
+          const work = answer(open, heard, canEnd);
+          FLIGHT.set(hash, { heard, done: work });
+          try { out = await work; } finally { FLIGHT.delete(hash); }
+          RECENT.set(hash, { heard, out, at: Date.now() }); forget();
+        }
       }
-    } finally { clearTimeout(hold); }
+    } finally { clearTimeout(ackTimer); clearTimeout(hold); }
+    if (out.say && ack) out = { ...out, say: afterAck(ack, out.say) };
     if (out.say) put({ content: out.say });
     if (out.end && canEnd) {
       put({ tool_calls: [{ index: 0, id: `call_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`, type: "function", function: { name: "end_call", arguments: JSON.stringify({ reason: out.end === "transfer" ? "Transferring the caller to a person." : "The call is finished." }) } }] });
       put({}, "tool_calls");
     } else put({}, "stop");
+    const dropped = gone; // read before done(), which marks the stream closed
     done();
-    console.log(`[voice] turn ${turn} ms=${Date.now() - t0} held=${held} end=${out.end ?? "-"} dropped=${gone} skipped=${skipped}`);
+    console.log(`[voice] turn ${turn} ms=${Date.now() - t0} ack=${ack ? 1 : 0} held=${held} end=${out.end ?? "-"} dropped=${dropped} skipped=${skipped} reused=${reused}`);
   })());
 
   return new Response(stream, { headers: { "content-type": "text/event-stream", "cache-control": "no-cache, no-store", connection: "keep-alive", "x-accel-buffering": "no" } });
