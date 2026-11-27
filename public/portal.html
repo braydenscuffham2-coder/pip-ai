@@ -1954,7 +1954,8 @@ function setupTab() {
         return det;
       }))),
     isOwner() && !locked && d.connect_on ? anyToolCard() : null,
-    isOwner() && d.setup_unlocked ? vaultCard() : null,
+    // The founder can reach setup help on a TEST business before its price is accepted (the server allows the same).
+    isOwner() && (d.setup_unlocked || d.role === "founder") ? vaultCard() : null,
     isOwner() ? workCard() : null];
 }
 // ---------- any other tool: search for it and connect it without leaving setup ----------
