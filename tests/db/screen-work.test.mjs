@@ -24,6 +24,7 @@ async function fresh() {
   `);
   await db.exec(read("20261127_02_background_runtime.sql"));
   await db.exec(read("20261127_05_screen_work.sql"));
+  await db.exec(read("20261127_06_fresh_step_budget.sql"));
   const biz = (await db.query("insert into businesses (name) values ('TEST Fork') returning id")).rows[0].id;
   await db.query("insert into forge_settings (key, value) values ('act_sandbox_businesses', $1::jsonb)", [JSON.stringify([biz])]);
   const one = async (q, p = []) => (await db.query(q, p)).rows[0];
@@ -79,4 +80,19 @@ test("resume only moves a job that is waiting for a person, and starts it from i
   assert.equal((await one("select work_resume($1) as ok", [id])).ok, true);
   const j = await one("select status, state, plan from work_jobs where id = $1", [id]);
   assert.deepEqual([j.status, j.state, j.plan.started], ["queued", "start", false]);
+});
+
+test("a job that starts again after a yes, or after a person helped, gets a fresh step budget but keeps its cost", { skip: !PGlite }, async () => {
+  const { db, one, waiting } = await fresh();
+  const id = await waiting();
+  await db.query("update work_jobs set step = 11, cost_usd = 0.04 where id = $1", [id]);
+  await one("select work_approve($1, true)", [id]);
+  let j = await one("select step, cost_usd from work_jobs where id = $1", [id]);
+  assert.equal(j.step, 0); assert.equal(Number(j.cost_usd), 0.04);
+  await db.query("select * from work_claim('w1', 60)");
+  await db.query("update work_jobs set step = 7 where id = $1", [id]);
+  await one("select work_release($1, 'w1', 'waiting_owner', null, 'A captcha appeared.')", [id]);
+  await one("select work_resume($1)", [id]);
+  j = await one("select step from work_jobs where id = $1", [id]);
+  assert.equal(j.step, 0);
 });
