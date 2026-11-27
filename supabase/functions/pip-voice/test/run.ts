@@ -84,6 +84,7 @@ Deno.serve({ port: MOCK, hostname: "127.0.0.1", onListen() {} }, async (req) => 
     if (world.turn.fail) return j({ error: "server" }, 500);
     return j({ conversation: b.conversation, reply: world.turn.reply, actions: world.turn.actions, live: true });
   }
+  if (p === "/functions/v1/pip-turn/diag") { world.warmed = (world.warmed ?? 0) + 1; await req.body?.cancel(); return j({ ok: true }); }
   if (p === "/functions/v1/pip-turn/call-note") {
     if (req.headers.get("authorization") !== `Bearer ${SERVICE}`) return j({ error: "forbidden" }, 403);
     world.notes.push(await req.json()); return j({ ok: true });
@@ -233,8 +234,18 @@ await test("Speed", async () => {
   // "At once" means before the holding phrase, not a stopwatch number: a busy test machine once took 701 ms to open the
   // stream and failed a 400 ms limit while everything was in the right order. The order is the promise; 900 ms is the ceiling.
   ok(`a slow reply: the stream opens at once, before any words (${slow.first} ms, words at ${slow.firstWords} ms)`, slow.first <= slow.firstWords && slow.first < 900);
-  ok(`a slow reply: the caller hears a holding phrase after about a second and a half (${slow.firstWords} ms)`, slow.firstWords >= 1400 && slow.firstWords < 1950, String(slow.firstWords));
-  ok("then the real answer", /^(One moment\.|Let me check\.|Okay, one second\.|Sure, just a moment\.) We are open until nine tonight\.$/.test(slow.text), slow.text);
+  ok(`a slow reply: the caller hears a short acknowledgement in under a second and a half (${slow.firstWords} ms)`, slow.firstWords >= 700 && slow.firstWords < 1400, String(slow.firstWords));
+  ok("then the real answer, with no holding phrase for a wait this short", /^(Let's see\.|Okay\.|Let me see\.) We are open until nine tonight\.$/.test(slow.text), slow.text);
+  world.turn.delay = 4000;
+  const slower = await speak(p, "It is for my daughter's birthday");
+  ok("a long wait adds one holding phrase after the acknowledgement", /^(Okay\.|Alright\.|Got it\.) (One moment\.|Bear with me one second\.|Just a moment, I'm pulling that up\.|One second\.) We are open until nine tonight\.$/.test(slower.text), slower.text);
+  world.turn.delay = 1200; world.turn.reply = "Okay, we are open until nine tonight.";
+  const echo = await speak(p, "It is for six people");
+  ok("an answer that starts with the acknowledgement's own word does not say it twice", !/Okay\. Okay/i.test(echo.text) && /open until nine tonight\.$/.test(echo.text), echo.text);
+  world.turn.reply = "We are open until nine tonight.";
+  world.turn.delay = 1200;
+  const bye = await speak(p, "Thanks, bye");
+  ok("a caller saying goodbye gets no acknowledgement first", bye.text === world.turn.reply, bye.text);
 });
 
 await test("Emergencies never reach a model", async () => {
@@ -308,6 +319,24 @@ await test("A caller who interrupts cannot make the teammate act twice", async (
   const [a, b] = await Promise.all([speak(p, "book me Tuesday at 3"), (async () => { await new Promise((r) => setTimeout(r, 300)); return await speak(p, "actually Wednesday"); })()]);
   ok("both turns were answered", a.done && b.done);
   ok("the second turn waited for the first to finish", world.turns.length === 2 && b.total > 2500, `${world.turns.length} turns, second took ${b.total} ms`);
+});
+
+await test("The same words sent twice get one answer (the phone side sends most sentences twice)", async () => {
+  reset();
+  const { pass: p } = await ring(51);
+  world.turn.delay = 700;
+  const later2 = (text: string, ms: number) => (async () => { await new Promise((r) => setTimeout(r, ms)); return await speak(p, text); })();
+  const [a, b] = await Promise.all([speak(p, "Can I book an appointment for Tuesday at 7:00 p.m.?"), later2("Can I book an appointment for Tuesday at seven p.m.?", 200)]);
+  ok("answering the call woke the teammate's function while the greeting played", (world.warmed ?? 0) >= 1, String(world.warmed));
+  ok("the teammate was asked once", world.turns.length === 1 && world.turns[0].message.includes("7:00"), JSON.stringify(world.turns.map((t: any) => t.message)));
+  ok("both requests got that one answer", a.done && b.done && a.text.endsWith(world.turn.reply) && b.text.endsWith(world.turn.reply), `${a.text} | ${b.text}`);
+  ok(`the second did not wait for a second turn (${b.total} ms)`, b.total < 700 + 600, String(b.total));
+  const [c, d] = await Promise.all([speak(p, "Brayden Scuffham."), later2("Brayden Scuffum.", 150)]);
+  ok("a name heard two ways is one turn too", world.turns.length === 2 && c.done && d.done, JSON.stringify(world.turns.map((t: any) => t.message)));
+  const [e, f] = await Promise.all([speak(p, "Tuesday"), later2("Thursday", 150)]);
+  ok("a correction is not the same words: both are answered, one after the other", world.turns.length === 4 && e.done && f.done, JSON.stringify(world.turns.map((t: any) => t.message)));
+  const [g, h] = await Promise.all([speak(p, "Okay thank you, goodbye."), later2("Okay, thank you. Goodbye.", 150)]);
+  ok("a goodbye sent twice ends the call once and both hear the goodbye", world.turns.length === 5 && g.ended && h.ended && h.text.endsWith(world.turn.reply), `${world.turns.length} turns; ${h.text}; ${g.ended} ${h.ended}`);
 });
 
 await test("A caller who keeps talking gets one answer to the whole sentence, not one per pause", async () => {
