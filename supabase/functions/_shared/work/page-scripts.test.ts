@@ -50,3 +50,49 @@ test("a record form with an email field on a signed-in page is never mistaken fo
   const one = read(`<form><input type="email" name="email" placeholder="Invite a teammate"><button>Send invite</button></form>`, "https://app.practicetool.com/team");
   assert.equal(one.user, false, "one email field with an unrelated button is not a sign-in either");
 });
+
+// ---------- screen work's page scripts ----------
+import { ELEMENT_AT_JS, FORM_AT_JS, SELECT_AT_JS } from "./screen.ts";
+
+function pageWith(html: string, pick: string, url = "https://www.hirepip.com/practice/sb1/refills") {
+  const dom = new JSDOM(`<!doctype html><body>${html}</body>`, { runScripts: "outside-only", url });
+  const w = dom.window;
+  // jsdom lays nothing out, so "the element under the point" is chosen by the test.
+  w.document.elementFromPoint = () => w.document.querySelector(pick);
+  return w;
+}
+const REFILL = `<form method="post" action="/practice/sb1/refills"><select name="patient"><option>Biscuit</option><option>Juniper</option></select>
+  <input name="medication" value="Carprofen 75mg"><input name="quantity" value="30"><input type="hidden" name="csrf" value="tok"><input type="password" name="pin" value="1234"><input name="api_key" value="k">
+  <button type="submit"><span id="inner">Add refill request</span></button></form>
+  <form method="get" action="/practice/sb1/patients"><input type="search" name="q"><button>Search</button></form>
+  <a id="bill" href="/practice/sb1/billing">Billing</a><form method="post" action="/practice/sb1/patients/9/delete"><button id="del">Delete patient</button></form>`;
+
+test("the page reports what is really under a point: a saving button, even when the click lands on text inside it", { skip: !JSDOM }, () => {
+  const e = { ...pageWith(REFILL, "#inner").eval(ELEMENT_AT_JS(10, 10)) };
+  assert.deepEqual([e.tag, e.text, e.submit, e.method], ["button", "Add refill request", true, "post"]);
+  assert.equal(e.action, "https://www.hirepip.com/practice/sb1/refills");
+});
+
+test("a search button, a link and a delete button are each told apart by the page's own markup", { skip: !JSDOM }, () => {
+  const search = { ...pageWith(REFILL, "form[method=get] button").eval(ELEMENT_AT_JS(1, 1)) };
+  assert.deepEqual([search.submit, search.method], [true, "get"]);
+  const link = { ...pageWith(REFILL, "#bill").eval(ELEMENT_AT_JS(1, 1)) };
+  assert.deepEqual([link.tag, link.href], ["a", "https://www.hirepip.com/practice/sb1/billing"]);
+  const del = { ...pageWith(REFILL, "#del").eval(ELEMENT_AT_JS(1, 1)) };
+  assert.equal(del.action, "https://www.hirepip.com/practice/sb1/patients/9/delete");
+  assert.equal(del.text, "Delete patient");
+});
+
+test("the form shown to the owner for approval holds the record's values and never a secret or hidden field", { skip: !JSDOM }, () => {
+  const form = { ...pageWith(REFILL, "#inner").eval(FORM_AT_JS(10, 10)) };
+  assert.deepEqual(form, { patient: "Biscuit", medication: "Carprofen 75mg", quantity: "30" });
+});
+
+test("a drop-down option is chosen by its words, and a wrong name gets the real options back", { skip: !JSDOM }, () => {
+  const w = pageWith(REFILL, "select[name=patient]");
+  assert.deepEqual({ ...w.eval(SELECT_AT_JS(1, 1, "juniper")) }, { ok: true, chosen: "Juniper" });
+  assert.equal(w.document.querySelector("select[name=patient]").value, "Juniper");
+  const miss = w.eval(SELECT_AT_JS(1, 1, "Rex"));
+  assert.equal(miss.ok, false); assert.deepEqual([...miss.options], ["Biscuit", "Juniper"]);
+  assert.equal(pageWith(REFILL, "#bill").eval(SELECT_AT_JS(1, 1, "Biscuit")).why, "no_select");
+});

@@ -105,7 +105,8 @@ export async function step(job: WorkJob, deps: WorkDeps): Promise<Out> {
     // The browser closed under us (a session limit, a restart). Start again from the saved sign-in state, once.
     if ((job.plan?.reopened ?? 0) >= 2) return { patch: { browser_session_id: null }, next: "failed", reason: "The cloud browser closed three times.", summary: "Pip's browser kept closing, so this job stopped. Nothing more was changed." };
     await deps.log(job, "browser_closed");
-    return again("start", { ...base, browser_session_id: null, plan: { ...job.plan, reopened: (job.plan?.reopened ?? 0) + 1 } });
+    // started: false makes the job's own work begin again from its first page in the new browser.
+    return again("start", { ...base, browser_session_id: null, plan: { ...job.plan, reopened: (job.plan?.reopened ?? 0) + 1, started: false } });
   }
 
   if (job.state === "check") {
