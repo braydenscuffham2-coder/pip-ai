@@ -607,13 +607,15 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
       const id = uuid(a?.order_id); if (!id) throw new Error('order_id must be an order id');
       const slug = cut(a?.toolkit, 60).toLowerCase();
       if (!/^[a-z0-9_]{2,60}$/.test(slug)) throw new Error('toolkit must be a Composio toolkit slug, like gmail');
-      const order = (await rows(`build_orders?id=eq.${id}&select=id,code`))?.[0];
+      const order = (await rows(`build_orders?id=eq.${id}&select=id,code,business_id`))?.[0];
       if (!order) throw new Error('no such order');
       const user = `pip-${id}`;
       const auth = await composioAuthConfig(slug);
       const link = await composio('/connected_accounts/link', { method: 'POST', body: JSON.stringify({ auth_config_id: auth, user_id: user }) });
       if (!link?.redirect_url) throw new Error('Composio did not return a sign-in link');
-      await insert('client_connections', { order_id: id, toolkit: slug, composio_user_id: user, connected_account_id: cut(link.connected_account_id, 80) || null, status: 'link_made', link_expires_at: link.expires_at || null });
+      // The business goes on the row: the Portal and the teammate look connections up by business, so a row without
+      // one was a sign-in nothing could use (the database fills it in too: migration 20261127_24).
+      await insert('client_connections', { order_id: id, business_id: order.business_id ?? null, toolkit: slug, composio_user_id: user, connected_account_id: cut(link.connected_account_id, 80) || null, status: 'link_made', link_expires_at: link.expires_at || null });
       await insert('events', { kind: 'client_connect_link', domain: null, detail: { order: id, toolkit: slug } }).catch(() => {});
       return { ok: true, order: order.code, toolkit: slug, link: link.redirect_url, expires_at: link.expires_at ?? null, note: 'Send this link to the owner yourself. It opens a Composio sign-in page; nothing goes live until you approve it.' };
     },
