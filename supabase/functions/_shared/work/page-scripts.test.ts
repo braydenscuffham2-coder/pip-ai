@@ -52,7 +52,7 @@ test("a record form with an email field on a signed-in page is never mistaken fo
 });
 
 // ---------- screen work's page scripts ----------
-import { ELEMENT_AT_JS, FORM_AT_JS, SELECT_AT_JS } from "./screen.ts";
+import { ELEMENT_AT_JS, FIND_JS, FORM_AT_JS, SELECT_AT_JS } from "./screen.ts";
 
 function pageWith(html: string, pick: string, url = "https://www.hirepip.com/practice/sb1/refills") {
   const dom = new JSDOM(`<!doctype html><body>${html}</body>`, { runScripts: "outside-only", url });
@@ -95,4 +95,15 @@ test("a drop-down option is chosen by its words, and a wrong name gets the real 
   const miss = w.eval(SELECT_AT_JS(1, 1, "Rex"));
   assert.equal(miss.ok, false); assert.deepEqual([...miss.options], ["Biscuit", "Juniper"]);
   assert.equal(pageWith(REFILL, "#bill").eval(SELECT_AT_JS(1, 1, "Biscuit")).why, "no_select");
+});
+
+test("a learned control is found again by what it is: a button by its words, a field by its name", { skip: !JSDOM }, () => {
+  const w = pageWith(REFILL, "#inner");
+  w.Element.prototype.getBoundingClientRect = function () { return { width: 100, height: 20, top: 10, left: 30, right: 130, bottom: 30, x: 30, y: 10 }; };
+  w.Element.prototype.scrollIntoView = function () {};
+  assert.deepEqual({ ...w.eval(FIND_JS({ tag: "button", text: "Add refill request" })) }, { x: 80, y: 20 });
+  assert.deepEqual({ ...w.eval(FIND_JS({ tag: "select", name: "patient", text: "whatever it showed last time" })) }, { x: 80, y: 20 });
+  assert.equal(w.eval(FIND_JS({ tag: "button", text: "Add refill" })), null, "words must match exactly, not roughly");
+  assert.equal(w.eval(FIND_JS({ tag: "button", text: "Save patient" })), null, "a control that is gone is not guessed at");
+  assert.equal(w.eval(FIND_JS({ tag: "a", text: "Billing" })) !== null, true);
 });

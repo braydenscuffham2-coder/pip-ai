@@ -19,7 +19,7 @@ import { Cdp, openPage } from "../_shared/setup/cdp.ts";
 import { browserbase } from "../_shared/setup/vendors.ts";
 import { sessionMinutes } from "../_shared/setup/guards.ts";
 import { failureEmail, FILL_CODES, nextRelease } from "../_shared/work/worker.ts";
-import { readAction, type ScreenDeps, type ScreenPlan, screenStep } from "../_shared/work/screen.ts";
+import { readAction, type ScreenDeps, type ScreenPlan, screenStep, templateTrace } from "../_shared/work/screen.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 const SB_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -84,7 +84,7 @@ const screenDeps: ScreenDeps = {
 
 function depsFor(seq: { n: number }, kind: string): WorkDeps {
   return {
-    ...(kind === "screen" ? { work: (job, identity, page, deps) => screenStep(job, identity, page, deps, screenDeps) } : {}),
+    ...(kind === "screen" || kind === "skill_verify" ? { work: (job, identity, page, deps) => screenStep(job, identity, page, deps, screenDeps) } : {}),
     async identity(id) { return (await rows(`tool_identities?id=eq.${id}&select=id,business_id,tool,tool_key,login_url,site,signin_hosts,browser_context_id,vault_item_id,totp,state,silent_signins`))?.[0] ?? null; },
     async saveIdentity(id, patch) { await db(`tool_identities?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }) }).then((r) => r.body?.cancel()); },
     browser: {
@@ -131,6 +131,14 @@ async function runJob(job: WorkJob, worker: string, deadline: number) {
       if (!saved) return;
       job = { ...job, ...saved };
     }
+    // Steps Pip already learned for this task in this tool are replayed with no model. Looked up once, when the job first starts.
+    if ((job.plan as ScreenPlan).replay === undefined && plan.task_key) {
+      const id = (await rows(`tool_identities?id=eq.${job.identity_id}&select=tool_key`))?.[0];
+      const skill = id?.tool_key ? (await rows(`site_skills?business_id=eq.${job.business_id}&tool_key=eq.${id.tool_key}&task_key=eq.${encodeURIComponent(plan.task_key)}&status=eq.ready&select=steps,version`))?.[0] : null;
+      const saved = await save(job, worker, { plan: { ...job.plan, replay: skill && Array.isArray(skill.steps) && skill.steps.length ? { steps: skill.steps, i: 0, version: skill.version } : null } });
+      if (!saved) return;
+      job = { ...job, ...saved };
+    }
   }
   try {
     for (;;) {
@@ -158,6 +166,10 @@ async function runJob(job: WorkJob, worker: string, deadline: number) {
       ? { patch: {}, next: "failed", reason: "A step failed three times in a row.", summary: "Pip could not finish this job. Nothing more was changed. Pip's team has been told." }
       : { patch: {}, next: "again", waitSeconds: 60 };
   }
+  // The steps it learned no longer fit and finding the way again also failed: this one job waits for the owner.
+  if (out.next === "failed" && (job.kind === "screen") && job.plan?.repairing) {
+    out = { patch: {}, next: "owner", alert: true, reason: "skill_repair_failed", summary: "This tool's screens have changed and Pip could not find its way through this job. It is paused until you look. Nothing it was not allowed to do was done." };
+  }
   const rel = nextRelease(out);
   await rpc("work_release", { p_job: job.id, p_worker: worker, p_status: rel.status, p_run_after: rel.runAfterSeconds ? new Date(Date.now() + rel.runAfterSeconds * 1000).toISOString() : null, p_summary: out.summary ?? null, p_reason: out.reason ?? null, p_outcome: out.outcome ?? null });
   if ((rel.status === "waiting_owner" || rel.status === "waiting_approval") && out.alert !== false && out.summary && job.identity_id) {
@@ -166,10 +178,37 @@ async function runJob(job: WorkJob, worker: string, deadline: number) {
     for (const email of await ownersOf(job.business_id)) await db("portal_outbox", { method: "POST", headers: { prefer: "return=minimal" }, body: JSON.stringify({ business_id: job.business_id, to_email: email, template: "tool_needs_you", data: { tool: id?.tool ?? "A tool", why: out.summary } }) }).then((r) => r.body?.cancel()).catch(() => {});
   }
   if ((rel.status === "failed" || rel.status === "done" || rel.status === "waiting_owner") && job.browser_session_id) await deps.browser.close(job.browser_session_id).catch(() => {});
+  await afterScreenJob(job, rel.status, out).catch((e) => console.error("[pip-work] skill", job.id, String((e as Error)?.message ?? e).slice(0, 120)));
   // A run the owner approved finished cleanly and saved something: one step closer to doing this task without asking.
   if (rel.status === "done" && job.kind === "screen" && job.plan?.approved && (job.plan?.writes ?? 0) > 0 && job.identity_id) {
     const id = (await rows(`tool_identities?id=eq.${job.identity_id}&select=tool_key`))?.[0];
     if (id?.tool_key) await rpc("screen_trust_note", { p_business: job.business_id, p_tool: id.tool_key, p_task: job.plan.task_key || job.title.slice(0, 80) });
+  }
+}
+
+/**
+ * What a finished screen job teaches. A run the model drove to a good end is kept as that task's steps (a first
+ * recording, or a repair). A clean replay counts as a use. A replay that no longer fit marks the skill for repair.
+ */
+async function afterScreenJob(job: WorkJob, status: string, out: Out) {
+  if (job.kind !== "screen" && job.kind !== "skill_verify") return;
+  const plan = job.plan as ScreenPlan;
+  if (!plan.task_key || !job.identity_id) return;
+  const tool = (await rows(`tool_identities?id=eq.${job.identity_id}&select=tool_key`))?.[0]?.tool_key;
+  if (!tool) return;
+  const key = { p_business: job.business_id, p_tool: tool, p_task: plan.task_key };
+  if (job.kind === "skill_verify") {
+    if (status === "done") await rpc("site_skill_mark", { ...key, p_ok: !plan.replay?.missed, p_used: false });
+    return;
+  }
+  if (plan.replay?.missed && status !== "done") { await rpc("site_skill_mark", { ...key, p_ok: false, p_used: false }); return; }
+  if (status !== "done" || out.outcome === "nothing_to_do") return;
+  const replayedCleanly = !!plan.replay && !plan.replay.missed && !(plan.trace?.length);
+  if (replayedCleanly) { await rpc("site_skill_mark", { ...key, p_ok: true, p_used: true }); return; }
+  // Only a run the model drove from the first page is worth keeping: its trace is the whole way through the task.
+  if ((!plan.replay || plan.replay.missed) && plan.trace?.length) {
+    await rpc("site_skill_save", { ...key, p_identity: job.identity_id, p_level: plan.level, p_screens: plan.screens, p_start_url: plan.start_url,
+      p_steps: templateTrace(plan.trace, plan.inputs), p_inputs: plan.inputs ?? {}, p_job: job.id, p_repair: !!plan.replay?.missed });
   }
 }
 
