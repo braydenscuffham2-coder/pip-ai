@@ -126,9 +126,9 @@ function createOffice(THREE, X, opts) {
     g.fillStyle = tool ? "#ffffff" : "#f6f7f9"; rr(g, 0, 0, W, H, 26); g.fill();
     if (!tool) { g.fillStyle = "#b8bcc8"; g.font = "500 30px " + FONT; g.fillText("Open slot", 36, 110); }
     if (tool) {
-      g.fillStyle = "#1b1e2b"; g.font = "600 46px " + FONT; g.fillText(tool.short, 36, 84, W - 72);
+      g.fillStyle = "#1b1e2b"; g.font = "600 64px " + FONT; g.fillText(tool.short, 34, 92, W - 68);
       const st = tool.state === "ok" ? ["Connected", "#0c6b5d"] : tool.state === "pip" ? ["Pip is on it", "#4b48c9"] : ["Needs you", "#8a5a00"];
-      g.fillStyle = st[1]; g.font = "500 28px " + FONT; g.fillText(st[0], 36, 132);
+      g.fillStyle = st[1]; g.font = "500 40px " + FONT; g.fillText(st[0], 34, 150);
     }
     t.needsUpdate = true;
   }
@@ -219,8 +219,14 @@ function createOffice(THREE, X, opts) {
     // in the desk's own frame: the teammate faces +z, their monitor stands to their left (+x); we come round the other end
     const shoulder = { pos: d.g.localToWorld(V(-0.72, 1.55, -1.5)), look: d.monC.clone() }, corner = d.g.localToWorld(V(-1.95, 1.9, 0.5)), side = d.g.localToWorld(V(-1.5, 1.78, -1.25));
     const w = 0.62, h = 0.36, tanH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-    const fill = PHONE() ? 0.96 : 0.86, dist = Math.max(h / (fill * 2 * tanH), w / (fill * 2 * tanH * camera.aspect));
-    const near = { pos: d.monC.clone().add(d.monN.clone().multiplyScalar(dist)), look: d.monC.clone() };
+    let near;
+    if (TALL()) { // a phone: the monitor spans the width, up top, above the sheet that holds its controls
+      const dist = w / (2 * tanH * camera.aspect), lift = V(0, 2 * dist * tanH * 0.24, 0);
+      near = { pos: d.monC.clone().add(d.monN.clone().multiplyScalar(dist)).sub(lift), look: d.monC.clone().sub(lift) };
+    } else {
+      const fill = 0.86, dist = Math.max(h / (fill * 2 * tanH), w / (fill * 2 * tanH * camera.aspect));
+      near = { pos: d.monC.clone().add(d.monN.clone().multiplyScalar(dist)), look: d.monC.clone() };
+    }
     return { shoulder, near, corner, side };
   }
 
@@ -355,7 +361,9 @@ function createOffice(THREE, X, opts) {
         hits.push({ obj: m.rig.body, kind: "mate", id: a.id });
       }
       m.desk = d; d.mate = m; m.data = a;
-      m.a.position.copy(d.seat).setY(0); m.a.rotation.y = Math.atan2(d.monC.x - d.seat.x, d.monC.z - d.seat.z); // turned to their monitor
+      // square to the desk (so from the aisle you see them three-quarters on), eyes on their monitor
+      const fr = d.g.localToWorld(V(0, 0, 1)).sub(d.g.position); m.a.position.copy(d.seat).setY(0);
+      m.front = Math.atan2(fr.x, fr.z); m.toMon = Math.atan2(d.monC.x - d.seat.x, d.monC.z - d.seat.z); if (m.yaw == null) m.a.rotation.y = m.yaw = m.front;
       m.actor.A.task = a.kind === "paused" ? "sleep" : a.kind === "needs" ? "needs" : a.kind === "live" || a.kind === "build" ? "type" : null;
       m.actor.acts.mood(a.kind === "needs" ? "concerned" : "calm");
       m.rig.skin.transparent = a.kind === "build"; m.rig.skin.opacity = a.kind === "build" ? 0.55 : 1;
@@ -368,7 +376,8 @@ function createOffice(THREE, X, opts) {
     const open = desks[list.length]; if (open) { open.mate = null; open.data = null; open.note.visible = false; open.lamp.material.color.set("#fff6e8");
       paintScreen(open, { name: "Open desk", role: "Room for one more", line: "A new teammate can sit here.", kind: "ready", hex: "#2fc4b2" }, null, 0); }
     const tools = (model.stations && model.stations.tools) || [];
-    devices.forEach((v, i) => { const tool = tools[i] || null; v.tool = tool; paintFace(v.ft, tool); });
+    const order = [4, 5, 6, 7, 0, 1, 2, 3, 8, 9, 10, 11];
+    devices.forEach((v) => { const k = order.indexOf(v.i), tool = tools[k] || null; v.tool = tool; paintFace(v.ft, tool); });
     if (meterTex) paintMeter(meterTex, meterOf(model.stations));
     if (mode === "floor" && !travel && !pipTravel) { const to = pipSpot(STOPS.floor()); if (to.distanceTo(pip.a.position) > 0.05) pipGo(to, 900); }
   }
@@ -381,6 +390,7 @@ function createOffice(THREE, X, opts) {
       if (!d.mate || !d.data || d.data.kind !== "live" || !d.g.visible) continue;
       if (now - d.lastPaint < 70) continue; d.lastPaint = now;
       const line = d.work[d.wi % d.work.length] || "";
+      if (now > (d.eyesAt || 0) && !(mode === "desk" && focusId === d.mate.id)) { d.eyesAt = now + 3000 + Math.random() * 3200; d.mate.actor.acts.lookAt(d.monC.clone().add(V(0, 0.03, 0)), 2.5); }
       if (d.typed < line.length) { d.typed = Math.min(line.length, d.typed + 1 + (Math.random() < 0.3 ? 1 : 0)); d.mate.actor.A.task = "type"; }
       else if (!d.doneAt) { d.doneAt = now; d.mate.actor.A.task = null; if (Math.random() < 0.5) d.mate.actor.acts.nod(); }
       else if (now - d.doneAt > 2600) { d.doneAt = 0; d.typed = 0; d.wi++; }
@@ -398,7 +408,7 @@ function createOffice(THREE, X, opts) {
   }
   let orb = null;
   function syncPins() {
-    pins.replaceChildren(); orb = null;
+    pins.replaceChildren(); orb = null; if (flight) pins.append(flight.cap);
     const b = model.bubble;
     if (b && !PHONE()) {
       b.classList.add("hl-pin", "hl-say"); pins.append(b);
@@ -420,7 +430,7 @@ function createOffice(THREE, X, opts) {
       orb.classList.toggle("hl-hide", !vis || !still);
     }
     for (const [id, el] of model.tags || []) { const m = mates.get(id); if (!m || el.parentElement !== pins) continue;
-      const vis = place(m.desk.seat.clone().add(V(0, 0.36, 0)), el, 0, 0); el.classList.toggle("hl-hide", !vis || mode !== "floor" || !!travel); }
+      const vis = place(m.desk.seat.clone().add(V(0, 0.36, 0)), el, 0, 0); el.classList.toggle("hl-hide", !vis || mode !== "floor" || !!travel || entering); }
   }
 
   // ---------- a teammate's screen: the real HTML, glued to their monitor, sharp at any size ----------
@@ -528,7 +538,11 @@ function createOffice(THREE, X, opts) {
       const list = [...mates.values()].filter((m) => m.data.kind === "live" || m.data.kind === "ready");
       if (list.length >= 2) {
         const a = list[Math.floor(Math.random() * list.length)], b = list.filter((x) => x !== a)[Math.floor(Math.random() * (list.length - 1))];
-        flight = { a, b, t0: now + 700 }; a.actor.A.throwAt = a.actor.t + 0.25; b.actor.A.catchAt = b.actor.t + 2.3;
+        const cap = document.createElement("div"); cap.className = "hl-pin hl-plane hl-hide"; cap.setAttribute("aria-hidden", "true");
+        const nm = (m) => (m.data && m.data.name) || "";
+        cap.append(Object.assign(document.createElement("b"), { textContent: nm(a) }), document.createTextNode(" \u2192 "), Object.assign(document.createElement("b"), { textContent: nm(b) }));
+        pins.append(cap);
+        flight = { a, b, t0: now + 700, cap }; a.actor.A.throwAt = a.actor.t + 0.25; b.actor.A.catchAt = b.actor.t + 2.3;
         a.actor.acts.lookAt(b.desk.seat.clone(), 2.6); b.actor.acts.lookAt(a.desk.seat.clone(), 3.8);
       }
     }
@@ -538,7 +552,8 @@ function createOffice(THREE, X, opts) {
         const p0 = flight.a.desk.seat.clone().add(V(0, 0.25, 0)), p1 = flight.b.desk.seat.clone().add(V(0, 0.2, 0)), at = (u) => { const p = p0.clone().lerp(p1, u); p.y += Math.sin(u * Math.PI) * 0.9; return p; };
         plane.position.copy(at(k)); plane.lookAt(at(k + 0.02)); plane.rotateZ(Math.sin(k * 9) * 0.3);
       }
-      if (k >= 1.2) { flight.b.actor.acts.nod(); flight = null; }
+      const vis = place(plane.position.clone().add(V(0, 0.16, 0)), flight.cap, 0, 0); flight.cap.classList.toggle("hl-hide", !(vis && k > 0.08 && k < 0.92 && mode === "floor" && !travel));
+      if (k >= 1.2) { flight.b.actor.acts.nod(); flight.cap.remove(); flight = null; }
     }
   }
 
@@ -553,7 +568,11 @@ function createOffice(THREE, X, opts) {
     par.x += (par.tx - par.x) * 0.05; par.y += (par.ty - par.y) * 0.05;
     stepDoors(now); stepCamera(now, dt); stepPip(now); stepPlane(now); stepWork(now);
     const tS = now / 1000;
-    pip.actor.step(tS); for (const m of mates.values()) m.actor.step(tS);
+    pip.actor.step(tS);
+    for (const m of mates.values()) { // when you sit with someone, they turn to their screen with you
+      if (m.front != null) { m.yaw = lerpAngle(m.yaw, mode === "desk" && focusId === m.id ? m.toMon : m.front, 0.05); m.a.rotation.y = m.yaw; }
+      m.actor.step(tS);
+    }
     for (const v of devices) {
       const k = v.lift ? clamp(1 - (now - v.lift) / 900) : 0, st = v.tool ? v.tool.state : "none";
       v.g.position.y = marks["slot_" + v.i].y + Math.sin(k * Math.PI) * 0.05;
@@ -609,9 +628,9 @@ function createOffice(THREE, X, opts) {
       if (mode === "floor" && !travel) return Promise.resolve();
       const wasDesk = mode === "desk", m = mates.get(focusId);
       mode = "floor"; focusId = null; stationId = null; zoomed = false; mountScreen(null, null); syncPins();
-      return ready.then(() => { const home = STOPS.floor(); pipSide = -1; pipGo(pipSpot(home), 1800);
+      return ready.then(() => { const home = STOPS.floor(); pipSide = -1; pipGo(pipSpot(home), 1300); // he sets off first and keeps ahead
         const st = wasDesk && m ? deskStops(m.desk) : null;
-        return go(home, { before: st ? [st.shoulder.pos, st.side, st.corner] : [], delay: 160 }).then(() => pip.actor.acts.lookAt(camera.position.clone(), 1)); });
+        return go(home, { before: st ? [st.shoulder.pos, st.side, st.corner] : [], delay: 420 }).then(() => pip.actor.acts.lookAt(camera.position.clone(), 1)); });
     },
     station(id) {
       if (!(id in STOPS) || (mode === "station" && stationId === id)) return Promise.resolve();
@@ -628,7 +647,7 @@ function createOffice(THREE, X, opts) {
         pipGo(d.g.localToWorld(V(-0.9, 0, 2.3)).setY(0), 1500);
         setTimeout(() => { m.actor.acts.lookAt(camera.position.clone(), 1.4); if (m.data.kind !== "paused") m.actor.acts.wave(); }, 900);
         const looks = [cur.look.clone(), d.seat.clone().add(V(0, 0.05, 0)), d.monC.clone(), d.monC.clone()];
-        const looks2 = [cur.look.clone(), d.seat.clone().add(V(0, 0.05, 0)), d.seat.clone().add(V(0, 0.05, 0)), d.monC.clone(), d.monC.clone()];
+        const looks2 = [cur.look.clone(), d.seat.clone().add(V(0, 0.05, 0)), d.seat.clone().add(V(0, 0.05, 0)), d.monC.clone(), st.near.look.clone()];
         return go(st.near, { after: [st.corner, st.side, st.shoulder.pos], looks: looks2, ms: RM() ? 1 : 3200, delay: 180 }).then(() => settled()).then(() => { if (mode === "desk" && focusId === id) zoomed = true; });
       });
     },
@@ -671,6 +690,8 @@ function CSS_TEXT() { return `
 .hl-pins .btn.pri.hl-orb::before{content:"";position:absolute;left:4px;top:50%;width:36px;height:36px;translate:0 -50%;border-radius:50%;
   background:radial-gradient(circle at 34% 30%,#ffffff 0%,#e9fbf8 28%,#9fe9df 58%,#5fd6c8 100%);box-shadow:0 0 18px rgba(95,214,200,.7),inset 0 -3px 6px rgba(0,0,0,.08);animation:hlOrb 2.6s ease-in-out infinite}
 @keyframes hlOrb{50%{box-shadow:0 0 26px rgba(95,214,200,.95),inset 0 -3px 6px rgba(0,0,0,.08)}}
+.hl-pins .hl-plane{translate:-50% -100%;padding:5px 11px;border-radius:999px;background:rgba(255,255,255,.92);color:#2b2f3a;font:500 12px/1.2 Geist,system-ui,sans-serif;white-space:nowrap;box-shadow:0 8px 20px -10px rgba(20,24,40,.3),0 0 0 1px rgba(16,20,40,.05)}
+.hl-pins .hl-plane b{font-weight:600}
 .hl-cards{position:absolute;left:50%;bottom:calc(96px + env(safe-area-inset-bottom,0px));translate:-50% 0;z-index:4;display:flex;gap:12px;pointer-events:auto}
 .hl-cards .sc-card{position:relative!important;transform:none!important}
 .hl-layer{position:fixed;inset:0;z-index:13;pointer-events:none}

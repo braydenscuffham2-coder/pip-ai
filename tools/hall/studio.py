@@ -48,7 +48,7 @@ def sky_mat():
     m["hex"] = "#e6eef9"; m["emit"] = "#e6eef9"; m["es"] = 2.2; M["sky"] = m; return m
 
 def materials():
-    mat('floor', '#e6e2dc', 0.32); mat('wall', '#f6f5f2', 0.7); mat('ceil', '#fafaf8', 0.8); mat('white', '#f8f8f6', 0.45)
+    mat('floor', '#e8e2d9', 0.32); mat('wall', '#f7f5f1', 0.7); mat('peach', '#f2d6c2', 0.8); mat('mint', '#cde6df', 0.8); mat('coffee', '#3a3633', 0.4); mat('ceil', '#fafaf8', 0.8); mat('white', '#f8f8f6', 0.45)
     mat('oak', '#e2c7a2', 0.55); mat('fabric', '#dfe1e4', 0.9); mat('rug', '#e9e7e3', 0.95); mat('metal', '#d6d9de', 0.3)
     mat('sage', '#a8c8a2', 0.7); mat('sage2', '#8db38c', 0.7); mat('pot', '#f1efeb', 0.6); mat('stem', '#9c8a73', 0.7)
     mat('ink', '#2b2f3a', 0.4); mat('soft', '#eceef1', 0.6); mat('city', '#eef3fa', 0.9, '#f1f5fb', 1.9)
@@ -69,8 +69,10 @@ def plant(name, x, y, c, s=1.0, tall=False):
 
 def shell(room, live, marks):
     # floor, ceiling, walls
-    bpy.ops.mesh.primitive_plane_add(size=1, location=(0, 11, 0)); fl = bpy.context.object; fl.name = "floor"; fl.scale = (2 * W + 1, L + 6, 1)
-    bpy.ops.object.transform_apply(scale=True); finish(fl, M['floor'], room, smooth=False)
+    # the floor in two pieces: a finely divided strip by the windows, where the sun draws the mullions' shadows
+    for name, x0, x1 in (("floor_sun", -W - 0.5, -1.5), ("floor", -1.5, W + 0.5)):
+        bpy.ops.mesh.primitive_plane_add(size=1, location=((x0 + x1) / 2, 11, 0)); fl = bpy.context.object; fl.name = name; fl.scale = (x1 - x0, L + 6, 1)
+        bpy.ops.object.transform_apply(scale=True); finish(fl, M['floor'], room, smooth=False)
     plane("ceiling", (2 * W, L), (0, L / 2, H), M['ceil'], room, rot=(math.pi, 0, 0))
     for x in (-4.0, 0.0, 4.0):  # light slots in the ceiling
         rbox("slot_%d" % x, (0.1, L - 3, 0.04), (x, L / 2, H - 0.02), M['slot'], room, bevel=0)
@@ -150,11 +152,33 @@ def shell(room, live, marks):
     # columns, plants, two framed prints, a rug under the team
     for y in (8.0, 16.0):
         cyl("col_l%d" % y, 0.22, H, (-W + 0.45, y, H / 2), M['white'], room, v=40)
-    for (x, y, s, t) in ((-7.1, 1.0, 1.0, True), (7.0, 1.2, 0.9, False), (-7.1, 22.8, 1.1, True), (7.1, 22.8, 1.0, True), (-7.0, 12.0, 0.8, False), (6.9, 19.6, 0.85, False)):
+    for (x, y, s, t) in ((-7.1, 1.0, 1.0, True), (7.0, 1.2, 0.9, False), (-7.1, 22.8, 1.1, True), (7.1, 22.8, 1.0, True), (-7.0, 12.0, 0.8, False),
+                         (6.9, 18.2, 0.85, False), (-4.6, 23.4, 1.15, True), (4.6, 23.4, 1.15, True), (-7.2, 6.0, 0.9, False), (-7.2, 17.6, 0.9, True)):
         plant("plant_%d_%d" % (x, y), x, y, room, s, t)
-    for i, y in enumerate((11.0, 19.6)):
-        rbox("print%d" % i, (0.04, 1.1, 0.8), (W - 0.03, y, 2.0), M['white'], room, bevel=0.01)
-        rbox("print%d_art" % i, (0.02, 0.86, 0.56), (W - 0.06, y, 2.0), M['sage' if i else 'oak'], room, bevel=0)
+    # wall art: two soft abstract pieces on the right wall, warm pastels
+    def art(name, y, w, h, shapes):
+        rbox(name, (0.05, w + 0.08, h + 0.08), (W - 0.03, y, 2.05), M['white'], room, bevel=0.01)
+        rbox(name + "_bg", (0.02, w, h), (W - 0.065, y, 2.05), M['soft'], room, bevel=0)
+        for k, (dy, dz, sw, sh, m) in enumerate(shapes):
+            cyl("%s_s%d" % (name, k), sw / 2, 0.012, (W - 0.08 - k * 0.004, y + dy, 2.05 + dz), M[m], room, rot=(0, math.pi / 2, 0), v=48)
+    art("art_a", 11.4, 1.7, 1.1, [(-0.35, 0.1, 0.8, 0.8, 'peach'), (0.3, -0.12, 0.7, 0.7, 'mint'), (0.15, 0.3, 0.3, 0.3, 'oak')])
+    art("art_b", 19.4, 1.0, 1.4, [(0.0, 0.25, 0.7, 0.7, 'sage'), (-0.1, -0.3, 0.5, 0.5, 'peach')])
+    # a coffee bar by the windows at the back: an island, stools, a machine, cups, two pendants
+    bx, by = -5.5, 20.4
+    rbox("bar_body", (0.75, 2.6, 0.98), (bx, by, 0.49), M['white'], room, bevel=0.06)
+    rbox("bar_top", (0.9, 2.75, 0.05), (bx, by, 1.0), M['oak'], room, bevel=0.02)
+    rbox("bar_machine", (0.4, 0.32, 0.42), (bx - 0.08, by + 0.75, 1.235), M['white'], room, bevel=0.05)
+    rbox("bar_machine_face", (0.02, 0.24, 0.16), (bx + 0.13, by + 0.75, 1.27), M['coffee'], room, bevel=0.01)
+    for k, dy in enumerate((-0.6, -0.42, 0.1)): cyl("cup%d" % k, 0.045, 0.09, (bx + 0.12, by + dy, 1.07), M['white' if k != 1 else 'peach'], room, v=20)
+    for k, dy in enumerate((-0.8, 0.0, 0.8)):
+        cyl("stool%d_seat" % k, 0.2, 0.05, (bx + 0.75, by + dy, 0.72), M['oak'], room, v=28)
+        cyl("stool%d_leg" % k, 0.025, 0.7, (bx + 0.75, by + dy, 0.36), M['metal'], room, v=10)
+        cyl("stool%d_foot" % k, 0.17, 0.02, (bx + 0.75, by + dy, 0.01), M['metal'], room, v=24)
+    for k, dy in enumerate((-0.6, 0.6)):
+        cyl("pend%d_cord" % k, 0.006, 1.6, (bx, by + dy, H - 0.8), M['ink'], room, v=6)
+        sphere("pend%d_shade" % k, 0.17, (bx, by + dy, H - 1.65), M['white'], room, sub=3, scale=(1, 1, 0.8))
+        sphere("pend%d_bulb" % k, 0.08, (bx, by + dy, H - 1.75), M['lampglow'], room, sub=2)
+    rbox("bar_rug", (2.2, 3.6, 0.01), (bx + 0.4, by, 0.005), M['rug'], room, bevel=0.005)
     rbox("rug", (9.4, 12.6, 0.012), (0, 13.1, 0.006), M['rug'], room, bevel=0.005)
     # where the camera starts and where the team's rows begin
     empty("cam_arrive", (0, -1.5, 1.62), c=marks)
@@ -207,7 +231,7 @@ def lights(S):
         if kind == 'SUN': d.angle = math.radians(angle)
         o = bpy.data.objects.new(name, d); o.location = loc; o.rotation_euler = rot; S.collection.objects.link(o)
     # sun pours in through the window wall from the left, low enough to lay soft bright patches across the floor
-    light("sun", 'SUN', (0, 0, 20), 7.0, '#fff2df', rot=(math.radians(56), 0, math.radians(-62)), angle=2.5)
+    light("sun", 'SUN', (0, 0, 20), 7.5, '#fff0d8', rot=(math.radians(56), 0, math.radians(-62)), angle=1.2)
     for y in (4, 12, 20): light("ceil%d" % y, 'AREA', (0, y, H - 0.15), 70, '#ffffff', size=7, rot=(0, 0, 0))
     light("window_fill", 'AREA', (-W + 0.4, L / 2, 2.2), 350, '#eaf1fb', size=10, rot=(0, math.radians(-90), 0))
     S.render.engine = 'CYCLES'; S.cycles.samples = 48; S.cycles.use_denoising = True
@@ -271,7 +295,7 @@ def bake(samples=64):
     S = bpy.context.scene; S.cycles.use_denoising = False
     for n in ("door_l", "door_r"): bpy.data.objects[n].hide_render = True  # light the room with the doors open
     big = {"floor", "ceiling", "rug", "wall_r", "niche_back"}
-    def rstep(o): return 0.24 if o.name == "floor" else 0.3 if o.name in big or o.name.startswith(("fwall", "bwall")) else 0.45 if o.name not in ("sky",) and not o.name.startswith("tower") else 99
+    def rstep(o): return 0.11 if o.name == "floor_sun" else 0.28 if o.name == "floor" else 0.3 if o.name in big or o.name.startswith(("fwall", "bwall")) else 0.45 if o.name not in ("sky",) and not o.name.startswith("tower") else 99
     # 1) the desk, lit as if it stood in the room's left row (its copies are close enough wherever they stand)
     dobjs = [o for o in bpy.data.collections["desk"].objects if o.type == 'MESH']
     for o in dobjs: o.matrix_world = __import__('mathutils').Matrix.Translation((-ROW_X, 13.6, 0)) @ __import__('mathutils').Matrix.Rotation(math.radians(65), 4, 'Z') @ o.matrix_world

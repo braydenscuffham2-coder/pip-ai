@@ -313,7 +313,7 @@ function createPipEngine(THREE, opts) {
     if (A.task === "type" && !waking) {
       const g = (t + A.ph) % 9.5, glance = g > 6.2 && g < 7.6, sip = (t + A.ph * 1.7) % 23 < 2.2;
       const tap = (o2) => Math.max(0, Math.sin(t * 16 + o2)) * 0.06;
-      hand(0, V(-0.5, -0.78 + tap(0), 1.05), 0.92); hand(1, sip ? V(0.32, -0.42, 1.02) : V(0.5, -0.78 + tap(1.9), 1.05), 0.92);
+      hand(0, V(-0.44, -1.1 + tap(0), 1.34), 0.92); hand(1, sip ? V(0.32, -0.42, 1.02) : V(0.44, -1.1 + tap(1.9), 1.34), 0.92); // on the keys
       Y.pitch += glance ? -0.02 : 0.07; Y.mouth = sip ? 0.1 : 0.3;
       if (!look) Y.lookAt = glance ? toLocal(camera.position.clone()) : pos.clone().add(V(Math.sin(t * 0.7) * 0.4, -0.35, 3));
       if (glance) Y.eyeL = Y.eyeR = "open";
