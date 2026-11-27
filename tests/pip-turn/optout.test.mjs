@@ -142,3 +142,17 @@ test("the one outbound gate: when sending is paused, no email goes out and none 
   assert.equal(t.rpcs("portal_email_gate").length, 0, "and the email gate was never reached");
   t.restore();
 });
+
+test("on a phone call the teammate is told to answer in a sentence or two and is given a small reply budget; chat is unchanged", async () => {
+  const t = await boot({ model: [says("We open at five on Friday.")] });
+  await t.turn("What time do you open on Friday?", { channel: "voice" });
+  const call = t.world.model.calls[0];
+  assert.equal(call.max_tokens, 320);
+  assert.match(call.system[0].text, /THIS IS A PHONE CALL\. The caller hears your words read aloud\. Answer in one or two short sentences\./);
+  t.restore();
+  const w = await boot({ model: [says("We open at 5 PM on Friday.")] });
+  await w.turn("What time do you open on Friday?");
+  assert.equal(w.world.model.calls[0].max_tokens, 1600);
+  assert.doesNotMatch(w.world.model.calls[0].system[0].text, /PHONE CALL/);
+  w.restore();
+});

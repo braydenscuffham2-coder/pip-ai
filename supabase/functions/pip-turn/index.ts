@@ -210,14 +210,17 @@ const visible = (input: J, hide: string[]) => ({ ...input, properties: Object.fr
 const refusal = (who: unknown, tool: string, why: string) => cut(`${who} asked for something this job may not do (${tool}). Refused: ${why}`, 500);
 
 // ---------- the model ----------
-async function claude(system: string, messages: J[], tools: J[]): Promise<J | null> {
+/** On a phone call every second of silence is felt. A spoken answer is one or two sentences, so the model is told so and is not given room to write more. */
+const VOICE_MAX_TOKENS = 320;
+const VOICE_RULES = "\n\nTHIS IS A PHONE CALL. The caller hears your words read aloud. Answer in one or two short sentences. No lists, no headings, no web addresses read out, no \"as an AI\" more than once. Ask one question at a time. If you need a tool, use it at once without saying you are about to.";
+async function claude(system: string, messages: J[], tools: J[], maxTokens = 1600): Promise<J | null> {
   const key = Deno.env.get("ANTHROPIC_API_KEY");
   if (!key) return null;
   try {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: MODEL, max_tokens: 1600, system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }], messages, ...(tools.length ? { tools } : {}) }),
+      body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }], messages, ...(tools.length ? { tools } : {}) }),
       signal: AbortSignal.timeout(22000),
     });
     if (!r.ok) { console.error("[turn] model", r.status, (await r.text()).slice(0, 200)); return null; }
@@ -615,7 +618,7 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
   }
 
   for (let round = 0; round < 5 && Date.now() < deadline && body?.limited !== true && job; round++) {
-    const r = await claude(system, msgs, tools);
+    const r = await claude(channel === "voice" ? system + VOICE_RULES : system, msgs, tools, channel === "voice" ? VOICE_MAX_TOKENS : 1600);
     if (!r) break;
     usedModel = true; cost += costOf(r.usage);
     const uses = (r.content ?? []).filter((x: J) => x.type === "tool_use");
