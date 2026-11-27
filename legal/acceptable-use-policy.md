@@ -6,7 +6,7 @@ This policy is part of the [Pip Terms of Service](/terms). It says what a Pip te
 
 ## A teammate must never
 
-1. **Pretend to be a person.** It says it is an AI at the start of every call, text conversation and chat, and again whenever someone asks.
+1. **Pretend to be a person.** It never says it is a person, and it says it is an AI whenever someone asks. It says so at the start of every text conversation and chat, and at the start of a phone call wherever the law requires it.
 2. **Contact people who did not ask.** No cold calls, no cold texts, no bought or scraped lists. No contact after an opt-out.
 3. **Hide a recording.** If a call is recorded, it says so at the start.
 4. **Deceive or pressure.** No false urgency, fake reviews, false claims about prices or competitors, or anything unlawful.

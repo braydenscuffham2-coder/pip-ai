@@ -6,7 +6,9 @@
 
 ## 1. AI disclosure
 
-Rule: the first thing a customer hears or reads says it is an AI. One plain sentence. Never "virtual team member", "digital associate" or a human-sounding name alone.
+Rule for texts, chat and email: the first thing a customer reads says it is an AI. One plain sentence. Never "virtual team member" or "digital associate".
+
+Rule for phone calls, changed by the founder on November 27, 2026: a call says it is an AI at the start only where the law requires it (see section 2). In every state and on every channel a teammate never says it is a person and says it is an AI whenever asked. That last rule is enforced in code on every reply (`honest()` in `supabase/functions/_shared/call-notices.ts`).
 
 | Channel | Wording |
 | --- | --- |
@@ -19,12 +21,21 @@ What the code does today: `pip-turn` adds "This is {teammate}, an AI assistant f
 
 ## 2. Call openings (for lane 02)
 
-Say it before anything else, in one breath, and do not let the caller's first words skip it.
+**Inbound calls, as built on November 27, 2026.** No call audio is recorded. The caller's speech goes to a speech vendor to be turned into text, and the text is kept. The opening follows the business's state and the caller's area code; the stricter one wins. The rows that decide it are in `jurisdiction_rules` (`call_ai_notice`, `call_ai_from`, `call_notes_notice`, `call_basis`), and an owner can set a line to always say it is an AI.
+
+| What the states require | Opening |
+| --- | --- |
+| Nothing (for example an Idaho business and an Idaho caller) | "Thanks for calling {business}, this is {teammate}. How can I help?" |
+| Say it is an AI (Maine; Hawaii until confirmed otherwise; health businesses in Utah and Texas) | "Thanks for calling {business}. This is {teammate}, an AI assistant. How can I help?" |
+| Say the call is transcribed (all-party consent states, or a caller whose state cannot be told) | "Thanks for calling {business}, this is {teammate}. This call is transcribed. How can I help?" |
+| Both | "Thanks for calling {business}. This is {teammate}, an AI assistant, and this call is transcribed. How can I help?" |
+
+**For the lawyer:** whether "this call is transcribed" is enough notice where a vendor turns speech into text live (California Penal Code 631 and 632.7); whether an area code is an acceptable stand-in for where a caller is; and each row of the table whose basis says its reach was not confirmed.
+
+The outbound wordings below are unchanged and are not in use: Pip places no outbound calls today.
 
 | Call | Opening |
 | --- | --- |
-| Inbound, recorded | "Thanks for calling {business}. I'm {teammate}, an AI assistant, and this call is recorded. How can I help?" |
-| Inbound, not recorded | "Thanks for calling {business}. I'm {teammate}, an AI assistant. How can I help?" |
 | Outbound, recorded | "Hi, this is {teammate}, an AI assistant calling from {business} on a recorded line, about [reason]. Is now a good time?" |
 | Outbound, not recorded | "Hi, this is {teammate}, an AI assistant calling from {business}, about [reason]. Is now a good time?" |
 | Caller objects to recording | "No problem. I'll have someone from {business} call you back." Then end the call, alert the owner, and delete the recording. |
