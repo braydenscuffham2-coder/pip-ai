@@ -10,7 +10,7 @@
 import { type Deps, type SetupRow, step } from "../_shared/setup/engine.ts";
 import { Cdp, openPage } from "../_shared/setup/cdp.ts";
 import { browserbase } from "../_shared/setup/vendors.ts";
-import { type Action, leaks, sessionMinutes } from "../_shared/setup/guards.ts";
+import { type Action, leaks, sessionMinutes, siteOf } from "../_shared/setup/guards.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 const SB_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -73,6 +73,22 @@ async function model(input: { system: string; text: string; image: string }, row
   return { action, usage: j.usage ?? {} };
 }
 
+/**
+ * A tool that was connected in the browser becomes one of Pip's saved sign-ins: the browser state and the vaulted login,
+ * per business and per tool, so background work can use it later. Jobs that were waiting on this tool go back in the queue.
+ */
+async function rememberIdentity(row: SetupRow) {
+  const site = siteOf(row.login_url || "");
+  if (!row.browser_context_id || !row.login_url || !site) return;
+  const vaultItem = (row as unknown as { vault_item_id?: string | null }).vault_item_id ?? null;
+  const totp = vaultItem ? !!(await rows(`vault_items?id=eq.${vaultItem}&select=has_authenticator`))?.[0]?.has_authenticator : false;
+  const t = new Date().toISOString();
+  const r = await db("tool_identities?on_conflict=business_id,tool_key", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify({ business_id: row.business_id, tool: row.tool, tool_key: row.tool_key, login_url: row.login_url, site, browser_context_id: row.browser_context_id, vault_item_id: vaultItem, totp, state: "signed_in", reason: null, checked_at: t, signed_in_at: t, updated_at: t }) });
+  const id = r.ok ? ((await r.json()) as { id: string }[])?.[0]?.id : null;
+  if (id) await db(`work_jobs?identity_id=eq.${id}&status=eq.waiting_owner`, { method: "PATCH", body: JSON.stringify({ status: "queued", state: "start", run_after: t, reason: null, updated_at: t }) }).then((x) => x.body?.cancel());
+}
+
 const deps: Deps = {
   async paused() { return (await setting("kill_switch")) === true || (await setting("setup_paused")) === true; },
   async take(usd) { const why = await rpc("pip_take", { p_kind: "setup_usd", p_units: Math.round(usd * 10000) / 10000, p_room: 0 }); return typeof why === "string" ? why : null; },
@@ -108,6 +124,7 @@ const deps: Deps = {
   async done(row, ok) {
     if (row.plan?.connection_id) await db(`business_connections?id=eq.${row.plan.connection_id}`, { method: "PATCH", body: JSON.stringify({ status: ok ? "active" : "failed", checked_at: new Date().toISOString(), updated_at: new Date().toISOString() }) }).then((r) => r.body?.cancel());
     await db("activity_log", { method: "POST", headers: { prefer: "return=minimal" }, body: JSON.stringify({ business_id: row.business_id, kind: "connection", summary: ok ? `${row.tool} is connected and its test passed.` : `${row.tool} could not be connected. Pip will tell you what it needs.`, outcome: ok ? "ok" : "failed", actor: "pip" }) }).then((r) => r.body?.cancel());
+      if (ok) await rememberIdentity(row).catch(() => {});
   },
   async reSignIn(row) {
     const owners = await rows(`members?business_id=eq.${row.business_id}&role=eq.owner&status=neq.removed&select=email`);

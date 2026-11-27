@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MASK_JS, SIGNED_IN_JS, TAG_LOGIN_JS } from "./guards.ts";
-import { fillLogin } from "./cdp.ts";
+import { fillCode, fillLogin } from "./cdp.ts";
 import type { Page } from "./engine.ts";
 
 let JSDOM: any = null;
@@ -80,4 +80,21 @@ test("a 'show password' toggle does not get past the mask, and a captcha frame i
 test("signed-in check: a password field still on screen means still signing in", { skip: !JSDOM }, async () => {
   assert.equal((await pageFrom(LOGIN).page.evaluate(SIGNED_IN_JS)).passwordShowing, true);
   assert.equal((await pageFrom(`<h1>Dashboard</h1>`).page.evaluate(SIGNED_IN_JS)).passwordShowing, false);
+});
+
+test("a one-time code goes into the page's own code field, is marked as secret, and the form is submitted", { skip: !JSDOM }, async () => {
+  const { w, page, submitted } = pageFrom(`<form action="/verify"><input type="text" name="search"><input type="text" name="otp" autocomplete="one-time-code"><button type="submit">Verify</button></form>`);
+  const r = await fillCode(page, "492817");
+  assert.deepEqual(r, { field: true, submitted: true });
+  assert.equal(w.document.querySelector("[name=otp]").value, "492817");
+  assert.equal(w.document.querySelector("[name=otp]").dataset.pipFilled, "1", "so every later screenshot blurs it");
+  assert.equal(w.document.querySelector("[name=search]").value, "", "nothing is typed into any other field");
+  assert.ok(submitted() >= 1);
+});
+
+test("with no code field on the page, no code is typed anywhere", { skip: !JSDOM }, async () => {
+  const { w, page } = pageFrom(`<form><input type="text" name="search"><input type="password" name="password"></form>`);
+  assert.deepEqual(await fillCode(page, "492817"), { field: false, submitted: false });
+  assert.equal(w.document.querySelector("[name=search]").value, "");
+  assert.equal(w.document.querySelector("[name=password]").value, "");
 });

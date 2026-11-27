@@ -77,6 +77,9 @@ const WORDS = {
   vault_not_configured: "The vault isn't switched on yet. Sign in directly in the window instead.",
   not_waiting_for_sign_in: "Pip isn't waiting for a sign-in right now.",
   browser_closed: "The secure window closed. Tap Sign in again.",
+  wrong_site: "The window is not on this tool's own sign-in page, so nothing was saved or typed. Go back to the sign-in page in the window and send again.",
+  authenticator_not_allowed: "Pip has not checked this tool's rules on automated sign-in yet, so it won't keep an authenticator key for it. Clear that field and send again.",
+  bad_authenticator: "That doesn't look like an authenticator setup key. Clear that field, or paste the key the tool shows when you turn on two-step sign-in.",
 };
 
 function liveView(url, interactive) {
@@ -90,16 +93,17 @@ function liveView(url, interactive) {
 function keyBox(s) {
   const user = h("input", { id: "kb-user", autocomplete: "username", inputmode: "email", required: true });
   const pass = h("input", { id: "kb-pass", type: "password", autocomplete: "current-password", required: true });
+  const auth = h("input", { id: "kb-auth", type: "password", autocomplete: "off", spellcheck: "false" });
   const out = h("div", { "aria-live": "polite" });
   const form = h("form", { onsubmit: async (e) => {
     e.preventDefault();
-    const u = user.value, p = pass.value;
-    pass.value = ""; // cleared at once: nothing typed here is kept on this page
+    const u = user.value, p = pass.value, a = auth.value.trim();
+    pass.value = ""; auth.value = ""; // cleared at once: nothing typed here is kept on this page
     if (!u || !p) return;
     out.replaceChildren(h("p", { class: "note" }, "Sending…"));
     try {
       const t = await api("ticket");
-      const r = await fetch(t.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ticket: t.ticket, username: u, password: p }) });
+      const r = await fetch(t.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(a ? { ticket: t.ticket, username: u, password: p, authenticator: a } : { ticket: t.ticket, username: u, password: p }) });
       const j = await r.json().catch(() => ({}));
       out.replaceChildren(h("p", { class: "note " + (j.ok ? "ok" : "err") }, WORDS[j.code] || "That didn't go through. You can sign in directly in the window."));
     } catch (err) { out.replaceChildren(h("p", { class: "note err" }, err.message)); }
@@ -107,6 +111,9 @@ function keyBox(s) {
     h("p", { class: "fine" }, "Goes straight to your own 1Password vault and into the sign-in form. Pip's AI never sees it."),
     h("label", { for: "kb-user" }, "Username or email"), user,
     h("label", { for: "kb-pass" }, "Password"), pass,
+    h("details", {}, h("summary", {}, "This is a separate login made for Pip, with its own authenticator"),
+      h("p", { class: "fine" }, "Optional. If you made a login just for Pip and turned on two-step sign-in for it, paste the authenticator setup key the tool showed you. It goes to your vault, which makes the codes, so Pip can sign back in by itself. Leave it empty for your own login: you'll type codes in the window."),
+      h("label", { for: "kb-auth" }, "Authenticator setup key"), auth),
     h("button", { class: "pri", type: "submit" }, "Send to the sign-in form"), out);
   return h("div", { class: "card" }, h("span", { class: "tag" }, "Key box"), form);
 }
