@@ -229,8 +229,49 @@ async function business(u: User, bid: string) {
     doors: r.role === "staff" ? [] : await doorList(bid),
     pieces: await pieceList(bid),
     notes: r.role === "staff" ? [] : await noteList(bid),
+    inbox: r.role === "staff" ? [] : await inboxList(bid, ((ag.data as any[]) || [])),
     setups: r.role === "staff" ? [] : ((await db.from("setup_sessions").select("id,tool,state,reason,result,created_at").eq("business_id", bid).order("created_at", { ascending: false }).limit(10)).data || []),
   });
+}
+// Messages from the team (the inbox). When a teammate takes a message, saves a lead, asks the owner to confirm a
+// booking, writes a draft for approval or hands a conversation over, it writes one row (pip-turn's own tools), and
+// until Nov 27, 2026 no owner ever saw it. Owners and the founder read them here and mark them seen. Marking never
+// deletes. The words came from a customer through a model, so they are cut to length here and put on the page as
+// plain text there.
+const INBOX_KINDS = ["notify_owner", "capture_lead", "request_booking", "draft_for_approval", "handoff"];
+const INBOX_FIELDS: Record<string, string[]> = {
+  notify_owner: ["summary", "urgency"], capture_lead: ["name", "phone", "email", "need"], request_booking: ["when", "need", "contact"],
+  draft_for_approval: ["what", "text"], handoff: ["reason"],
+};
+async function inboxList(bid: string, agents: any[]) {
+  const since = new Date(Date.now() - 60 * 864e5).toISOString();
+  const { data } = await db.from("notifications").select("id,spec_id,kind,body,created_at,owner_seen_at").eq("business_id", bid).in("kind", INBOX_KINDS).gte("created_at", since).order("created_at", { ascending: false }).limit(60);
+  const rows = (data as any[]) || [];
+  const convs = [...new Set(rows.map((n) => n.body?.conversation).filter((x) => typeof x === "string" && UUID.test(x)))];
+  const channels = new Map<string, string>();
+  if (convs.length) for (const c of (((await db.from("conversations").select("id,channel").in("id", convs)).data as any[]) || [])) channels.set(c.id, c.channel);
+  const names = new Map<string, string>(agents.map((a) => [a.spec_id, a.teammate || a.name || "Your teammate"]));
+  return rows.map((n) => {
+    const args = n.body?.args && typeof n.body.args === "object" ? n.body.args : {};
+    const said: Record<string, string> = {};
+    for (const k of INBOX_FIELDS[n.kind] || []) { const v = cut(args[k], k === "text" ? 1200 : 400); if (v) said[k] = v; }
+    return { id: n.id, kind: n.kind, at: n.created_at, teammate: names.get(n.spec_id) || "Your teammate", channel: channels.get(n.body?.conversation) || null,
+      said, urgent: String(args.urgency || "").toLowerCase() === "urgent", waiting: n.body?.approval === "owner", seen: !!n.owner_seen_at };
+  });
+}
+async function inboxAction(u: User, bid: string, body: any) {
+  const r = await access(u, bid); need(r, "owner");
+  const stamp = { owner_seen_at: now(), owner_seen_by: u.email };
+  if (body?.all === true) {
+    await db.from("notifications").update(stamp).eq("business_id", bid).in("kind", INBOX_KINDS).is("owner_seen_at", null);
+    return json({ ok: true });
+  }
+  const nid = Number(body?.id);
+  if (!Number.isSafeInteger(nid) || nid <= 0) throw new Fail(400, "bad_request");
+  const { data: n } = await db.from("notifications").select("id").eq("id", nid).eq("business_id", bid).in("kind", INBOX_KINDS).maybeSingle();
+  if (!n) throw new Fail(404, "not_found");
+  await db.from("notifications").update(body?.seen === false ? { owner_seen_at: null, owner_seen_by: null } : stamp).eq("id", nid).eq("business_id", bid);
+  return json({ ok: true });
 }
 // Weekly notes (pip-notes): what each teammate did last week, what went wrong, and at most one change it proposes.
 // The owner can answer a proposal with "good idea" or "no thanks". Either answer is only recorded and passed to the
@@ -1098,6 +1139,7 @@ Deno.serve(async (req) => {
       if (req.method !== "POST") throw new Fail(405, "method");
       if (a === "profile") return await setProfile(u, bid, body);
       if (a === "basics") return await setBasics(u, bid, body);
+      if (a === "inbox") return await inboxAction(u, bid, body);
       if (a === "accept") return await accept(u, bid, body);
       if (a === "connect") return await connect(u, bid, body);
       if (a === "connect-tool") return await connectTool(u, bid, body);
