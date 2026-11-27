@@ -2,7 +2,7 @@
 // is checked in code. What it said is kept either way.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyCritique, bench, criticPrompt, MAX_SWAPS, readCritique, type Scored, type Selection } from "./critic.ts";
+import { applyCritique, bench, criticPrompt, MAX_SWAPS, readCritique, type Scored, type Selection, dedupe, twins } from "./critic.ts";
 
 const idea = (id: string, score: number, gate = "pass"): Scored => ({ candidate: { id, name: id.replace(/-/g, " "), moment: "m1", power: "other", why_personal: `why ${id}`, claims: [{ text: `claim for ${id}`, status: "seen", evidence: [{ quote: "a quote", source: "review" }] }] }, gate: { status: gate }, score: { score } });
 const six = ["a", "b", "c", "d", "e", "f"].map((x, i) => idea(x, 90 - i));
@@ -52,4 +52,35 @@ test("the prompt puts the evidence and both tests in front of the critic and cap
   assert.match(p, /argue against them/); assert.match(p, /ANY BUSINESS\?/); assert.match(p, /At most 2 swaps/);
   assert.match(p, /"quotes":\["a quote"\]/); assert.ok(p.length < 16000, String(p.length));
   assert.ok(!p.includes("dropped"), "an idea the gate dropped is never offered");
+});
+
+const mk = (id: string, score: number, o: Record<string, unknown> = {}) => ({ candidate: { id, name: id.replace(/-/g, " "), moment: "m-" + id, power: "answers", claims: [], ...o }, gate: { status: "pass" }, score: { score } });
+
+test("twins: the same stem, the same moment with the same kind of teammate, or nearly the same name", () => {
+  assert.equal(twins({ id: "retreat-one-pager" }, { id: "retreat-one-pager-2" }), true);
+  assert.equal(twins({ id: "a", moment: "m1", power: "answers" }, { id: "b", moment: "m1", power: "answers" }), true);
+  assert.equal(twins({ id: "a", moment: "m1", power: "answers" }, { id: "b", moment: "m1", power: "followup" }), false, "one moment can have an answer and a follow-up");
+  assert.equal(twins({ id: "a", name: "Driveway Findings Sheet", moment: "m1" }, { id: "b", name: "Driveway Findings Report", moment: "m2" }), false, "two of three name words is 0.5: not enough by name alone");
+  assert.equal(twins({ id: "a", name: "Driveway Findings" }, { id: "b", name: "The Driveway Findings" }), true);
+  assert.equal(twins({ id: "a", name: "Book Today Desk" }, { id: "b", name: "Discount Check" }), false);
+  assert.equal(twins(null, { id: "b" }), false);
+});
+
+test("a twin among the six is replaced by the best bench idea that is nobody's twin", () => {
+  const team = [mk("price-explainer", 9, { moment: "m1" }), mk("inside-the-price", 7, { moment: "m1" }), mk("book-today", 8), mk("discounts", 6), mk("findings-sheet", 5), mk("reviews", 4)];
+  const benchIdeas = [mk("price-again", 3.9, { moment: "m1" }), mk("winter-callback", 3.5), mk("dropped", 99, {})];
+  benchIdeas[2].gate.status = "drop";
+  const r = dedupe({ selected: team, wild: null, excluded: [] }, [...team, ...benchIdeas]);
+  assert.deepEqual(r.duplicates, [{ dropped: "inside-the-price", twin_of: "price-explainer", replaced_with: "winter-callback" }], "the lower-scored twin goes; a bench twin and a gate-dropped idea are passed over");
+  assert.deepEqual(r.selection.selected.map((s) => s.candidate.id), ["price-explainer", "winter-callback", "book-today", "discounts", "findings-sheet", "reviews"]);
+});
+
+test("with nothing on the bench the team is one shorter, and never below four; no twins changes nothing", () => {
+  const team = [mk("a", 9, { moment: "m1" }), mk("b", 8, { moment: "m1" }), mk("c", 7), mk("d", 6), mk("e", 5), mk("f", 4)];
+  const r = dedupe({ selected: team, wild: null, excluded: [] }, team);
+  assert.deepEqual(r.duplicates, [{ dropped: "b", twin_of: "a", replaced_with: null }]); assert.equal(r.selection.selected.length, 5);
+  const four = [mk("a", 9, { moment: "m1" }), mk("b", 8, { moment: "m1" }), mk("c", 7), mk("d", 6)];
+  assert.equal(dedupe({ selected: four, wild: null, excluded: [] }, four).selection.selected.length, 4);
+  const clean = { selected: [mk("a", 9), mk("b", 8)], wild: null, excluded: [] };
+  assert.equal(dedupe(clean, clean.selected).selection, clean);
 });

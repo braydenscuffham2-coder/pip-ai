@@ -12,7 +12,8 @@ type J = any;
 export type Scored = { candidate: J; gate: J; score: J };
 export type Selection = { selected: Scored[]; wild?: Scored | null; excluded: J[] };
 export type Verdict = { id: string; evidence: "strong" | "thin" | "none"; generic: boolean; verdict: "keep" | "swap"; swap_for: string | null; why: string };
-export type Critique = { at: string; seconds: number | null; verdicts: Verdict[]; swapped: { out: string; in: string; why: string }[]; refused: { id: string; why: string }[]; note: string; revised: boolean };
+export type Duplicate = { dropped: string; twin_of: string; replaced_with: string | null };
+export type Critique = { at: string; seconds: number | null; verdicts: Verdict[]; swapped: { out: string; in: string; why: string }[]; refused: { id: string; why: string }[]; note: string; revised: boolean; duplicates?: Duplicate[] };
 export const MAX_SWAPS = 2;
 
 const brief = (s: Scored) => ({ id: s.candidate.id, name: s.candidate.name, moment: s.candidate.moment, power: s.candidate.power, why_personal: s.candidate.why_personal,
@@ -90,4 +91,37 @@ export function applyCritique(sel: Selection, scored: Scored[], answer: { verdic
   critique.note = String(answer.note ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
   critique.revised = critique.swapped.length > 0;
   return { selection: critique.revised ? { ...sel, selected } : sel, critique };
+}
+
+// ---------- the same idea twice ----------
+// Round 2 of the novelty test (Nov 27, 2026) found the same idea in the six twice in two of five scans: the Brain
+// invents in two passes and both passes can land on one idea under two names. A model is not asked to notice this.
+// Two ideas are twins when they share an id stem, or answer the same moment with the same kind of teammate, or carry
+// nearly the same name. The lower-scored twin goes; the best bench idea that is nobody's twin takes its place. With
+// no such idea the team is one shorter, never below four.
+const stem = (id: unknown) => String(id ?? "").toLowerCase().replace(/-\d+$/, "");
+const nameWords = (c: J) => new Set(String(c?.name ?? "").toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !["the", "and", "for", "your", "desk", "line"].includes(w)));
+export function twins(a: J, b: J): boolean {
+  if (!a || !b) return false;
+  if (stem(a.id) && stem(a.id) === stem(b.id)) return true;
+  if (a.moment && a.moment === b.moment && a.power && a.power === b.power) return true;
+  const x = nameWords(a), y = nameWords(b); if (!x.size || !y.size) return false;
+  let shared = 0; for (const w of x) if (y.has(w)) shared++;
+  return shared / (x.size + y.size - shared) >= 0.6;
+}
+export function dedupe(sel: Selection, scored: Scored[]): { selection: Selection; duplicates: Duplicate[] } {
+  const selected = [...sel.selected], duplicates: Duplicate[] = [], rank = (s: Scored) => s.score?.score ?? 0;
+  for (let guard = 0; guard < 6; guard++) {
+    let pair: [number, number] | null = null;
+    for (let i = 0; i < selected.length && !pair; i++) for (let k = i + 1; k < selected.length; k++) if (twins(selected[i].candidate, selected[k].candidate)) { pair = [i, k]; break; }
+    if (!pair) break;
+    const [i, k] = pair, drop = rank(selected[k]) > rank(selected[i]) ? i : k, keep = drop === i ? k : i;
+    const dropped = selected[drop].candidate.id, twin_of = selected[keep].candidate.id;
+    const rest = selected.filter((_, n) => n !== drop);
+    const next = bench(scored, { ...sel, selected }, 12).find((b) => !duplicates.some((d) => d.dropped === b.candidate.id) && !rest.some((s) => twins(s.candidate, b.candidate)) && !(sel.wild && twins(sel.wild.candidate, b.candidate)));
+    if (next) { selected[drop] = next; duplicates.push({ dropped, twin_of, replaced_with: next.candidate.id }); }
+    else if (selected.length > 4) { selected.splice(drop, 1); duplicates.push({ dropped, twin_of, replaced_with: null }); }
+    else break;
+  }
+  return { selection: duplicates.length ? { ...sel, selected } : sel, duplicates };
 }
