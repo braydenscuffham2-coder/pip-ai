@@ -33,6 +33,7 @@ export const READ_ONLY_RECORDS = ["busy_time", "count"] as const;
 /** Pip's own actions, written as records of the tool "pip". All are add-only. */
 export const PIP_RECORDS: Record<string, string> = {
   owner_alert: "notify_owner", lead: "capture_lead", booking_request: "request_booking", handoff: "handoff", draft: "draft_for_approval",
+  outbound_text: "send_text", // text a customer first (not a reply): refused unless texting first is switched on and that person agreed (outbound_gate)
   outbound_post: "post_out", // post to an outbound door: an address in the owner's own system that the owner set (pip-edge)
 };
 export const POLICIES = ["buying"] as const;
@@ -486,6 +487,7 @@ const TOOL_WORDS: Record<string, string> = {
 const PIP_WORDS: Record<string, string> = {
   owner_alert: "Alert you when something needs a person.", lead: "Save a lead for you.", booking_request: "Ask you to confirm a booking. It does not confirm one itself.",
   handoff: "Hand a conversation to a person.", draft: "Write a draft for you to approve before anything is sent.",
+  outbound_text: "Text a customer first, only if they agreed to get texts from you, only in the allowed hours, always saying it is an AI and how to opt out.",
   outbound_post: "Post information to another system of yours, at an address you set. It cannot post anywhere else.",
 };
 const CHANNEL_WORDS: Record<string, string> = { web_chat: "website chat", sms: "text", voice: "the phone", email: "email" };

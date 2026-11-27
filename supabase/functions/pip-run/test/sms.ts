@@ -4,7 +4,7 @@
 const MOCK = 9111, FN = 9112, TOKEN = "test-twilio-token", SERVICE = "test-service-key";
 const SELF = `http://127.0.0.1:${MOCK}/functions/v1/pip-run`;
 const w: any = {};
-const reset = () => Object.assign(w, { live: false, test: true, stopped: new Set<string>(), sent: [] as any[], turns: [] as any[], usage: [] as any[], notes: [] as any[], consent: [] as any[], turn: "ok", firsts: new Set<string>() });
+const reset = () => Object.assign(w, { live: false, test: true, stopped: new Set<string>(), sent: [] as any[], turns: [] as any[], usage: [] as any[], notes: [] as any[], consent: [] as any[], turn: "ok", firsts: new Set<string>(), gates: [] as any[], paused: false });
 Deno.serve({ port: MOCK, hostname: "127.0.0.1", onListen() {} }, async (req) => {
   const u = new URL(req.url), p = u.pathname, j = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "content-type": "application/json" } });
   if (p === "/rest/v1/rpc/portal_line_ctx") { const a = await req.json(); return j(a.p_to === "+12085550100" ? { ok: true, business: "b1", name: "TEST Fork (check)", status: "building", spec: w.live ? "live-spec" : null, teammate: w.live ? "Hallie" : null } : { ok: false }); }
@@ -18,6 +18,7 @@ Deno.serve({ port: MOCK, hostname: "127.0.0.1", onListen() {} }, async (req) => 
     const first = !w.firsts.has(a.p_from); w.firsts.add(a.p_from);
     return j({ allowed: true, conversation: "conv-1", first });
   }
+  if (p === "/rest/v1/rpc/outbound_gate") { const a = await req.json(); w.gates.push(a); return j(w.paused ? { allowed: false, reason: "paused" } : w.stopped.has(a.p_to) ? { allowed: false, reason: "opted_out" } : { allowed: true }); }
   if (p === "/rest/v1/rpc/portal_sms_out") { w.usage.push(await req.json()); return j(null); }
   if (p === "/rest/v1/notifications") { w.notes.push(await req.json()); return new Response(null, { status: 201 }); }
   if (p === "/functions/v1/pip-turn/turn") { const b = await req.json(); w.turns.push(b); return w.turn === "down" ? j({ error: "server" }, 500) : j({ reply: "This is Hallie, an AI assistant for TEST Fork. We open at 5.", conversation: b.conversation }); }
@@ -25,7 +26,8 @@ Deno.serve({ port: MOCK, hostname: "127.0.0.1", onListen() {} }, async (req) => 
   return j({ error: "unexpected " + p }, 500);
 });
 // pip-run talks to api.twilio.com directly, so the test rewrites that one address to the stand-in.
-const src = (await Deno.readTextFile(new URL("../index.ts", import.meta.url))).replace("https://api.twilio.com", `http://127.0.0.1:${MOCK}`);
+const src = (await Deno.readTextFile(new URL("../index.ts", import.meta.url))).replace("https://api.twilio.com", `http://127.0.0.1:${MOCK}`)
+  .replaceAll('"../_shared/', '"' + new URL("../../_shared/", import.meta.url).href); // the copy runs from a temp folder, so shared imports become absolute
 const tmp = await Deno.makeTempFile({ suffix: ".ts" }); await Deno.writeTextFile(tmp, src);
 const child = new Deno.Command(Deno.execPath(), { args: ["run", "-A", tmp], stdout: "null", stderr: "null", env: { DENO_NO_PACKAGE_JSON: "1", SUPABASE_URL: `http://127.0.0.1:${MOCK}`, SUPABASE_SERVICE_ROLE_KEY: SERVICE, TWILIO_AUTH_TOKEN: TOKEN, TWILIO_ACCOUNT_SID: "ACtest", DENO_SERVE_ADDRESS: `tcp:127.0.0.1:${FN}` } }).spawn();
 for (let i = 0; i < 100; i++) { try { await (await fetch(`http://127.0.0.1:${FN}/pip-run/x`)).body?.cancel(); break; } catch { await new Promise((r) => setTimeout(r, 200)); } }
@@ -84,6 +86,12 @@ ok("and the owner gets an urgent alert", w.notes.length === 1 && w.notes[0].body
 reset();
 await text("hi", { to: "+12085559999" });
 ok("a text to a number that is not a Pip line does nothing", w.consent.length === 0 && w.sent.length === 0);
+reset();
+await text("are you open?"); await new Promise((r) => setTimeout(r, 400));
+ok("a reply asks the one outbound gate first, as a reply", w.gates.length === 1 && w.gates[0].p_channel === "sms" && w.gates[0].p_first === false && w.gates[0].p_to === "+12085551234" && w.sent.length === 1);
+reset(); w.paused = true;
+await text("are you open?"); await new Promise((r) => setTimeout(r, 400));
+ok("when sending is paused, no text goes out and none is recorded", w.gates.length === 1 && w.sent.length === 0 && w.usage.length === 0);
 
 child.kill(); await Deno.remove(tmp);
 console.log(`\n${pass} passed, ${fail} failed`); Deno.exit(fail ? 1 : 0);

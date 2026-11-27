@@ -131,3 +131,14 @@ test("the STOP words are the same here as in the text route", () => {
 test("ordinary words are not STOP", () => {
   for (const m of ["Can you stop by at 5?", "I need help", "end of the month works", "Thanks!", ""]) assert.equal(isStopRequest(m), false, m);
 });
+
+test("the one outbound gate: when sending is paused, no email goes out and none is recorded", async () => {
+  const t = await boot({ rpc: { outbound_paused: true }, model: send(), composio: () => ok() });
+  const r = await t.turn("I am sam@customer.example, email me");
+  assert.deepEqual(r.json.actions, [{ tool: "GMAIL_SEND_EMAIL", status: "blocked" }]);
+  assert.equal(t.executed().length, 0);
+  assert.equal(t.rpcs("portal_outbound_sent").length, 0);
+  assert.equal(t.rpcs("outbound_gate").length, 1, "the gate was asked once");
+  assert.equal(t.rpcs("portal_email_gate").length, 0, "and the email gate was never reached");
+  t.restore();
+});
