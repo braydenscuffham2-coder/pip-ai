@@ -77,12 +77,24 @@ test("a captcha is always the owner's: nothing is filled", async () => {
   assert.equal(w.calls.fill, 0);
 });
 
-test("a sign-in form on another site is never filled, even when it looks right", async () => {
-  const w = world({ pages: [{ ...loginForm, url: "https://practicetool.com.evil.test/login", host: "practicetool.com.evil.test" }] });
-  const out = await run(w.job, w.deps);
-  assert.equal(out.next, "owner");
-  assert.match(out.summary!, /only uses your saved login on practicetool\.com/);
-  assert.equal(w.calls.fill, 0);
+test("a sign-in form on another address is never filled, even a sibling subdomain of the same site", async () => {
+  for (const url of ["https://practicetool.com.evil.test/login", "https://someone-else.practicetool.com/login", "http://app.practicetool.com/login"]) {
+    const w = world({ pages: [{ ...loginForm, url, host: new URL(url).hostname }] });
+    const out = await run(w.job, w.deps);
+    assert.equal(out.next, "owner", url);
+    assert.match(out.summary!, /only uses your saved login on app\.practicetool\.com/);
+    assert.equal(w.calls.fill, 0, url);
+  }
+});
+
+test("a second sign-in host is trusted only when the owner signed in there themselves", async () => {
+  const sso = { ...loginForm, url: "https://login.practicetool.com/start", host: "login.practicetool.com" };
+  const no = world({ pages: [sso] });
+  assert.equal((await run(no.job, no.deps)).next, "owner");
+  const yes = world({ pages: [sso, signedIn] });
+  yes.identity.signin_hosts = ["login.practicetool.com"];
+  assert.equal((await run(yes.job, yes.deps)).next, "done");
+  assert.equal(yes.calls.fill, 1);
 });
 
 test("the vault itself refuses a wrong site: the engine believes it and stops", async () => {

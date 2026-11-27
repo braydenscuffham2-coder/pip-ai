@@ -9,7 +9,7 @@
 //                 → anything a person must do (captcha, new-device check, changed password) → the owner is told, once
 //
 // No model takes part in signing in. The vault service fills the fields; this file only reads what kind of page it is.
-import { siteOf } from "../setup/guards.ts";
+import { signInHostOk } from "../setup/guards.ts";
 import type { Page } from "../setup/engine.ts";
 
 export interface WorkJob {
@@ -19,6 +19,8 @@ export interface WorkJob {
 }
 export interface Identity {
   id: string; business_id: string; tool: string; tool_key: string; login_url: string; site: string;
+  /** Hosts the owner themselves signed in on, besides the sign-in page's own host. */
+  signin_hosts?: string[];
   browser_context_id: string | null; vault_item_id: string | null; totp: boolean; state: string; silent_signins: number;
 }
 /** What the vault service answered. Codes only: it never returns a value. */
@@ -108,22 +110,23 @@ export async function step(job: WorkJob, deps: WorkDeps): Promise<Out> {
 
   if (job.state === "check") {
     const s = await page.evaluate<SignState>(SIGN_STATE_JS);
-    const here = siteOf(s.url);
+    const own = signInHostOk(s.url, id.login_url, id.signin_hosts ?? []);
+    const home = (() => { try { return new URL(id.login_url).hostname; } catch { return id.site; } })();
     if (s.captcha) return needOwner(job, id, deps, `${id.tool} is showing a captcha. Only you can answer those. Open your Portal and sign in to ${id.tool} again.`, "captcha");
     const fills = job.plan?.fills ?? 0, codes = job.plan?.codes ?? 0;
     if (s.pass || s.user) {
-      if (here !== id.site) return needOwner(job, id, deps, `${id.tool} sent Pip to a different site to sign in. Pip only uses your saved login on ${id.site}, so it stopped. Open your Portal and sign in to ${id.tool} again.`, "wrong_site");
+      if (!own) return needOwner(job, id, deps, `${id.tool} sent Pip to a different address to sign in. Pip only uses your saved login on ${home}, so it stopped. Open your Portal and sign in to ${id.tool} again.`, "wrong_site");
       if (!id.vault_item_id) return needOwner(job, id, deps, `Pip was signed out of ${id.tool} and has no saved login for it. Open your Portal and sign in to ${id.tool} again.`, "signed_out");
       if (fills >= 1) return needOwner(job, id, deps, `The saved login for ${id.tool} did not work. The password may have changed. Open your Portal and sign in to ${id.tool} again.`, "login_refused");
       const code = await deps.vaultFill(id.id, job.browser_session_id!);
       await deps.log(job, "vault_fill", { code });
-      if (code === "wrong_site") return needOwner(job, id, deps, `${id.tool}'s sign-in page is not on ${id.site}. Pip did not use your saved login. Open your Portal and sign in to ${id.tool} again.`, "wrong_site");
+      if (code === "wrong_site") return needOwner(job, id, deps, `${id.tool}'s sign-in page is not on ${home}. Pip did not use your saved login. Open your Portal and sign in to ${id.tool} again.`, "wrong_site");
       if (code !== "submitted" && code !== "filled") return needOwner(job, id, deps, `Pip was signed out of ${id.tool} and could not sign in again on its own. Open your Portal and sign in to ${id.tool} again.`, "fill_failed");
       return again("check", { ...base, plan: { ...job.plan, fills: fills + 1 } }, 4);
     }
     if (s.code) {
       if (!id.totp || codes >= 1) return needOwner(job, id, deps, id.totp ? `${id.tool} did not accept Pip's sign-in code. Open your Portal and sign in to ${id.tool} again.` : `${id.tool} asked for a code, which usually means it is checking a new device. Open your Portal and sign in to ${id.tool} again.`, "code_needed");
-      if (here !== id.site) return needOwner(job, id, deps, `${id.tool} asked for a code on a different site. Pip only signs in on ${id.site}. Open your Portal and sign in to ${id.tool} again.`, "wrong_site");
+      if (!own) return needOwner(job, id, deps, `${id.tool} asked for a code on a different address. Pip only signs in on ${home}. Open your Portal and sign in to ${id.tool} again.`, "wrong_site");
       const code = await deps.vaultCode(id.id, job.browser_session_id!);
       await deps.log(job, "vault_code", { code });
       if (code !== "submitted" && code !== "filled") return needOwner(job, id, deps, `${id.tool} asked for a code and Pip could not enter it. Open your Portal and sign in to ${id.tool} again.`, "code_needed");

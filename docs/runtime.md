@@ -54,8 +54,10 @@ Every job that touches a tool starts by making sure Pip is signed in. No model t
 2. Read what kind of page it is from the page's own markup: a password field, a username-only field, a one-time-code
    field, a captcha frame, or none of those.
 3. No sign-in form: Pip is in. Carry on.
-4. A sign-in form: `vault-writer` types the saved login, once. It refuses unless the page is on the tool's own site
-   (`tool_identities.site`), and the engine checks the same thing before asking.
+4. A sign-in form: `vault-writer` types the saved login, once. It refuses unless the page's host is exactly the
+   sign-in page's host, or a host the owner themselves signed in on (`tool_identities.signin_hosts`). A shared parent
+   domain is not enough, because many tools give each customer a subdomain. The engine checks the same thing before
+   asking.
 5. A code is asked for: if the owner chose to create a separate "Pip" login and keep its authenticator secret in their
    vault, `vault-writer` asks the vault for the current code and types it. Otherwise this is treated as a new-device
    check.

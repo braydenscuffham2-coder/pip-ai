@@ -51,7 +51,7 @@ async function vault(path: "fill" | "code", identity: string, session: string): 
 
 function depsFor(seq: { n: number }): WorkDeps {
   return {
-    async identity(id) { return (await rows(`tool_identities?id=eq.${id}&select=id,business_id,tool,tool_key,login_url,site,browser_context_id,vault_item_id,totp,state,silent_signins`))?.[0] ?? null; },
+    async identity(id) { return (await rows(`tool_identities?id=eq.${id}&select=id,business_id,tool,tool_key,login_url,site,signin_hosts,browser_context_id,vault_item_id,totp,state,silent_signins`))?.[0] ?? null; },
     async saveIdentity(id, patch) { await db(`tool_identities?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }) }).then((r) => r.body?.cancel()); },
     browser: {
       async open(contextId) {

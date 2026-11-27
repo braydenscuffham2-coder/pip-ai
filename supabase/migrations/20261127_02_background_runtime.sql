@@ -22,8 +22,11 @@ create table if not exists public.tool_identities (
   tool text not null check (char_length(tool) between 2 and 80),
   tool_key text not null check (tool_key ~ '^[a-z0-9_-]{2,60}$'),
   login_url text not null check (char_length(login_url) <= 300 and login_url ~ '^https://'),
-  -- The tool's own site (its registrable domain). The vault fills a login on this site and nowhere else.
+  -- The tool's own site (its registrable domain): where a job may move around.
   site text not null check (char_length(site) between 3 and 120 and site ~ '^[a-z0-9.-]+$'),
+  -- Where the saved login may be typed with nobody watching: the sign-in page's exact host, plus any host listed here
+  -- because the owner themselves signed in on it. A shared parent domain is never enough.
+  signin_hosts text[] not null default '{}' check (cardinality(signin_hosts) <= 6),
   browser_context_id text check (browser_context_id is null or char_length(browser_context_id) <= 80),
   vault_item_id uuid references public.vault_items(id) on delete set null,
   -- True only when the owner chose to keep an authenticator secret for a separate "Pip" login in their vault.
