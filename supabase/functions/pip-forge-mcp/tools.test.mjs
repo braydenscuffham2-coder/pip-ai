@@ -23,6 +23,8 @@ const TOOLS = [
   "door_make", "door_list", "ladder_pick",
   // Added November 27, 2026: the Forge's code lane (pieces) and the parts library.
   "piece_draft", "piece_save", "piece_list",
+  // Added November 27, 2026: the teammates' weekly notes, with their evidence.
+  "notes_list",
 ];
 
 test("every tool the live connector offers is still offered", async () => {

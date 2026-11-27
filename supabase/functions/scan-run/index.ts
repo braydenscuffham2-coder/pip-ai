@@ -5,7 +5,7 @@
 //   POST ?scan=<id>&answer=1  {answers:{<signalId>:text}}   owner answers to the Ask step
 //   POST ?advance=<id>   (internal, service-role bearer)    run one stage, then chain the next
 //
-// One invocation does ONE stage (gather polling, understand, opportunity, invent, gate, render,
+// One invocation does ONE stage (gather polling, understand, opportunity, invent, gate, the critic, render,
 // brief) so no single request outlives the edge-function limit. State lives in scan_jobs.state;
 // progress streams to scan_events (Realtime). Google review text is used while the job runs and
 // never persisted: scans.raw keeps only the place id.
@@ -14,6 +14,7 @@
 // Optional: BRAIN_MONTHLY_CAP_USD (300), BRAIN_SCAN_BUDGET_USD (2), BRAIN_PER_IP_PER_HOUR (6).
 // deno-lint-ignore-file no-explicit-any
 import { newState, runStage, siteResult, toOutput, PRIMITIVES } from './brain.js';
+import { applyCritique, bench as criticBench, criticPrompt, readCritique } from '../_shared/critic.ts';
 
 // The Messages API adapter lives here (not in brain.js) so the price table can be corrected without rebuilding the bundle.
 // List prices per million tokens, platform.claude.com/docs/en/about-claude/pricing, read Nov 4 2026. Budget guard only.
@@ -163,6 +164,21 @@ async function brainStep(job: Job): Promise<'again' | 'done' | 'failed'> {
   const model = anthropicModel({ apiKey: ANTHROPIC, budgetUsd: SCAN_BUDGET - Number(job.state?.spent ?? 0), onUsage: (u) => usage.push(u) });
   let brain = job.state.brain;
   const before = brain.events.length;
+  // The critic pass: its own step, between choosing the six and writing them up, so it adds no time to any other
+  // stage. It argues against the six on evidence and on "could this belong to any business?", may swap at most two
+  // for stronger bench ideas (checked in _shared/critic.ts), and what it said is kept with the scan. If the critic
+  // fails or says nothing readable, the six stand and the scan carries on.
+  if (brain.stage === 'render' && brain.selection?.selected?.length && !brain.critique) {
+    const t0 = Date.now();
+    let answer = null;
+    try { answer = readCritique(await model(criticPrompt({ profile: brain.profile, moments: brain.moments ?? [], selected: brain.selection.selected, bench: criticBench(brain.scored ?? [], brain.selection) }), 'sonnet', 'critic')); } catch { answer = null; }
+    const c = applyCritique(brain.selection, brain.scored ?? [], answer, new Date().toISOString(), Math.round((Date.now() - t0) / 100) / 10);
+    brain.selection = c.selection; brain.critique = c.critique;
+    for (const u of usage) await db('events', { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ kind: 'brain_usage', domain: job.domain, detail: { scanId: job.id, ...u } }) }).then((r) => r.body?.cancel());
+    await event(job.id, job.domain, 'critic', { revised: c.critique.revised, swapped: c.critique.swapped.map((x) => `${x.out} > ${x.in}`), kept: c.selection.selected.length - c.critique.swapped.length, generic: c.critique.verdicts.filter((v) => v.generic).length, thin: c.critique.verdicts.filter((v) => v.evidence !== 'strong').length, seconds: c.critique.seconds });
+    await patchJob(job.id, { stage: 'render', attempts: 0, state: { ...job.state, brain, spent: Number(job.state?.spent ?? 0) + usage.reduce((a, u) => a + u.usd, 0) } });
+    return 'again';
+  }
   try {
     brain = await runStage(brain, model);
   } catch (e) {
@@ -185,7 +201,7 @@ async function brainStep(job: Job): Promise<'again' | 'done' | 'failed'> {
 
   // ---------- finish: persist what we keep, drop what we must not ----------
   const out = toOutput(brain);
-  const result = { ...siteResult(brain), scanId: job.id, spentUsd: Number(spentNow.toFixed(3)), primitivesVersion: PRIMITIVES.length };
+  const result = { ...siteResult(brain), scanId: job.id, spentUsd: Number(spentNow.toFixed(3)), primitivesVersion: PRIMITIVES.length, critique: brain.critique ?? null };
   const raw = brain.input.raw;
   const keptRaw = { ...raw, pages: (raw.pages || []).map((p: any) => ({ ...p, text: String(p.text).slice(0, 1500) })), place: raw.place ? { id: raw.place.id, primaryType: raw.place.primaryType } : undefined, competitors: (raw.competitors || []).map((c: any) => ({ name: c.name, distanceMi: c.distanceMi, tools: c.tools, signals: c.signals })) };
   await db('scans?on_conflict=domain', { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ domain: job.domain, raw: keptRaw, profile: out.profile, used_model: true, created_at: new Date().toISOString() }) }).then((r) => r.body?.cancel());

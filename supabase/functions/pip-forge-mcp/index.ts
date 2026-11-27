@@ -618,6 +618,16 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
       return { ok: true, order: order.code, toolkit: slug, link: link.redirect_url, expires_at: link.expires_at ?? null, note: 'Send this link to the owner yourself. It opens a Composio sign-in page; nothing goes live until you approve it.' };
     },
   },
+  notes_list: {
+    description: "The weekly notes Pip's teammates wrote about their own work, newest first, WITH the evidence the owner does not see: the counted facts of the week (runs, failures, pauses, cost), the run ids a proposal points at, and what the owner answered. A proposal never applies itself: read it, and change the teammate in the Forge only if you agree.",
+    inputSchema: { type: 'object', properties: { business_id: { type: 'string', description: 'Leave out for every business.' }, with_proposal_only: { type: 'boolean' } }, additionalProperties: false },
+    readOnly: true,
+    async run(a) {
+      const id = uuid(a?.business_id);
+      const list = (await rows(`teammate_notes?${id ? `business_id=eq.${id}&` : ''}${a?.with_proposal_only ? 'proposal=not.is.null&' : ''}select=id,business_id,spec_id,week_start,teammate,did,wrong,proposal,facts,written_by,cost_usd,decision,decided_by,decided_at,created_at&order=week_start.desc,created_at.desc&limit=60`)) ?? [];
+      return { notes: list.map((n: any) => ({ ...n, facts: { runs: n.facts?.runs, done: n.facts?.done, failed: n.facts?.failed, asked_for_a_person: n.facts?.asked_for_a_person, cost_usd: n.facts?.cost_usd, by_job: n.facts?.by_job, trouble: n.facts?.trouble, pauses: n.facts?.pauses } })) };
+    },
+  },
   piece_draft: {
     description: "The Forge's code lane: write a small piece of software for a business that has none for a job (an intake form, a tracker, a public page, a daily or weekly report). You give the idea in plain words; the Forge writes a description (contract piece/1), which is checked and run in the sandbox. Pieces Pip has built before are matched by what they do and offered as a starting shape. Nothing is saved: read the result, then call piece_save. The Forge writes descriptions, never code; one audited runtime runs every piece.",
     inputSchema: { type: 'object', properties: { business_id: { type: 'string' }, idea: { type: 'string', description: 'What the piece should do for this business, in plain words.' } }, required: ['business_id', 'idea'], additionalProperties: false },

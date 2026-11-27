@@ -52,6 +52,37 @@ const forgeDb: ForgeDb = {
   async notify(spec_id, kind, body) { await insert('notifications', { spec_id, kind, body }); },
   async orderAgentsAllAtLeast(order_id, statuses) { const r = await rows(`skill_specs?order_id=eq.${order_id}&select=status`); return Array.isArray(r) && r.length > 0 && r.every((x: any) => statuses.includes(x.status)); },
   async setOrderStatus(order_id, status) { await patch('build_orders', `id=eq.${order_id}`, { status, updated_at: new Date().toISOString() }); },
+  // What the Forge does once it has thought a new part through (Part F). Each answer is kept on the spec by the
+  // stage machine, so the founder reads what was decided and what was then done.
+  //   provider: the part needs an outside service. A Shelf need is filed, once per order and teammate, so the Shelf's
+  //   own digest tells Brayden what to fund and which order waits on it. The provider named is the Shelf entry whose
+  //   name appears in what the part needs; otherwise "various", with the need in plain words.
+  async shelfNeed({ order_id, agent_id, part }: any) {
+    const words = `${part.part} ${part.does} ${(part.needs ?? []).join(' ')}`.toLowerCase();
+    const shelf = (await rows('api_shelf?select=provider,label&limit=200').catch(() => [])) as { provider: string; label: string }[];
+    const hit = (shelf ?? []).find((x) => x.provider !== 'various' && x.provider.length > 3 && (words.includes(x.provider.toLowerCase()) || (x.label && x.label.length > 3 && words.includes(x.label.toLowerCase()))));
+    const provider = hit?.provider ?? 'various';
+    const primitive = `new_part:${String(part.part || 'part').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40)}`;
+    const r = await db('api_needs?on_conflict=primitive,order_id,agent_id', { method: 'POST', headers: { prefer: 'resolution=ignore-duplicates,return=representation' },
+      body: JSON.stringify({ provider, primitive, options: (part.needs ?? []).map((x: string) => String(x).slice(0, 200)).slice(0, 5), order_id, agent_id: agent_id ?? '', status: 'open' }) });
+    const made = r.ok ? await r.json().catch(() => []) : [];
+    if (!r.ok) return { filed: false, why: `the Shelf answered ${r.status}` };
+    return { filed: true, provider, ...(made?.[0]?.id ? { need: made[0].id } : { already: true }) };
+  },
+  //   compose: Pip can assemble the part. The code lane is asked to build it as a piece (pip-piece: checked, run in the
+  //   sandbox, kept as staged). Needs the order to belong to a business in the Portal; a refusal is written down.
+  async buildPiece({ order_id, part, idea }: any) {
+    const o = (await rows(`build_orders?id=eq.${order_id}&select=business_id`))?.[0];
+    if (!o?.business_id) return { built: false, why: 'this order is not attached to a business in the Portal yet' };
+    const call = async (path: string, body: unknown) => { const r = await fetch(`${SB_URL}/functions/v1/pip-piece/${path}`, { method: 'POST', headers: { authorization: `Bearer ${SB_KEY}`, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(200000) }); return await r.json().catch(() => ({ ok: false, error: 'no_answer' })); };
+    const want = `${part.part}: ${part.does} ${String(idea ?? '').slice(0, 300)}`.slice(0, 600);
+    const d = await call('draft', { business: o.business_id, idea: want });
+    if (d?.cannot) return { built: false, why: String(d.cannot).slice(0, 300) };
+    if (!d?.ok || !d.spec) return { built: false, why: `the draft was refused: ${(d?.errors ?? [d?.error ?? 'no answer']).slice(0, 3).join('; ')}`.slice(0, 300) };
+    const sv = await call('save', { business: o.business_id, spec: d.spec, idea: want, reuse: d.reuse ?? undefined, by: 'forge' });
+    if (!sv?.ok) return { built: false, why: `it was drafted but not kept: ${sv?.error ?? 'no answer'}` };
+    return { built: true, piece: sv.id, page: sv.page, status: sv.status, sandbox_lines: sv.tests?.lines ?? null, reused: d.reuse ?? null, cost_usd: d.cost_usd ?? null };
+  },
   async createBox(row) { const token = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, ''); const r = await insert('boxes', { ...row, uplink_token: token, status: 'ordered' }, true); return r?.[0]?.id ?? ''; },
 };
 

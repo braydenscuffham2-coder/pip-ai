@@ -226,8 +226,33 @@ async function business(u: User, bid: string) {
     work: r.role === "staff" ? [] : await workList(bid),
     doors: r.role === "staff" ? [] : await doorList(bid),
     pieces: await pieceList(bid),
+    notes: r.role === "staff" ? [] : await noteList(bid),
     setups: r.role === "staff" ? [] : ((await db.from("setup_sessions").select("id,tool,state,reason,result,created_at").eq("business_id", bid).order("created_at", { ascending: false }).limit(10)).data || []),
   });
+}
+// Weekly notes (pip-notes): what each teammate did last week, what went wrong, and at most one change it proposes.
+// The owner can answer a proposal with "good idea" or "no thanks". Either answer is only recorded and passed to the
+// founder: a proposal never changes a teammate by itself. The evidence (run ids, counts) stays out of the owner's view.
+async function noteList(bid: string) {
+  const since = new Date(Date.now() - 35 * 864e5).toISOString().slice(0, 10);
+  const { data } = await db.from("teammate_notes").select("id,spec_id,week_start,teammate,did,wrong,proposal,decision,decided_at").eq("business_id", bid).gte("week_start", since).order("week_start", { ascending: false }).limit(40);
+  const seen = new Set<string>(), out = [];
+  for (const n of ((data as any[]) || [])) {
+    if (seen.has(n.spec_id)) continue; seen.add(n.spec_id);        // the newest note for each teammate
+    out.push({ id: n.id, week_start: n.week_start, teammate: n.teammate, did: n.did, wrong: n.wrong, proposal: n.proposal ? { change: n.proposal.change, why: n.proposal.why } : null, decision: n.decision, decided_at: n.decided_at });
+  }
+  return out;
+}
+async function noteAction(u: User, bid: string, body: any) {
+  const r = await access(u, bid); need(r, "owner");
+  const nid = cut(body.note, 40), decision = cut(body.decision, 20);
+  if (!UUID.test(nid) || !["good_idea", "no_thanks"].includes(decision)) throw new Fail(400, "bad_request");
+  const { data: n } = await db.from("teammate_notes").select("id,teammate,proposal,spec_id").eq("id", nid).eq("business_id", bid).maybeSingle();
+  if (!n || !(n as any).proposal) throw new Fail(404, "not_found");
+  await db.from("teammate_notes").update({ decision, decided_by: u.email, decided_at: now() }).eq("id", nid);
+  await log(bid, "owner", `${(n as any).teammate}'s suggestion: you said ${decision === "good_idea" ? "good idea" : "no thanks"}. Nothing changes by itself; Pip's builder has been told.`, { actor: u.email, spec_id: (n as any).spec_id });
+  await db.from("events").insert({ kind: "note_decision", domain: null, detail: { note: nid, business: bid, decision } });
+  return json({ ok: true });
 }
 // Pieces (pip-piece): small software Pip built for this business. The owner and staff see every record, add one and
 // move one between the piece's own stages. Nothing here deletes a record. The rules are the same code the sandbox ran
@@ -1057,6 +1082,7 @@ Deno.serve(async (req) => {
       if (a === "work") return await workAction(u, bid, body);
       if (a === "door") return await doorAction(u, bid, body);
       if (a === "piece") return await pieceAction(u, bid, body);
+      if (a === "note") return await noteAction(u, bid, body);
       if (a === "unsupported") return await unsupported(u, bid, body);
       if (a === "issue") return await issue(u, bid, body);
       if (a === "people") return await addPerson(u, bid, body);

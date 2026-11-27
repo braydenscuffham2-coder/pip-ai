@@ -618,6 +618,53 @@ var partNote = (e) => e ? `
 ONE PART IS NOT BUILT YET
 Pip has not built "${e.part}" (${e.does}). Compile the teammate for what it does on day one: ${e.day_one || "only the work the allowed blocks cover"}. Use only the allowed blocks. Add a guardrails.never rule that it never says or implies it can already do this part, and write no test that depends on it.` : "";
 
+// Repair, not rewrite (Part F, Nov 27 2026). When a teammate that compiled cleanly then fails a test or the review,
+// the Forge used to compile the whole teammate again with the larger model. Every PIP-B4DY teammate took three
+// compiles that way. Now it asks for a patch to the part that failed, with the failing transcript in front of it,
+// and keeps everything else exactly as it was. A patch can add or tighten; it can never add a tool, a channel or a
+// connection, remove a guardrail or remove a test. If the patch is unusable, the old full compile still runs.
+function repairPrompt(prev, t, business) {
+  return `One AI teammate for ${business} compiled, then failed its checks. Repair only what failed. Everything you do not change stays exactly as it is.
+
+THE SPEC
+${JSON.stringify(prev)}
+
+WHAT FAILED
+${t.errors && t.errors.length ? `Review or validation:
+- ${t.errors.join(`
+- `)}` : ""}
+${t.failed && t.failed.length ? `Failed tests (the transcript of each):
+${t.failed.map((s) => `- Customer: "${s.test.say}" -> AI: "${s.reply}". Missed: ${s.missed.join("; ")}`).join(`
+`)}` : ""}
+
+Return JSON only: a patch with only the keys you change.
+{"persona": the full replacement for agent.persona, only if its instructions caused the failure (150-400 words),
+ "opener": a replacement first message, only if it caused the failure,
+ "never_add": [rules to add to guardrails.never],
+ "escalate_add": [words or phrases to add to guardrails.escalate_on],
+ "tests": [{"index": the test's position starting at 0, "say": ..., "expect": [...]}] only for a test that was itself wrong: it expected something the teammate has no tool for, or folded two behaviors into one line,
+ "why": one sentence on what was wrong}
+Rules: never add a tool, a channel or a connection. Never remove or weaken a guardrail. Never remove a test or make one easier than what the owner was promised.`;
+}
+function applyRepair(prev, fix) {
+  if (!prev || typeof prev != "object" || !prev.agent || !fix || typeof fix != "object" || Array.isArray(fix)) return null;
+  let out = JSON.parse(JSON.stringify(prev)), changed = [], str = (v, lo, hi) => typeof v == "string" && v.trim().length >= lo && v.length <= hi;
+  if (str(fix.persona, 200, 6000) && fix.persona.trim() !== String(prev.agent.persona || "").trim()) out.agent.persona = fix.persona.trim(), changed.push("persona");
+  if (str(fix.opener, 2, 600) && fix.opener.trim() !== String(prev.agent.opener || "").trim()) out.agent.opener = fix.opener.trim(), changed.push("opener");
+  let add = (list, more) => { let have = new Set((list || []).map((x) => String(x).toLowerCase().trim())), got = 0; for (let x of Array.isArray(more) ? more.slice(0, 8) : []) if (str(x, 2, 300) && !have.has(x.toLowerCase().trim())) list.push(x.trim()), have.add(x.toLowerCase().trim()), got++; return got; };
+  out.guardrails = out.guardrails && typeof out.guardrails == "object" ? out.guardrails : { never: [], escalate_on: [] };
+  out.guardrails.never = Array.isArray(out.guardrails.never) ? out.guardrails.never : [], out.guardrails.escalate_on = Array.isArray(out.guardrails.escalate_on) ? out.guardrails.escalate_on : [];
+  add(out.guardrails.never, fix.never_add) && changed.push("never"), add(out.guardrails.escalate_on, fix.escalate_add) && changed.push("escalate_on");
+  for (let x of Array.isArray(fix.tests) ? fix.tests.slice(0, 6) : []) {
+    let i = x && Number.isInteger(x.index) ? x.index : -1;
+    if (!Array.isArray(out.tests) || i < 0 || i >= out.tests.length || !str(x.say, 2, 600) || !Array.isArray(x.expect) || x.expect.length < 1 || x.expect.length > 4 || !x.expect.every((y) => str(y, 2, 300))) continue;
+    out.tests[i] = { ...out.tests[i], say: x.say.trim(), expect: x.expect.map((y) => y.trim()) }, changed.push(`test ${i}`);
+  }
+  // What a patch may never touch, checked rather than trusted.
+  let same = (k) => JSON.stringify(out[k] ?? null) === JSON.stringify(prev[k] ?? null), tools = (o) => JSON.stringify(o.agent.tools ?? null);
+  if (!changed.length || !same("channels") || !same("triggers") || !same("connections") || !same("actions") || tools(out) !== tools(prev)) return null;
+  return typeof out.version == "number" && (out.version += 1), { spec: out, changed, why: str(fix.why, 2, 300) ? fix.why.trim() : "" };
+}
 async function _e(e, n) {
   let t = n.db, s = n.maxAttempts ?? we, r = await t.getSpec(e.spec_id);
   if (!r) return { outcome: "founder", detail: "spec row missing" };
@@ -627,7 +674,13 @@ async function _e(e, n) {
   switch (e.stage) {
     case "compile": {
       let part = r.quote?.part ?? null;
-      if (i.builds && !part) part = await thinkPart(i, r.business, n.model, r.skill_id), r.quote = { ...r.quote ?? {}, part }, await t.updateSpec(r.id, { quote: r.quote });
+      if (i.builds && !part) {
+        part = await thinkPart(i, r.business, n.model, r.skill_id);
+        // Thinking is a step with a trace: what the Forge decided, and what it then did about it, stay on the spec.
+        if (part.route === "provider" && t.shelfNeed) { try { part.shelf = await t.shelfNeed({ order_id: e.order_id, agent_id: r.skill_id, part }); } catch { part.shelf = { filed: !1, why: "the Shelf did not answer" }; } }
+        if (part.route === "compose" && t.buildPiece) { try { part.piece = await t.buildPiece({ order_id: e.order_id, agent_id: r.skill_id, business: r.business, part, idea: i.builds }); } catch { part.piece = { built: !1, why: "the code lane did not answer" }; } }
+        r.quote = { ...r.quote ?? {}, part }, await t.updateSpec(r.id, { quote: r.quote });
+      }
       if (o === "operate") {
         if (!n.operate) return await stop("compile_failed", "This build has no operator compiler.");
         let h = n.operate.compile(i, r.business);
@@ -636,7 +689,18 @@ async function _e(e, n) {
       }
       if (o !== "spec")
         return await t.updateSpec(r.id, { forge_stage: "skipped_compile" }), await t.enqueue({ order_id: e.order_id, spec_id: r.id, stage: "stage", attempt: 1 }), { outcome: "next", detail: `${o} lane: no spec to compile` };
-      let l = e.log?.at(-1), d = z({ ...i.presented, name: i.name, teammate: i.teammate, uses: i.uses, power: i.power, asks: i.asks, measure: i.measure, setup: i.setup_steps }, { business: r.business, facts: r.brain.facts ?? [], qa: r.brain.qa ?? [] }, l), u = await n.model(d + partNote(part), e.attempt >= 2 ? "opus" : "sonnet", `forge:compile:${r.skill_id}`), h = V(x(u), r.business);
+      let l = e.log?.at(-1);
+      if (l && l.previous && typeof l.previous == "object" && l.previous.agent && (l.failed?.length || l.errors?.length) && n.repair !== !1) {
+        let fix = null;
+        try { fix = x(await n.model(repairPrompt(l.previous, l, r.business) + partNote(part), "sonnet", `forge:repair:${r.skill_id}`)); } catch { fix = null; }
+        let patched = applyRepair(l.previous, fix), hv = patched ? V(patched.spec, r.business) : null;
+        if (hv && hv.ok && hv.spec) {
+          part && part.route !== "compose" && hv.waitingOn && hv.waitingOn.push({ id: "new_part", label: part.part, setup: part.needs.join("; ") });
+          let trail = [...(r.quote?.repairs ?? []), { attempt: e.attempt, changed: patched.changed, why: patched.why }].slice(-6);
+          return await t.updateSpec(r.id, { spec: hv.spec, status: "testing", forge_stage: "repaired", quote: { ...part ? { part } : {}, tier: hv.tier, waitingOn: hv.waitingOn, repairs: trail } }), await t.enqueue({ order_id: e.order_id, spec_id: r.id, stage: "test", attempt: e.attempt, log: e.log }), { outcome: "next", detail: `repaired ${patched.changed.join(", ")}${patched.why ? `: ${patched.why}` : ""}` };
+        }
+      }
+      let d = z({ ...i.presented, name: i.name, teammate: i.teammate, uses: i.uses, power: i.power, asks: i.asks, measure: i.measure, setup: i.setup_steps }, { business: r.business, facts: r.brain.facts ?? [], qa: r.brain.qa ?? [] }, l), u = await n.model(d + partNote(part), e.attempt >= 2 ? "opus" : "sonnet", `forge:compile:${r.skill_id}`), h = V(x(u), r.business);
       part && part.route !== "compose" && h.waitingOn && h.waitingOn.push({ id: "new_part", label: part.part, setup: part.needs.join("; ") });
       if (!h.ok || !h.spec) {
         let g = { errors: h.errors, failed: [], previous: x(u) };
@@ -825,5 +889,7 @@ export {
   _e as runForgeJob,
   partPlan,
   partPrompt,
-  thinkPart
+  thinkPart,
+  repairPrompt,
+  applyRepair
 };
