@@ -30,7 +30,8 @@ test("the prompt holds the safety and honesty lines a dental front desk needs", 
 });
 
 test("the migration carries this exact spec and says it is a test", () => {
-  assert.ok(migration.includes(JSON.stringify(spec)), "the spec in the migration is the checked fixture");
+  const inside = migration.split("$spec$")[1];
+  assert.deepEqual(JSON.parse(inside), spec, "the spec in the migration is the checked fixture");
   assert.match(migration, /TEST Maple Street Dental \(made-up practice\)/);
   assert.match(migration, /-- undo \(by hand\)/);
 });
