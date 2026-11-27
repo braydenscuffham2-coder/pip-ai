@@ -113,7 +113,7 @@ const deps: Deps = {
   browser: {
     async open(row) {
       const contextId = row.browser_context_id || await bb.context();
-      const s = await bb.session(contextId, sessionMinutes(await setting("setup_session_minutes")));
+      const s = await bb.session(contextId, sessionMinutes(await setting("setup_session_minutes")), (await setting("browser_keep_alive")) === true);
       return { sessionId: s.id, contextId };
     },
     page: pageOf,
@@ -160,7 +160,8 @@ async function probe() {
   const out: Record<string, unknown> = { ok: false, at: "context" };
   let sid = "";
   try {
-    const s = await bb.session(await bb.context(), 1); sid = s.id; out.at = "first_connection";
+    const keep = (await setting("browser_keep_alive")) === true; out.keep_alive = keep;
+    const s = await bb.session(await bb.context(), 1, keep); sid = s.id; out.at = "first_connection";
     const a = await Cdp.connect(s.connectUrl); out.at = "second_connection";
     const b = await Cdp.connect(s.connectUrl); await b.send("Browser.getVersion", {}, undefined, 8000); out.second_connected = true; out.at = "second_leaves";
     b.close(); await sleep(5000);
