@@ -134,13 +134,10 @@ function createOffice(THREE, X, opts) {
     home.pins.replaceChildren();
     const list = model.agents.filter((a) => a.look !== "open").slice(0, SEATS.length);
     if (root.classList.contains("tall")) return; // a phone lists the team and the stations under the scene instead
-    const top = opts.safeTop ? opts.safeTop() : 0, dirY = Math.max(4, ((top + 12 - box.y) / box.h) * 100), tagMin = dirY + (170 / box.h) * 100; // tags stay clear of the directory
-    list.forEach((a, i) => { const el = (model.tags || new Map()).get(a.id); if (!el) return; const s = SEATS[i]; pin(home, el, s.tag[0], Math.max(s.tag[1], tagMin + (i > 1 ? 0 : 6)), "tag"); });
+    const top = opts.safeTop ? opts.safeTop() : 0, tagMin = ((top + 64 - box.y) / box.h) * 100; // tags stay clear of the header
+    list.forEach((a, i) => { const el = (model.tags || new Map()).get(a.id); if (!el) return; const s = SEATS[i]; pin(home, el, s.tag[0], Math.max(s.tag[1], tagMin), "tag"); });
     const more = model.agents.filter((a) => a.look !== "open").length - list.length;
     if (more > 0) { const m = document.createElement("span"); m.className = "sc-more card"; m.textContent = "+" + more + " more down the aisle"; pin(home, m, 50, 40.5, "tag"); }
-    const dir = document.createElement("nav"); dir.className = "sc-dir"; dir.setAttribute("aria-hidden", "true");
-    for (const [, el] of model.stationTags || []) dir.append(el);
-    pin(home, dir, 50, dirY, "dir"); // just under the header, whatever the window's shape
     if (model.bubble) pin(home, model.bubble, SCENES.home.pip[0], SCENES.home.pip[1] + SCENES.home.pip[2] * 0.95, "say");
   }
   function pin(s, el, x, y, kind) { el.classList.add("sc-pin", "pin-" + kind); el.style.setProperty("--px", x + "%"); el.style.setProperty("--py", y + "%"); s.pins.append(el); }
@@ -356,7 +353,7 @@ function CSS_TEXT() { return `
 .sc-pin{position:absolute!important;left:var(--px)!important;top:var(--py)!important;pointer-events:auto}
 .sc-pins.fl-tags .tag{opacity:1}
 .sc-pin.pin-tag{transform:translate(-50%,-100%)!important}
-.sc-pin.pin-say{transform:translate(-50%,0)!important;width:min(380px,30%)!important}
+.sc-pin.pin-say{transform:translate(-50%,0)!important;width:300px!important}
 .sc-pin.pin-dir{transform:translate(-50%,0)!important;display:flex;gap:10px;flex-wrap:nowrap}
 .sc-pin.pin-card{transform:none!important}
 .sc-pin.pin-center{transform:translate(-50%,-50%)!important}

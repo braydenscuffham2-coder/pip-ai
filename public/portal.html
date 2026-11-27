@@ -808,6 +808,41 @@ html.office-live .fl-pipslot{display:none}
 
 /* Pip's bubble, under Pip in the aisle */
 .floor>.fl-tags{display:none} /* the tags live inside the scenes */
+/* ---- the calm floor: the picture leads, the interface whispers ---- */
+.fl-head{background:none!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;padding-left:6px}
+.fl-head .fl-title h1{font-size:22px;text-shadow:0 1px 14px rgba(255,255,255,.9)}
+.fl-head .fl-title span{text-shadow:0 1px 10px rgba(255,255,255,.9)}
+.fl-head .fl-counts{display:none}
+.fl-head .fl-title+*{margin-left:auto}
+.fl-head .fl-view,.fl-head .acct-btn{background:rgba(255,255,255,.72);box-shadow:0 8px 22px -14px rgba(38,34,90,.4)}
+.fl-head .fl-view[data-k="fl-list"]{padding:0;width:46px}
+.sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.sc-pins .tag:not(.st){padding:5px 13px 5px 5px;border-radius:999px;font-size:14px;box-shadow:0 10px 26px -14px rgba(38,34,90,.45)}
+.sc-pins .tag:not(.st) .role,.sc-pins .tag:not(.st) .doing{display:none}
+.sc-pins .tag:not(.st):is(:hover,:focus-visible){border-radius:18px;padding:8px 14px 9px 8px}
+.sc-pins .tag:not(.st):is(:hover,:focus-visible) .doing{display:flex}
+.sc-pins .tag:not(.st):is(:hover,:focus-visible) .role{display:inline}
+.sc-pins .tag:not(.st) .fl-av{width:26px;height:26px}
+.sc-pins .tag.k-needs{box-shadow:0 0 0 2px #f6c14b,0 10px 26px -14px rgba(160,110,0,.5)}
+.sc-pins .tag.k-paused b{color:var(--ink-3)}
+.sc-pins .tag::after{width:9px;height:9px;margin-left:-4.5px;bottom:-4px}
+.sc-pins .fl-say{display:flex;flex-direction:column;align-items:center}
+.sc-pins .fl-say .say{width:100%}
+.sc-pins .fl-say .say .b{font-size:14.5px;padding:12px 16px 13px}
+.sc-pins .fl-say .btn.pri{width:auto;min-height:42px;margin-top:9px;padding:0 18px;border-radius:999px;font-size:14px}
+.fl-roster{gap:4px;padding:5px;border-radius:999px;background:rgba(255,255,255,.66)!important}
+.fl-roster .fl-mydesk{min-height:44px;padding:4px 14px 4px 4px;border-radius:999px}
+.fl-roster .fl-mydesk .ico{width:36px;height:36px;border-radius:50%}
+.fl-roster .fl-mydesk small,.fl-roster .fl-mate kbd{display:none}
+.fl-roster .fl-mate{min-height:44px;padding:4px;border-radius:50%}
+.fl-roster .fl-mate .tx{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.fl-roster .fl-mate .fl-av{width:36px;height:36px}
+.fl-roster .fl-mate{position:relative}
+.fl-roster .fl-mate.k-needs::after{content:"";position:absolute;top:4px;right:3px;width:10px;height:10px;border-radius:50%;background:#f2b02a;box-shadow:0 0 0 2px #fff}
+.fl-roster .fl-mate.k-paused .fl-av{filter:saturate(.4) brightness(1.05)}
+.fl-keys{display:none!important} /* the arrows and Esc still work; the hint was one more box on the picture */
+.fl-pov-top .fl-letgo-btn{background:transparent!important;box-shadow:none!important;color:var(--ink-3);font-weight:500}
+.fl-pov-top .fl-letgo-btn:hover{color:#b4232f;background:rgba(255,255,255,.7)!important}
 html.fl-st-on .fl-say{opacity:0;pointer-events:none;visibility:hidden}
 html.fl-st-on .fl-roster{opacity:0;pointer-events:none;transform:translate(-50%,20px)}
 html.fl-st-on .fl-head{opacity:0;pointer-events:none;transform:translateY(-16px)}
@@ -1209,7 +1244,7 @@ function loadPart(name) {
   if (!PARTS[name]) PARTS[name] = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "/" + name + ".js?v=" + PART_V; sc.async = true; sc.onload = res; sc.onerror = () => { delete PARTS[name]; rej(new Error(name)); }; document.head.append(sc); });
   return PARTS[name];
 }
-const PART_V = "6";
+const PART_V = "7";
 function loadThree() {
   if (!threeP) { const l = document.createElement("link"); l.rel = "modulepreload"; l.href = THREE_URL; l.integrity = THREE_SRI; l.crossOrigin = "anonymous"; document.head.append(l); threeP = import(THREE_URL); threeP.catch(() => { threeP = null; }); }
   return threeP;
@@ -2855,7 +2890,7 @@ function renderFloor(opts = {}) {
     h("div", { class: "fl-title" }, h("h1", {}, b.name), h("span", {}, kickTxt)),
     multi ? h("div", { class: "fl-floors-wrap" }, h("button", { class: "fl-view fl-floors-btn", type: "button", "data-k": "fl-floors", "aria-haspopup": "menu", "aria-expanded": S.menu === "floors" ? "true" : "false", onclick: () => { S.menu = S.menu === "floors" ? null : "floors"; render({ keepFocus: "fl-floors" }); } }, icon("team"), h("span", {}, "Floors"), icon("chev")), S.menu === "floors" ? floorsMenu() : null) : null,
     counts.length ? h("ul", { class: "fl-counts", "aria-label": "Your team right now" }, counts.map(([k, c, w]) => h("li", { class: "c-" + k }, h("i", { "aria-hidden": "true" }), c + " " + (c === 1 && w === "need you" ? "needs you" : w)))) : null,
-    h("button", { class: "fl-view", "data-k": "fl-list", onclick: () => setView("list") }, icon("grid"), h("span", {}, "List view")),
+    h("button", { class: "fl-view", "data-k": "fl-list", title: "List view", onclick: () => setView("list") }, icon("grid"), h("span", { class: "sr" }, "List view")),
     acct);
 
   const tags = new Map();
@@ -2879,7 +2914,7 @@ function renderFloor(opts = {}) {
 
   const roster = h("nav", { class: "fl-roster glass", "aria-label": "Your team" },
     h("div", { class: "fl-office-wrap" }, h("button", { class: "fl-mydesk", type: "button", "data-k": "fl-office", "aria-haspopup": "menu", "aria-expanded": S.menu === "office" ? "true" : "false", onclick: () => { if (S.desk || S.station) { toFloor(); return; } S.menu = S.menu === "office" ? null : "office"; render({ keepFocus: "fl-office" }); } }, h("span", { class: "ico", "aria-hidden": "true" }, icon("grid")), h("span", { class: "tx" }, h("b", {}, "The office"), h("small", {}, S.desk || S.station ? "Back to the floor" : "Front desk, tools, billing and more"))), S.menu === "office" ? officeMenu() : null),
-    ag.length ? h("ul", {}, ag.map((a, i) => { const L = looks.get(a.spec_id); return h("li", {}, h("button", { class: "fl-mate k-" + L.kind, type: "button", "data-k": "fl-m-" + a.spec_id, "aria-current": S.focus === a.spec_id ? "true" : null, onclick: () => openMate(a.spec_id), onpointerenter: () => FLOOR.office && FLOOR.office.hover(a.spec_id), onfocus: () => FLOOR.office && FLOOR.office.hover(a.spec_id) },
+    ag.length ? h("ul", {}, ag.map((a, i) => { const L = looks.get(a.spec_id); return h("li", {}, h("button", { class: "fl-mate k-" + L.kind, type: "button", title: mateName(a) + " · " + L.text, "data-k": "fl-m-" + a.spec_id, "aria-current": S.focus === a.spec_id ? "true" : null, onclick: () => openMate(a.spec_id), onpointerenter: () => FLOOR.office && FLOOR.office.hover(a.spec_id), onfocus: () => FLOOR.office && FLOOR.office.hover(a.spec_id) },
       avatar(a), h("span", { class: "tx" }, h("b", {}, mateName(a)), h("small", {}, L.text)), i < 9 ? h("kbd", { "aria-hidden": "true" }, String(i + 1)) : null)); }))
       : h("p", { class: "fl-empty" }, "Your teammates will show here."));
 
