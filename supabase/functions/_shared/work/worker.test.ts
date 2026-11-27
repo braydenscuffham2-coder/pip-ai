@@ -29,3 +29,9 @@ test("pip-work only believes vault answers it knows, and its knock needs no pass
   assert.ok(tick > 0 && gate > tick && enqueue > gate, "/enqueue, /resume and /stop sit behind the service key; /tick does not");
   assert.ok(!/console\.(log|error)\([^)]*(password|username|secret)/i.test(src), "nothing secret-shaped is logged");
 });
+
+test("the failure email has a sender even when no sender is configured, as Pip's other alerts do", () => {
+  const src = readFileSync(new URL("../../pip-work/index.ts", import.meta.url), "utf8");
+  assert.match(src, /LEAD_ALERT_FROM"\) \?\? "Pip <onboarding@resend\.dev>"/);
+  assert.ok(!/if \(!key \|\| !to \|\| !from\) return 0/.test(src), "a missing sender setting no longer silences the email");
+});

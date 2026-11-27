@@ -214,8 +214,10 @@ async function afterScreenJob(job: WorkJob, status: string, out: Out) {
 
 /** Every failed job is emailed to the founder once, with the job and the reason. Also catches jobs the database ended. */
 async function alertFailures() {
-  const key = Deno.env.get("RESEND_API_KEY") ?? "", to = Deno.env.get("LEAD_ALERT_TO") ?? "", from = Deno.env.get("LEAD_ALERT_FROM") ?? "";
-  if (!key || !to || !from) return 0;
+  // The sender falls back to the same address Pip's other alerts use when LEAD_ALERT_FROM is not set.
+  const key = Deno.env.get("RESEND_API_KEY") ?? "", to = Deno.env.get("LEAD_ALERT_TO") ?? "";
+  const from = (Deno.env.get("LEAD_ALERT_FROM") ?? "Pip <onboarding@resend.dev>").replace(/^[^<]*</, "Pip background work <");
+  if (!key || !to) return 0;
   const failed = await rows(`work_jobs?status=eq.failed&alerted_at=is.null&select=id,business_id,kind,title,reason,summary,step,cost_usd,finished_at,businesses(name)&order=finished_at.asc&limit=10`);
   let sent = 0;
   for (const j of failed ?? []) {
