@@ -1078,6 +1078,19 @@ html:not(.office-live) .fl-say{left:12px;transform:none!important}
 .cd-foot{margin-top:12px}
 
 .fl-head:has(.fl-menu),.fl-roster:has(.fl-menu){z-index:130}
+
+/* station cards on the floor, in the concept pictures' style */
+.fl-tags .tag.st{display:flex;align-items:center;gap:11px;padding:9px 16px 10px 9px;border-radius:20px;background:rgba(255,255,255,.9);box-shadow:0 0 0 1px rgba(255,255,255,.9),0 16px 36px -18px rgba(38,34,90,.4)}
+.tag.st .st-ico{width:38px;height:38px;border-radius:13px;display:grid;place-items:center;flex:none;color:color-mix(in srgb,var(--c) 55%,#1d1a40);background:linear-gradient(160deg,#fff 0%,color-mix(in srgb,var(--c) 26%,#fff) 100%);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--c) 35%,transparent),0 6px 14px -8px var(--c)}
+.tag.st .st-ico svg.i{width:19px;height:19px}
+.tag.st .st-tx{display:flex;flex-direction:column;gap:3px;min-width:0}
+.tag.st .st-name{font:400 21px/1.05 var(--f-display);letter-spacing:-.005em;font-weight:400}
+.tag.st .st-line{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-2)}
+.tag.st .chip{height:22px;font-size:12px;align-self:flex-start}
+.tag.st .st-bar{display:block;width:150px;height:6px;margin-top:4px;border-radius:9px;background:rgba(94,234,217,.16);overflow:hidden}
+.tag.st .st-bar i{display:block;height:100%;width:calc(var(--k) * 100%);border-radius:9px;background:linear-gradient(90deg,#5eead9,#7cc4ff)}
+.tag.st .st-bar.over i{background:linear-gradient(90deg,#ffc861,#f2a93b)}
+.tag.st.k-needs{box-shadow:0 0 0 1px #fff,0 0 0 3px rgba(227,160,8,.32),0 16px 36px -16px rgba(38,34,90,.38)}
 /* the rest of the office: station tags, the office and floors menus, the let-go card */
 .fl-tags .tag.st{padding:8px 12px 9px}
 .tag.st .st-ico{width:22px;height:22px;border-radius:8px;display:grid;place-items:center;background:linear-gradient(160deg,#fff,#efeafe);box-shadow:inset 0 0 0 1px rgba(var(--violet-rgb),.18);color:#6f64c9;flex:none}
@@ -1162,7 +1175,7 @@ function loadPart(name) {
   if (!PARTS[name]) PARTS[name] = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "/" + name + ".js?v=" + PART_V; sc.async = true; sc.onload = res; sc.onerror = () => { delete PARTS[name]; rej(new Error(name)); }; document.head.append(sc); });
   return PARTS[name];
 }
-const PART_V = "2";
+const PART_V = "3";
 function loadThree() {
   if (!threeP) { const l = document.createElement("link"); l.rel = "modulepreload"; l.href = THREE_URL; l.integrity = THREE_SRI; l.crossOrigin = "anonymous"; document.head.append(l); threeP = import(THREE_URL); threeP.catch(() => { threeP = null; }); }
   return threeP;
@@ -2454,7 +2467,7 @@ async function startOffice() {
     await FLOOR.office.ready; // every shader is compiled before the first frame, so the walk-in is smooth from the start
     document.documentElement.classList.add("office-live");
     if (window.PIP_TEST) window.__office = FLOOR.office;
-    if (floorOn()) { Pip.office(FLOOR.office.pip); FLOOR.shown = null; render(); FLOOR.office.enter(firstToday()); } else FLOOR.office.setActive(false);
+    if (floorOn()) { Pip.office(FLOOR.office.pip); FLOOR.shown = null; render(); const full = firstToday(); FLOOR.office.enter(full); if (full) setTimeout(() => { if (floorOn() && !S.desk && !S.focus) Pip.wave("Welcome back. Your team is here."); }, reduced() ? 0 : 2300); } else FLOOR.office.setActive(false);
   } catch (e) { FLOOR.failed = true; FLOOR.office = null; document.documentElement.classList.remove("office-live"); if (S.data) render(); }
   FLOOR.starting = false;
 }
@@ -2463,9 +2476,9 @@ async function startOffice() {
 function mateLook(a) {
   const d = S.data;
   if (d.business.status === "disconnected") return { look: "sleep", light: null, kind: "paused", text: "Off. Everything is disconnected." };
-  if (isPaused(a)) return { look: "sleep", light: null, kind: "paused", text: a.pauses.length && a.status !== "paused" ? "Held" : "Paused" };
+  if (isPaused(a)) return { look: "sleep", light: null, kind: "paused", text: a.pauses.length && a.status !== "paused" ? "Held" : isOwner() ? "Paused · Wake up" : "Paused" };
   if (building(a)) return { look: "build", light: "build", kind: "build", text: (AGENT[a.status] || ["Being built"])[0] + " by Pip" };
-  const yn = youNeeds(a); if (yn.length) return { look: "scratch", light: "needs", kind: "needs", text: "Needs you · " + lowerFirst(yn[0]) };
+  const yn = youNeeds(a); if (yn.length) { const s = stepFor(yn[0]), cut = s && ["failed", "expired", "revoked"].includes(s.status); return { look: "scratch", light: "needs", kind: "needs", text: cut ? yn[0] + " disconnected · Plug back in" : "Needs you · " + lowerFirst(yn[0]) }; }
   if (a.status === "live") { const l = logFor(a)[0]; return { look: "work", light: "working", kind: "live", text: l ? shortSum(l.summary, mateName(a)) : "Working" }; }
   return { look: "idle", light: "ready", kind: "ready", text: (AGENT[a.status] || ["Ready"])[0] };
 }
@@ -2653,12 +2666,12 @@ function floorCta() {
 // out of reach: this is a way in, not a second copy of the Portal.
 const notOff = () => S.data.business.status !== "disconnected";
 const STATIONS = {
-  front: { name: "Front desk", line: "People, alerts and rules", ico: "people", body: () => [peopleTab(), alertsCard(), locationCard(), rulesCard(), notOff() ? consentCard() : null] },
-  meter: { name: "Usage meter", line: "Your price, card and this month", ico: "activity", body: () => [stageCard(), isOwner() && notOff() ? cardCard() : null, notOff() ? usageCard() : null, S.data.role === "founder" && notOff() ? termsCard() : null] },
-  tools: { name: "Tool wall", line: "Every tool your team uses", ico: "setup", body: () => [lockBar(), stepsCard((x) => !COMMS_KINDS.includes(x.kind), "Your tools"), isOwner() && (S.data.setup_unlocked || S.data.role === "founder") && S.data.connect_on ? anyToolCard() : null] },
-  comms: { name: "Comms corner", line: "Phone, texting, logins, deliveries", ico: "phone", body: () => [lockBar(), stepsCard((x) => COMMS_KINDS.includes(x.kind), "Phone, texting and deliveries"), isOwner() && S.data.setup_unlocked ? vaultCard() : null] },
-  exit: { name: "Exit", line: "Disconnect or close the office", ico: "out", body: () => [isOwner() ? disconnectCard() : h("div", { class: "card empty rise", style: { "--i": 1 } }, h("p", { class: "lead" }, "Only an owner can disconnect or close the office.")), signOutRow()] },
-  founder: { name: "Your office", line: "Founder only", ico: "grid", body: () => [founderCard(), ...founderLoft()] },
+  front: { name: "Front desk", line: "People, alerts and rules", ico: "people", hex: "#ff9ac0", body: () => [peopleTab(), alertsCard(), locationCard(), rulesCard(), notOff() ? consentCard() : null] },
+  meter: { name: "Usage meter", line: "Your price, card and this month", ico: "activity", hex: "#5eead9", body: () => [stageCard(), isOwner() && notOff() ? cardCard() : null, notOff() ? usageCard() : null, S.data.role === "founder" && notOff() ? termsCard() : null] },
+  tools: { name: "Tool wall", line: "Every tool your team uses", ico: "setup", hex: "#9b86ff", body: () => [lockBar(), stepsCard((x) => !COMMS_KINDS.includes(x.kind), "Your tools"), isOwner() && (S.data.setup_unlocked || S.data.role === "founder") && S.data.connect_on ? anyToolCard() : null] },
+  comms: { name: "Comms corner", line: "Phone, texting, logins, deliveries", ico: "phone", hex: "#7cc4ff", body: () => [lockBar(), stepsCard((x) => COMMS_KINDS.includes(x.kind), "Phone, texting and deliveries"), isOwner() && S.data.setup_unlocked ? vaultCard() : null] },
+  exit: { name: "Exit", line: "Disconnect or close the office", ico: "out", hex: "#ff9a8b", body: () => [isOwner() ? disconnectCard() : h("div", { class: "card empty rise", style: { "--i": 1 } }, h("p", { class: "lead" }, "Only an owner can disconnect or close the office.")), signOutRow()] },
+  founder: { name: "Your office", line: "Founder only", ico: "grid", hex: "#ffc861", body: () => [founderCard(), ...founderLoft()] },
 };
 const stationList = () => Object.keys(STATIONS).filter((k) => k !== "founder" || (S.data && S.data.role === "founder"));
 function openStation(id, slot) {
@@ -2689,13 +2702,15 @@ function stationModel() {
   const frac = u && !u.off && Number(u.included_usd) > 0 ? Number(u.value_usd || 0) / Number(u.included_usd) : 0;
   const late = bill && (bill.billing_status === "past_due" || bill.billing_status === "paused");
   const stateOf = (x) => (x.status === "active" ? "ok" : ["failed", "expired", "revoked"].includes(x.status) ? "you" : x.waiting_on === "pip" || ["submitted", "unsupported"].includes(x.status) ? "pip" : "you");
-  const tools = d.checklist.filter((x) => !COMMS_KINDS.includes(x.kind)).concat(d.extra_tools || []).map((x) => ({ short: shortTool(x.label || x.name || x.toolkit || "Tool"), hex: toolHex(x), state: x.slot ? stateOf(x) : x.status === "active" ? "ok" : "you" }));
-  const cables = d.agents.filter((a) => !building(a)).map((a) => { const st = a.needs.map(stepFor).filter(Boolean).map(stateOf); return { id: a.spec_id, state: isPaused(a) ? "none" : st.includes("you") ? "you" : st.includes("pip") ? "pip" : "ok" }; });
+  const tools = d.checklist.filter((x) => !COMMS_KINDS.includes(x.kind)).concat(d.extra_tools || []).map((x) => ({ short: shortTool(x.label || x.name || x.toolkit || "Tool"), kind: toolKind(x), hex: toolHex(x), state: x.slot ? stateOf(x) : x.status === "active" ? "ok" : "you" }));
+  const cables = d.agents.filter((a) => !building(a)).map((a) => { const steps = a.needs.map(stepFor).filter(Boolean), st = steps.map(stateOf); return { id: a.spec_id, state: isPaused(a) ? "none" : st.includes("you") ? "you" : st.includes("pip") ? "pip" : "ok", cut: steps.some((x) => ["failed", "expired", "revoked"].includes(x.status)) }; });
   return { meter: { frac, warn: !!late || (u && Number(u.beyond_plan_usd) > 0) }, tools, cables, founder: d.role === "founder" };
 }
 const shortTool = (l) => { const w = String(l).replace(/^(A|An|Your)\s+/i, "").replace(/ from your address/i, "").split(/\s+/), two = w.slice(0, 2).join(" "), t = two.length <= 10 ? two : w[0]; const c = t.charAt(0).toUpperCase() + t.slice(1); return c.length > 12 ? c.slice(0, 11) + "…" : c; }; // fits on a tool block
-const TOOL_HEX = { google: "#5b9dff", calendly: "#5eead9", acuity: "#9b86ff", square: "#8f93b8", microsoft: "#5eead9" };
-const toolHex = (x) => { const p = (x.choices && x.choices[0] && x.choices[0].provider) || x.provider || ""; return TOOL_HEX[p] || ["#ff9ac0", "#ffc861", "#9b86ff", "#5eead9", "#8fd8bb"][String(x.slot || x.toolkit || x.label).length % 5]; };
+const toolKind = (x) => { const t = [x.slot, x.label, x.name, x.toolkit, x.kind].join(" ").toLowerCase();
+  return /calendar/.test(t) ? "cal" : /book|appoint|calendly|acuity/.test(t) ? "book" : /mail|gmail|outlook/.test(t) ? "mail" : /sheet|excel/.test(t) ? "grid" : /chat|slack|teams|message|text/.test(t) ? "chat" : /sign/.test(t) ? "sign" : /review|profile|google_profile/.test(t) ? "star" : /pay|square|stripe|quickbooks|invoice|account/.test(t) ? "coin" : /camera/.test(t) ? "cam" : /web|site/.test(t) ? "web" : "plug"; };
+const TOOL_HEX = { cal: "#ff9ac0", book: "#5eead9", mail: "#7cc4ff", grid: "#8fd8bb", chat: "#9b86ff", sign: "#ffc861", star: "#ffc861", coin: "#8fd8bb", cam: "#7cc4ff", web: "#9b86ff", plug: "#cfc3ff" };
+const toolHex = (x) => TOOL_HEX[toolKind(x)];
 function firstToday() { const k = new Date().toDateString(); let seen = null; try { seen = localStorage.getItem("pip-portal:arrived"); localStorage.setItem("pip-portal:arrived", k); } catch (e) { /* private mode */ } return seen !== k; }
 
 // "Let go": the confirm card is real, the action is not wired yet. Pressing "Let go" does nothing on purpose.
@@ -2760,8 +2775,11 @@ function renderFloor(opts = {}) {
   tags.set("~open", h("a", { class: "tag open", href: "/", tabindex: "-1", "aria-hidden": "true" }, h("span", { class: "row" }, h("b", {}, "Open desk")), h("span", { class: "doing" }, h("span", { class: "tx" }, "Room for one more · see the Marketplace"))));
 
   const stTags = new Map(stationList().map((k) => { const st = STATIONS[k], [line, kind] = stationStatus(k);
-    return [k, h("button", { class: "tag glass st k-" + kind, type: "button", tabindex: "-1", "aria-hidden": "true", onclick: () => openStation(k) },
-      h("span", { class: "row" }, h("span", { class: "st-ico", "aria-hidden": "true" }, icon(st.ico)), h("b", {}, st.name)), h("span", { class: "doing" }, kind === "needs" ? h("span", { class: "chip" }, line) : [h("i", { class: "dot k-" + kind }), h("span", { class: "tx" }, line)]))]; }));
+    const u = S.usage, bar = k === "meter" && u && !u.off && u.started && Number(u.included_usd) > 0 ? Math.min(1, Number(u.value_usd || 0) / Number(u.included_usd)) : null;
+    return [k, h("button", { class: "tag glass st k-" + kind, type: "button", tabindex: "-1", "aria-hidden": "true", style: { "--c": st.hex }, onclick: () => openStation(k) },
+      h("span", { class: "st-ico", "aria-hidden": "true" }, icon(st.ico)),
+      h("span", { class: "st-tx" }, h("b", { class: "st-name" }, st.name), kind === "needs" ? h("span", { class: "chip" }, line) : h("span", { class: "st-line" }, h("i", { class: "dot k-" + kind }), line),
+        bar != null ? h("span", { class: "st-bar" + (bar >= 1 ? " over" : ""), style: { "--k": bar } }, h("i")) : null))]; }));
   const cta = floorCta();
   const say = h("div", { class: "fl-say" }, h("p", { class: "say fl", "aria-hidden": "true" }, h("span", { class: "b" }, h("span", { class: "who" }, h("i"), "Pip, floor manager"), h("span", { class: "t" }))),
     cta ? h("button", { class: "btn pri", type: "button", "data-k": "fl-cta", onclick: cta.go }, cta.label, icon("arrow", "arr")) : null);

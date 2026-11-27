@@ -608,8 +608,32 @@ function createOffice(THREE, X, opts) {
     s.extra = { blocks: [], shelves, sig: "" };
     return s;
   })();
-  const blockGeo = RB(0.26, 0.24, 0.22, 0.06), dotGeo = new THREE.SphereGeometry(0.022, 12, 10), blockMats = new Map(), STATE_HEX = { ok: C.aqua, you: "#f2b02a", pip: C.violet, bad: "#ff7d6b" };
-  function blockMat(hex) { if (!blockMats.has(hex)) blockMats.set(hex, pearlStuff({ color: pastel(hex, 0.3).getStyle(), flank: pastel(hex, 0.7).getStyle(), belly: "#ffffff", fk: 0.55, bk: 0.2, rough: 0.3, irid: 0.12, rim: 0.3 })); return blockMats.get(hex); }
+  const blockGeo = RB(0.28, 0.28, 0.2, 0.07), dotGeo = new THREE.SphereGeometry(0.022, 12, 10), blockMats = new Map(), STATE_HEX = { ok: C.aqua, you: "#f2b02a", pip: C.violet, bad: "#ff7d6b" };
+  function blockMat(hex) { if (!blockMats.has(hex)) blockMats.set(hex, pearlStuff({ color: pastel(hex, 0.5).getStyle(), flank: pastel(hex, 0.85).getStyle(), belly: pastel(hex, 0.3).getStyle(), fk: 0.6, bk: 0.35, rough: 0.26, irid: 0.16, rim: 0.32 })); return blockMats.get(hex); }
+  // the face of a tool tile: a soft icon and its name, like an app tile on a shelf
+  const tileTex = new Map();
+  function toolGlyph(g, kind, c) {
+    g.strokeStyle = c; g.fillStyle = c; g.lineWidth = 11; g.lineCap = g.lineJoin = "round";
+    const R = (x, y, w, h, r) => { g.beginPath(); g.roundRect(x, y, w, h, r); };
+    if (kind === "cal" || kind === "book") { R(70, 66, 116, 104, 18); g.stroke(); g.beginPath(); g.moveTo(70, 100); g.lineTo(186, 100); g.moveTo(100, 54); g.lineTo(100, 78); g.moveTo(156, 54); g.lineTo(156, 78); g.stroke();
+      if (kind === "book") { g.beginPath(); g.moveTo(106, 134); g.lineTo(122, 150); g.lineTo(152, 118); g.stroke(); } else for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(102 + i * 26, 135, 7, 0, 7); g.fill(); } }
+    else if (kind === "mail") { R(64, 76, 128, 92, 16); g.stroke(); g.beginPath(); g.moveTo(70, 86); g.lineTo(128, 128); g.lineTo(186, 86); g.stroke(); }
+    else if (kind === "grid") { R(72, 66, 112, 112, 16); g.stroke(); g.beginPath(); g.moveTo(72, 104); g.lineTo(184, 104); g.moveTo(72, 140); g.lineTo(184, 140); g.moveTo(112, 66); g.lineTo(112, 178); g.stroke(); }
+    else if (kind === "chat") { R(64, 70, 128, 86, 30); g.stroke(); g.beginPath(); g.moveTo(98, 156); g.lineTo(88, 182); g.lineTo(122, 158); g.stroke(); }
+    else if (kind === "sign") { g.beginPath(); g.moveTo(84, 168); g.lineTo(160, 92); g.lineTo(178, 110); g.lineTo(102, 186); g.closePath(); g.stroke(); g.beginPath(); g.moveTo(70, 196); g.quadraticCurveTo(120, 176, 190, 196); g.stroke(); }
+    else if (kind === "star") { g.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? 26 : 60, a = (i / 10) * Math.PI * 2 - Math.PI / 2; g[i ? "lineTo" : "moveTo"](128 + Math.cos(a) * r, 124 + Math.sin(a) * r); } g.closePath(); g.stroke(); }
+    else if (kind === "coin") { g.beginPath(); g.arc(128, 122, 56, 0, 7); g.stroke(); g.font = "600 66px Geist"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("$", 128, 126); }
+    else if (kind === "cam") { R(66, 86, 124, 84, 18); g.stroke(); g.beginPath(); g.arc(128, 128, 24, 0, 7); g.stroke(); }
+    else if (kind === "web") { g.beginPath(); g.arc(128, 122, 58, 0, 7); g.moveTo(70, 122); g.lineTo(186, 122); g.ellipse(128, 122, 26, 58, 0, 0, 7); g.stroke(); }
+    else { g.beginPath(); g.moveTo(108, 62); g.lineTo(108, 94); g.moveTo(148, 62); g.lineTo(148, 94); g.stroke(); R(88, 94, 80, 52, 16); g.stroke(); g.beginPath(); g.moveTo(128, 146); g.lineTo(128, 190); g.stroke(); }
+  }
+  function tileFace(t) {
+    const key = t.kind + "|" + t.hex + "|" + t.short; if (tileTex.has(key)) return tileTex.get(key);
+    const ink = "#" + new THREE.Color(t.hex).lerp(new THREE.Color("#241f52"), 0.55).getHexString();
+    const tex = canvasTex(256, 256, (g) => { g.save(); g.translate(0, -14); g.scale(0.86, 0.86); g.translate(21, 10); toolGlyph(g, t.kind, ink); g.restore();
+      g.fillStyle = ink; g.textAlign = "center"; g.textBaseline = "middle"; g.font = "600 " + (t.short.length <= 7 ? 34 : t.short.length <= 10 ? 28 : 23) + "px Geist"; g.fillText(t.short, 128, 222); });
+    tileTex.set(key, tex); return tex;
+  }
   function setToolBlocks(list) { // one glossy block per tool your team uses, with a light that says where it stands
     const T_ = tools.extra, sig = JSON.stringify(list); if (sig === T_.sig) return; T_.sig = sig;
     for (const b of T_.blocks) tools.grp.remove(b); T_.blocks = [];
@@ -618,9 +642,9 @@ function createOffice(THREE, X, opts) {
       const row = Math.floor(i / per), col = i % per, n = Math.min(per, shown.length - row * per), x = (col - (n - 1) / 2) * 0.44;
       const b = new THREE.Group(); b.position.set(x, T_.shelves[row] + 0.12, -0.05); b.rotation.y = (col % 2 ? -1 : 1) * 0.12;
       b.add(new THREE.Mesh(blockGeo, blockMat(t.hex)));
-      const dot = new THREE.Mesh(dotGeo, glowMat(STATE_HEX[t.state] || C.aqua, 3)); dot.position.set(0, 0.07, 0.114); b.add(dot);
-      const face = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.08), new THREE.MeshBasicMaterial({ map: label(t.short, { w: 300, h: 120, color: "#3d3460", font: "600 " + (t.short.length <= 6 ? 60 : t.short.length <= 9 ? 48 : 38) + "px Geist", align: "center" }), transparent: true, depthWrite: false }));
-      face.position.set(0, -0.035, 0.113); b.add(face); b.userData.state = t.state; b.userData.dot = dot;
+      const dot = new THREE.Mesh(dotGeo, glowMat(STATE_HEX[t.state] || C.aqua, 3)); dot.position.set(0.095, 0.095, 0.105); b.add(dot);
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(0.21, 0.21), new THREE.MeshBasicMaterial({ map: tileFace(t), transparent: true, depthWrite: false }));
+      face.position.set(0, -0.005, 0.113); b.add(face); b.userData.state = t.state; b.userData.dot = dot;
       tools.grp.add(b); T_.blocks.push(b); onlyMain(dot, face);
     });
   }
@@ -697,21 +721,33 @@ function createOffice(THREE, X, opts) {
     comms.grp.position.set(-(PHONE() ? 2.55 : 3.1), 0, zb + 0.55); comms.grp.rotation.y = 0.62;
     exit.grp.position.set(PHONE() ? 2.55 : 3.1, 0, zb + 0.55); exit.grp.rotation.y = -0.62;
     loft.grp.position.set(0, 3.35, zb - 1.3);
-    for (const [id, c] of cables) { const d = desks.get(id); if (!d) { scene.remove(c.mesh); cables.delete(id); continue; } c.mesh.geometry.dispose(); c.mesh.geometry = cableGeo(d); }
+    for (const [id, c] of cables) { const d = desks.get(id); if (!d) { scene.remove(c.mesh); if (c.plug) scene.remove(c.plug); cables.delete(id); continue; } c.mesh.geometry.dispose(); c.mesh.geometry = cableGeo(d, c.cut); }
   }
-  function cableGeo(d) {
+  function cablePts(d, cut) {
     const x = d.grp.position.x, z = d.grp.position.z, s = Math.sign(x) || 1, zb = zBack();
     const pts = [V(x * 0.72, 0.014, z + 0.45), V(s * 1.5, 0.014, z + 0.1), V(s * 1.27, 0.014, z - 0.5), V(s * 1.26, 0.014, zb + 0.6), V(s * 1.25, 0.06, zb + 0.28)];
-    return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, "catmullrom", 0.2), 64, 0.011, 6, false);
+    if (cut) pts[0] = V(x * 0.55 + s * 0.35, 0.014, z + 0.32); // pulled out: the cable lies short of the desk
+    return pts;
+  }
+  function cableGeo(d, cut) { return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(cablePts(d, cut), false, "catmullrom", 0.2), 64, 0.011, 6, false); }
+  const plugGeo = { body: new THREE.CapsuleGeometry(0.028, 0.07, 6, 14), prong: new THREE.CapsuleGeometry(0.006, 0.03, 3, 6) };
+  function makePlug() {
+    const g = new THREE.Group(), body = new THREE.Mesh(plugGeo.body, M.shell); body.rotation.z = Math.PI / 2; g.add(body);
+    for (const s of [-1, 1]) { const p = new THREE.Mesh(plugGeo.prong, M.silver); p.rotation.z = Math.PI / 2; p.position.set(0.07, 0, s * 0.012); g.add(p); }
+    const ring = blob(0.5, 0.5, radial([[0, "rgba(242,176,42,0)"], [0.55, "rgba(242,176,42,.55)"], [0.7, "rgba(242,176,42,.25)"], [1, "rgba(242,176,42,0)"]]), 0.9, true); ring.position.y = -0.024; g.add(ring); g.userData.ring = ring;
+    scene.add(g); onlyMain(g); return g;
   }
   function syncCables(list) { // list: [{ id, state: ok | you | pip | none }]
     const keep = new Set();
     for (const c of list || []) {
       const d = desks.get(c.id); if (!d || d.open) continue; keep.add(c.id);
       let e = cables.get(c.id); if (!e) { e = { mesh: new THREE.Mesh(cableGeo(d), cableMats.none), state: null }; scene.add(e.mesh); onlyMain(e.mesh); cables.set(c.id, e); }
-      if (e.state !== c.state) { e.state = c.state; e.mesh.material = c.state === "you" ? cableMats.you.clone() : cableMats[c.state] || cableMats.none; e.t0 = T(); }
+      const cut = c.state === "you" && !!c.cut;
+      if (e.state !== c.state || e.cut !== cut) { e.state = c.state; e.cut = cut; e.mesh.material = c.state === "you" ? cableMats.you.clone() : cableMats[c.state] || cableMats.none; e.t0 = T(); e.mesh.geometry.dispose(); e.mesh.geometry = cableGeo(d, cut); }
+      if (cut && !e.plug) e.plug = makePlug();
+      if (e.plug) { e.plug.visible = cut; if (cut) { const p = cablePts(d, true), dir = p[1].clone().sub(p[0]); e.plug.position.set(p[0].x, 0.03, p[0].z); e.plug.rotation.y = Math.atan2(-dir.z, dir.x) + Math.PI; } }
     }
-    for (const [id, e] of cables) if (!keep.has(id)) { scene.remove(e.mesh); cables.delete(id); }
+    for (const [id, e] of cables) if (!keep.has(id)) { scene.remove(e.mesh); if (e.plug) scene.remove(e.plug); cables.delete(id); }
   }
 
   // the arrival: shown the first time each day, otherwise a short glide in
@@ -731,7 +767,7 @@ function createOffice(THREE, X, opts) {
     const f = clamp(m.shown, 0.02, 1); m.liq.scale.y = f * 1.16; m.liq.position.y = 0.53 + (f * 1.16) / 2;
     m.liqMat.emissive.set(m.warn ? "#f2b02a" : C.aqua); m.liqMat.color.set(m.warn ? "#ffe3a3" : "#bff5ee");
     m.bubbles.forEach((b, i) => { const k = (t * (0.12 + i * 0.02) + i / 7) % 1; b.visible = k * 1.16 < f * 1.16 - 0.04; b.position.set(Math.sin(i * 2.1 + t) * 0.035, 0.55 + k * f * 1.16, 0.27 + Math.cos(i * 1.7) * 0.03); });
-    for (const e of cables.values()) if (e.state === "you") { const k = 0.55 + 0.45 * Math.sin(t * 3.2); e.mesh.material.color.set("#f2b02a").multiplyScalar(2 + k * 3.5); }
+    for (const e of cables.values()) if (e.state === "you") { const k = 0.55 + 0.45 * Math.sin(t * 3.2); e.mesh.material.color.set("#f2b02a").multiplyScalar(2 + k * 3.5); if (e.plug && e.plug.visible) { const r = e.plug.userData.ring; r.scale.setScalar(0.8 + 0.5 * ((t * 0.8) % 1)); r.material.opacity = 0.9 * (1 - ((t * 0.8) % 1)); } }
     for (const b of tools.extra.blocks) if (b.userData.state === "you") b.userData.dot.material.color.set("#f2b02a").multiplyScalar(2 + 2.5 * (0.5 + 0.5 * Math.sin(t * 3.2)));
     exit.extra.light.material.opacity = lerp(exit.extra.light.material.opacity, stHover === "exit" ? 0.5 : 0.12, 0.08);
     for (const s of ST.values()) { const up = s.id === stHover ? 1 : 0; s.k = lerp(s.k || 0, up, 0.12); }
