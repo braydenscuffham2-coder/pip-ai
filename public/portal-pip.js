@@ -43,25 +43,26 @@ function createPipEngine(THREE, opts) {
   }
 
   // ----- materials -----
-  function pearl(tint = 1) {
+  function pearl(tint = 1, pal = {}) {
     const m = new THREE.MeshPhysicalMaterial({
       color: "#ffffff", roughness: 0.38, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.05, sheen: 0.55, sheenRoughness: 0.5,
       sheenColor: new THREE.Color("#e6dcff"), iridescence: 0.28, iridescenceIOR: 1.35, iridescenceThicknessRange: [180, 520], envMapIntensity: 0.8,
     });
-    m.userData.u = { uCore: { value: new THREE.Color(C.aqua) }, uCoreK: { value: 0.55 }, uRim: { value: 0.55 }, uTint: { value: tint } };
+    m.userData.u = { uCore: { value: new THREE.Color(C.aqua) }, uCoreK: { value: 0.55 }, uRim: { value: 0.55 }, uTint: { value: tint },
+      uFlankC: { value: pal.flank ? new THREE.Color(pal.flank) : new THREE.Color().setRGB(0.8, 0.76, 1) }, uBellyC: { value: pal.belly ? new THREE.Color(pal.belly) : new THREE.Color().setRGB(0.58, 0.93, 0.89) } }; // Pip's own values unless a teammate's colour is given
     m.onBeforeCompile = (s) => {
       Object.assign(s.uniforms, m.userData.u);
       s.vertexShader = s.vertexShader.replace("#include <common>", "#include <common>\nvarying vec3 vObjN;")
         .replace("#include <beginnormal_vertex>", "#include <beginnormal_vertex>\nvObjN = normalize(normal);");
-      s.fragmentShader = s.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vObjN; uniform vec3 uCore; uniform float uCoreK, uRim, uTint;")
+      s.fragmentShader = s.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vObjN; uniform vec3 uCore, uFlankC, uBellyC; uniform float uCoreK, uRim, uTint;")
         .replace("#include <color_fragment>", `#include <color_fragment>
 { // pearl gradient: white crown, lilac flanks, aqua belly (Pip's palette)
   vec3 n = normalize(vObjN);
   float belly = smoothstep(.15, -.95, n.y * .8 - n.x * .35);
   float flank = smoothstep(.35, 1.0, abs(n.x)) * .7 + smoothstep(.2, -.6, n.z) * .3;
   vec3 c = vec3(.985, .975, 1.0);
-  c = mix(c, vec3(.80, .76, 1.0), flank * .75 * uTint);
-  c = mix(c, vec3(.58, .93, .89), belly * .80 * uTint);
+  c = mix(c, uFlankC, flank * .75 * uTint);
+  c = mix(c, uBellyC, belly * .80 * uTint);
   c = mix(c, vec3(1.0, .93, .97), smoothstep(.2, 1., n.x * .6 + n.y * .5) * .25 * uTint);
   diffuseColor.rgb *= c;
 }`)
@@ -87,12 +88,13 @@ function createPipEngine(THREE, opts) {
   const onSphere = (obj, dir, r = 1) => { const n = dir.clone().normalize(); obj.position.copy(n.clone().multiplyScalar(r)); obj.lookAt(n.clone().multiplyScalar(r + 1)); return obj; };
 
   // ----- Pip -----
-  function buildPip(env) {
-    const root = new THREE.Group(); root.name = "pip";
+  function buildPip(env, look = {}) {
+    const root = new THREE.Group(); root.name = look.name || "pip";
+    const seg = look.lite ? [48, 32] : [96, 64];
     const squash = new THREE.Group(); root.add(squash);
     const head = new THREE.Group(); squash.add(head);
-    const skin = pearl(); skin.envMap = env;
-    const body = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 64), skin); head.add(body);
+    const skin = pearl(1, look); skin.envMap = env;
+    const body = new THREE.Mesh(new THREE.SphereGeometry(1, seg[0], seg[1]), skin); head.add(body);
     const face = new THREE.Group(); head.add(face);
     const eyeMat = gloss(C.ink, { roughness: 0.15, envMap: env, envMapIntensity: 1.3 });
     const white = new THREE.MeshBasicMaterial({ color: "#ffffff" }), ink = new THREE.MeshBasicMaterial({ color: C.ink });
@@ -110,12 +112,13 @@ function createPipEngine(THREE, opts) {
     const mouth = new THREE.Mesh(new THREE.CircleGeometry(0.095, 32, Math.PI, Math.PI), new THREE.MeshBasicMaterial({ color: "#2a1830" })); mouth.position.z = 0.012; mouthAnchor.add(mouth);
     const tongue = new THREE.Mesh(new THREE.CircleGeometry(0.05, 24, Math.PI, Math.PI), new THREE.MeshBasicMaterial({ color: "#ff8fb5" })); tongue.position.set(0, -0.042, 0.016); tongue.scale.y = 0.7; mouthAnchor.add(tongue);
     const smile = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.014, 8, 24, Math.PI), ink); smile.rotation.z = Math.PI; smile.position.z = 0.012; mouthAnchor.add(smile);
-    const stalk = new THREE.Mesh(new THREE.BufferGeometry(), gloss(C.violet, { roughness: 0.3 })); head.add(stalk);
+    const stalk = new THREE.Mesh(new THREE.BufferGeometry(), gloss(look.stalk || C.violet, { roughness: 0.3 })); head.add(stalk);
     const bulbMat = new THREE.MeshBasicMaterial({ color: C.aqua }), bulb = new THREE.Mesh(new THREE.SphereGeometry(0.085, 24, 16), bulbMat); head.add(bulb);
     const haloMat = new THREE.MeshBasicMaterial({ map: radial([[0, "rgba(255,255,255,.9)"], [0.3, "rgba(255,255,255,.45)"], [1, "rgba(255,255,255,0)"]]), transparent: true, depthWrite: false, color: C.aqua });
     const halo = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.6), haloMat); head.add(halo);
-    const handSkin = pearl(0.8); handSkin.envMap = env;
-    const hands = [-1, 1].map(() => { const g = new THREE.Mesh(new THREE.SphereGeometry(0.24, 48, 32), handSkin); root.add(g); return g; });
+    const handSkin = pearl(0.8, look); handSkin.envMap = env;
+    const hands = [-1, 1].map(() => { const g = new THREE.Mesh(new THREE.SphereGeometry(0.24, seg[0] / 2, seg[1] / 2), handSkin); root.add(g); return g; });
+    if (look.acc) accessory(look.acc, head, face, hands, env, look.core || C.aqua);
     const shadowTex = radial([[0, "rgba(40,36,70,.55)"], [0.45, "rgba(40,36,70,.22)"], [1, "rgba(40,36,70,0)"]]);
     const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
     shadow.rotation.x = -Math.PI / 2; shadow.renderOrder = -4;
@@ -156,43 +159,43 @@ function createPipEngine(THREE, opts) {
       });
       floorGlow.position.set(Y.pos.x, 0.004, Y.pos.z); floorGlow.scale.setScalar(4.8 + lift * 1.2); floorGlow.material.color.set(Y.core); floorGlow.material.opacity = Y.floorGlow;
     }
-    return { root, head, face, apply, shadow, handShadows, floorGlow, hands };
+    return { root, head, face, apply, shadow, handShadows, floorGlow, hands, body, skin };
   }
 
-  // ----- the stage: transparent, so Pip stands on the Portal's own paper -----
-  const canvas = opts.canvas;
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: !!opts.still });
-  renderer.setClearColor(0x000000, 0);
-  renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1;
-  const scene = new THREE.Scene();
-  const pmrem = new THREE.PMREMGenerator(renderer), env = pmrem.fromScene(room(), 0.04).texture; pmrem.dispose();
-  scene.environment = env;
-  scene.add(new THREE.HemisphereLight("#ffffff", "#d9dce8", 0.7));
-  const key = new THREE.DirectionalLight("#ffffff", 2); key.position.set(-4, 7, 5); scene.add(key);
-  const fill = new THREE.DirectionalLight("#dfe8ff", 1); fill.position.set(5, 3, -4); scene.add(fill);
-  const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 200);
-  const pip = buildPip(env);
-  scene.add(pip.root, pip.shadow, pip.floorGlow, ...pip.handShadows);
-
-  const BASE = 1.5, CAM = V(0, 2.1, 7.6), LOOK = V(0, 1.72, 0);
-  let W = 1, H = 1, dpr = Math.min(2, window.devicePixelRatio || 1);
-  function resize(w, h) {
-    W = Math.max(1, Math.round(w)); H = Math.max(1, Math.round(h));
-    renderer.setPixelRatio(dpr); renderer.setSize(W, H, false);
-    camera.aspect = W / H; camera.fov = W / H < 0.8 ? 38 : 30; camera.updateProjectionMatrix();
+  // ----- a teammate's one accessory: the same eight the Marketplace's teammates carry -----
+  function accessory(kind, head, face, hands, env, tint) {
+    const ink = gloss("#5b5680", { envMap: env, roughness: 0.3 }), pale = gloss("#ffffff", { envMap: env }), col = gloss(tint, { envMap: env, roughness: 0.25 });
+    const add = (parent, geo, mat, p, r = [0, 0, 0], sc = [1, 1, 1]) => { const m = new THREE.Mesh(geo, mat); m.position.set(...p); m.rotation.set(...r); m.scale.set(...sc); parent.add(m); return m; };
+    if (kind === "headset") {
+      add(head, new THREE.TorusGeometry(1.04, 0.06, 10, 48, Math.PI), ink, [0, 0.02, -0.06], [0, Math.PI / 2, Math.PI / 2]);
+      for (const s of [-1, 1]) add(head, new THREE.CylinderGeometry(0.26, 0.26, 0.16, 28), ink, [s * 1.02, 0.02, -0.04], [0, 0, Math.PI / 2]);
+      const boom = new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(new THREE.Vector3(-1.02, -0.08, 0.1), new THREE.Vector3(-0.95, -0.55, 0.7), new THREE.Vector3(-0.35, -0.55, 0.98)), 16, 0.035, 8);
+      add(head, boom, ink, [0, 0, 0]); add(head, new THREE.SphereGeometry(0.075, 16, 12), ink, [-0.33, -0.55, 0.99]);
+    } else if (kind === "glasses") {
+      for (const s of [-1, 1]) add(face, new THREE.TorusGeometry(0.17, 0.025, 8, 32), ink, [s * 0.31, 0.12, 1.02]);
+      add(face, new THREE.CylinderGeometry(0.02, 0.02, 0.26, 8), ink, [0, 0.14, 1.03], [0, 0, Math.PI / 2]);
+    } else {
+      const h = hands[1], g = new THREE.Group(); g.position.set(0, 0.32, 0.05); h.add(g);
+      if (kind === "calendar") { add(g, new THREE.BoxGeometry(0.5, 0.46, 0.08), pale, [0, 0, 0]); add(g, new THREE.BoxGeometry(0.5, 0.12, 0.09), col, [0, 0.17, 0.005]); }
+      else if (kind === "bubble") { add(g, new THREE.SphereGeometry(0.26, 24, 16), pale, [0, 0, 0], [0, 0, 0], [1.2, 0.85, 0.5]); add(g, new THREE.ConeGeometry(0.08, 0.16, 12), pale, [-0.16, -0.22, 0], [0, 0, 0.6]); }
+      else if (kind === "star") { const sh = new THREE.Shape(); for (let i = 0; i < 10; i++) { const a = Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 0.12 : 0.28; sh[i ? "lineTo" : "moveTo"](Math.cos(a) * r, Math.sin(a) * r); } add(g, new THREE.ExtrudeGeometry(sh, { depth: 0.08, bevelEnabled: true, bevelSize: 0.03, bevelThickness: 0.03, bevelSegments: 2 }), gloss("#ffd27d", { envMap: env }), [0, 0, 0]); }
+      else if (kind === "heart") { const m = gloss("#ff8fb5", { envMap: env }); add(g, new THREE.SphereGeometry(0.15, 20, 14), m, [-0.1, 0.06, 0]); add(g, new THREE.SphereGeometry(0.15, 20, 14), m, [0.1, 0.06, 0]); add(g, new THREE.ConeGeometry(0.22, 0.3, 20), m, [0, -0.14, 0], [Math.PI, 0, 0]); }
+      else if (kind === "drop") { const m = gloss("#7cc4ff", { envMap: env }); add(g, new THREE.SphereGeometry(0.2, 20, 14), m, [0, -0.05, 0]); add(g, new THREE.ConeGeometry(0.17, 0.3, 20), m, [0, 0.2, 0]); }
+      else if (kind === "lens") { add(g, new THREE.TorusGeometry(0.18, 0.04, 10, 32), ink, [0, 0.08, 0]); add(g, new THREE.CircleGeometry(0.17, 24), gloss("#e8f6ff", { envMap: env, transparent: true, opacity: 0.6 }), [0, 0.08, 0]); add(g, new THREE.CylinderGeometry(0.035, 0.035, 0.28, 10), ink, [0.18, -0.16, 0], [0, 0, 0.7]); }
+    }
   }
 
+  // ----- one character: the Marketplace's act vocabulary, posed and sprung, on any rig in any scene -----
+  // o.base: how high it floats (in its own units); o.local/o.world: convert between the scene and the rig's parent;
+  // o.core: the colour of the light inside; o.still: no idle beats.
+  function makeActor(pip, camera, o = {}) {
+    const BASE = o.base || 1.5, toWorld = o.world || ((v) => v), toLocal = o.local || ((v) => v);
   // ----- what Pip is doing: the Marketplace's act vocabulary -----
   const A = { mood: "calm", moodAt: 0, concern: 0, think: 0, talkUntil: 0, happyUntil: 0, wideUntil: 0, hopAt: null, flashAt: null, nodAt: null,
-    partyAt: null, waveAt: null, wakeAt: null, look: null, lookUntil: 0, pointTo: null, pointK: 0, nextBeat: 4 + Math.random() * 4, beat: null };
-  const now = () => (opts.clock ? opts.clock() : performance.now() / 1000);
+    partyAt: null, waveAt: null, wakeAt: null, look: null, lookUntil: 0, pointTo: null, pointK: 0, nextBeat: 4 + Math.random() * 4, beat: null,
+      task: null, ph: Math.random() * 9, throwAt: null, catchAt: null }; // task: what a teammate is doing at their desk (type, sleep, needs, idle)
+  const now = () => (o.clock ? o.clock() : performance.now() / 1000);
   const T0 = now();
-
-  function screenToWorld(px, py, depth) {
-    const p = V((px / W) * 2 - 1, -((py / H) * 2 - 1), 0.5).unproject(camera), d = p.sub(camera.position).normalize();
-    const k = (depth - camera.position.z) / d.z;
-    return camera.position.clone().add(d.multiplyScalar(k));
-  }
 
   // where Pip's body is at time t (pure, so the antenna can feel his motion like the Marketplace's)
   function posAt(t) {
@@ -202,7 +205,8 @@ function createPipEngine(THREE, opts) {
       const P = wakeP(t);
       if (P < 3.4) { bob = ramp(P, 2.3, 2.9); p.y = P < 2.32 ? BASE - 0.7 : lerp(BASE - 0.7, BASE, expoOut(ramp(P, 2.32, 2.87))); }
     }
-    p.y += Math.sin(t * Math.PI * 2 / 3.6) * 0.055 * bob;
+    if (A.task === "sleep") p.y += Math.sin(t * Math.PI * 2 / 5.5) * 0.04 - 0.12; // asleep at the desk: lower, slower
+    else p.y += Math.sin(t * Math.PI * 2 / 3.6) * 0.055 * bob;
     if (A.hopAt != null) { const y = t - A.hopAt; if (y > 0 && y < 1.2) p.y += Math.sin(clamp((y - 0.12) / 0.5) * Math.PI) * 0.35; }
     if (A.partyAt != null) {
       const x = t - A.partyAt;
@@ -216,7 +220,7 @@ function createPipEngine(THREE, opts) {
 
   function pose(t) {
     const Y = { pos: posAt(t), sx: 1, sy: 1, yaw: 0, pitch: 0, roll: 0, lookX: 0, lookY: 0, lookAt: null, eyeL: "open", eyeR: "open", blink: 0, mouth: 0.45, mouthW: 0,
-      core: C.aqua, coreK: 0.5, bulb: C.aqua, bulbK: 0.7, ant: V(), hands: [V(-1.32, -0.32, 0.25), V(1.32, -0.32, 0.25)], handS: [1, 1], floorGlow: 0.1 };
+      core: o.core || C.aqua, coreK: 0.5, bulb: o.core || C.aqua, bulbK: 0.7, ant: V(), hands: [V(-1.32, -0.32, 0.25), V(1.32, -0.32, 0.25)], handS: [1, 1], floorGlow: 0.1 };
     const pos = Y.pos, hand = (j, to, k) => { Y.hands[j] = Y.hands[j].clone().lerp(to, clamp(k)); };
     const look = A.look && t < A.lookUntil ? A.look : null;
     Y.lookAt = look;
@@ -246,7 +250,7 @@ function createPipEngine(THREE, opts) {
     if (!waking) { Y.hands[0].y += Math.sin(t * 1.9) * 0.045; Y.hands[1].y += Math.sin(t * 1.9 + 1.3) * 0.045; }
 
     // idle beats while calm (a subset of the Marketplace's repertoire)
-    if (!waking && A.mood === "calm" && !A.pointTo && A.beat) {
+    if (!waking && !A.task && A.mood === "calm" && !A.pointTo && A.beat) {
       const b = A.beat, x = t - b.at, d = b.d, q = clamp(x / 0.45) * clamp((d - x) / 0.45);
       b.q = q;
       if (x > d) A.beat = null;
@@ -304,6 +308,27 @@ function createPipEngine(THREE, opts) {
       hand(j, reach, A.pointK);
       Y.lookAt = P; Y.yaw += clamp((P.x - pos.x) * 0.08, -0.35, 0.35) * A.pointK;
     }
+
+    // a teammate at work (the Portal's desks): typing with both hands, a glance up now and then, a sip, a stretch
+    if (A.task === "type" && !waking) {
+      const g = (t + A.ph) % 9.5, glance = g > 6.2 && g < 7.6, sip = (t + A.ph * 1.7) % 23 < 2.2;
+      const tap = (o2) => Math.max(0, Math.sin(t * 16 + o2)) * 0.06;
+      hand(0, V(-0.5, -0.78 + tap(0), 1.05), 0.92); hand(1, sip ? V(0.32, -0.42, 1.02) : V(0.5, -0.78 + tap(1.9), 1.05), 0.92);
+      Y.pitch += glance ? -0.02 : 0.07; Y.mouth = sip ? 0.1 : 0.3;
+      if (!look) Y.lookAt = glance ? toLocal(camera.position.clone()) : pos.clone().add(V(Math.sin(t * 0.7) * 0.4, -0.35, 3));
+      if (glance) Y.eyeL = Y.eyeR = "open";
+    }
+    if (A.task === "sleep" && !waking) {
+      Y.eyeL = Y.eyeR = "sleep"; Y.blink = 0; Y.bulbK = 0.08 + 0.05 * Math.sin(t * 1.1); Y.coreK = 0.12; Y.pitch += 0.24; Y.roll += 0.06; Y.mouth = 0;
+      hand(0, V(-0.9, -0.82, 0.55), 0.9); hand(1, V(0.9, -0.82, 0.55), 0.9); Y.ant.y -= 0.1;
+    }
+    if (A.task === "needs" && !waking) { // waiting on the owner: looks out to the aisle, a hand up now and then
+      const w = (t + A.ph) % 5.2;
+      if (!look) Y.lookAt = toLocal(camera.position.clone());
+      if (w < 1.6) { const k = Math.sin(clamp(w / 1.6) * Math.PI); hand(1, V(1.1, 0.7 + Math.sin(w * 13) * 0.08 * k, 0.5), k); Y.eyeL = Y.eyeR = "wide"; }
+    }
+    if (A.throwAt != null) { const x = t - A.throwAt; if (x > 0 && x < 1) { const k = Math.sin(clamp(x) * Math.PI); hand(1, V(0.9, 0.35, 1.2), k); Y.eyeL = Y.eyeR = x < 0.8 ? "happy" : "open"; } }
+    if (A.catchAt != null) { const x = t - A.catchAt; if (x > -0.6 && x < 0.9) { const k = Math.sin(clamp((x + 0.6) / 1.5) * Math.PI); hand(0, V(-0.9, 0.5, 1.1), k); if (x > 0) Y.eyeL = Y.eyeR = "happy"; } }
 
     // talking
     if (t < A.talkUntil) { Y.mouth = 0.22 + 0.45 * Math.abs(Math.sin(t * 13)); Y.pitch += (Math.sin(t * 5.3) * 0.5 + 0.5) * 0.03; }
@@ -373,7 +398,7 @@ function createPipEngine(THREE, opts) {
   let lastT = null, lastF = null;
   function smooth(J) {
     const t = now(), dt = lastT == null ? 1 : t - lastT; lastT = t;
-    const lk = J.lookAt ? J.lookAt.clone() : camera.position.clone();
+    const lk = J.lookAt ? J.lookAt.clone() : toLocal(camera.position.clone());
     if (dt > 0.3 || dt <= 0) {
       for (const k in S) delete S[k];
       S.look = lk.clone(); S.pos = J.pos.clone(); S.h0 = J.hands[0].clone(); S.h1 = J.hands[1].clone(); S.yaw = J.yaw; S.pitch = J.pitch; S.roll = J.roll;
@@ -388,10 +413,8 @@ function createPipEngine(THREE, opts) {
     return o;
   }
 
-  function frame(tAbs, noSmooth, noRender) {
-    const t = tAbs - T0, cam = CAM.clone();
-    cam.x += Math.sin(t * 0.21) * 0.05; cam.y += Math.sin(t * 0.17 + 1) * 0.035;
-    camera.position.copy(cam); camera.lookAt(LOOK); camera.updateMatrixWorld();
+  function step(tAbs, noSmooth) {
+    const t = tAbs - T0;
     // ease the mood layers in and out
     const target = A.mood === "concerned" ? 1 : 0, think = A.mood === "think" ? 1 : 0, dt = Math.min(0.1, lastF == null ? 0.016 : Math.max(0, tAbs - lastF)), ease = (r) => (noSmooth ? 1 : 1 - Math.exp(-dt * r));
     lastF = tAbs;
@@ -399,7 +422,7 @@ function createPipEngine(THREE, opts) {
     A.pointK += ((A.pointTo ? 1 : 0) - A.pointK) * ease(4.2);
     if (!A.pointTo && A.pointK < 0.02) A.pointTarget = null;
     // the next idle beat
-    if (!opts.still && A.mood === "calm" && !A.beat && !A.pointTo && t > A.nextBeat && (A.wakeAt == null || wakeP(t) > 4)) {
+    if (!o.still && !A.task && A.mood === "calm" && !A.beat && !A.pointTo && t > A.nextBeat && (A.wakeAt == null || wakeP(t) > 4)) {
       const pool = [["chin", 3, 2.8], ["sweep", 2, 3], ["stretch", 2, 2.4], ["turn", 0.6, 1.8], ["hops", 0.8, 1.8]];
       let r = Math.random() * pool.reduce((s, x) => s + x[1], 0), pick = pool[0];
       for (const p of pool) { if (r < p[1]) { pick = p; break; } r -= p[1]; }
@@ -408,11 +431,68 @@ function createPipEngine(THREE, opts) {
     }
     let J = pose(t);
     if (!noSmooth) J = smooth(J);
-    else if (!J.lookAt) J.lookAt = camera.position.clone();
+    else if (!J.lookAt) J.lookAt = toLocal(camera.position.clone());
     pip.apply(J, camera);
-    const lk = pip.head.worldToLocal((J.lookAt || camera.position).clone());
+    const lk = pip.head.worldToLocal(toWorld((J.lookAt || toLocal(camera.position.clone())).clone()));
     J.lookX = clamp((lk.x / Math.max(1, Math.hypot(lk.x, lk.z))) * 1.6, -1, 1); J.lookY = clamp((lk.y / Math.max(1, lk.length())) * 1.6, -1, 1);
     pip.face.rotation.set(-J.lookY * 0.17, J.lookX * 0.22, 0);
+    return J;
+  }
+
+    const acts = {
+    mood(m) { if (m === A.mood) return; A.mood = m; A.moodAt = now() - T0; A.beat = null; },
+    talk(sec) { A.talkUntil = now() - T0 + sec; },
+    happy(sec = 1.2) { A.happyUntil = now() - T0 + sec; },
+    wide(sec = 1) { A.wideUntil = now() - T0 + sec; },
+    nod() { A.nodAt = now() - T0; },
+    hop() { A.hopAt = now() - T0; },
+    flash() { A.flashAt = now() - T0; },
+    wave() { A.waveAt = now() - T0; },
+    party() { A.partyAt = now() - T0; A.flashAt = A.partyAt + 0.3; },
+    wake() { A.wakeAt = now() - T0; },
+    awake() { return A.wakeAt == null || wakeP(now() - T0) > 3.4; },
+    lookAt(world, sec = 1.2) { A.look = world ? toLocal(world.clone()) : null; A.lookUntil = now() - T0 + sec; },
+    point(world) { A.pointTo = world ? toLocal(world.clone()) : null; },
+    };
+    return { step, A, acts, wakeP, T0, now, get t() { return now() - T0; } };
+  }
+  if (opts.kit) return { room, buildPip, makeActor, C, pearl };
+
+  // ----- the stage: transparent, so Pip stands on the Portal's own paper -----
+  const canvas = opts.canvas;
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: !!opts.still });
+  renderer.setClearColor(0x000000, 0);
+  renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1;
+  const scene = new THREE.Scene();
+  const pmrem = new THREE.PMREMGenerator(renderer), env = pmrem.fromScene(room(), 0.04).texture; pmrem.dispose();
+  scene.environment = env;
+  scene.add(new THREE.HemisphereLight("#ffffff", "#d9dce8", 0.7));
+  const key = new THREE.DirectionalLight("#ffffff", 2); key.position.set(-4, 7, 5); scene.add(key);
+  const fill = new THREE.DirectionalLight("#dfe8ff", 1); fill.position.set(5, 3, -4); scene.add(fill);
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 200);
+  const pip = buildPip(env);
+  scene.add(pip.root, pip.shadow, pip.floorGlow, ...pip.handShadows);
+
+  const CAM = V(0, 2.1, 7.6), LOOK = V(0, 1.72, 0);
+  let W = 1, H = 1, dpr = Math.min(2, window.devicePixelRatio || 1);
+  function resize(w, h) {
+    W = Math.max(1, Math.round(w)); H = Math.max(1, Math.round(h));
+    renderer.setPixelRatio(dpr); renderer.setSize(W, H, false);
+    camera.aspect = W / H; camera.fov = W / H < 0.8 ? 38 : 30; camera.updateProjectionMatrix();
+  }
+
+  const actor = makeActor(pip, camera, { still: opts.still, clock: opts.clock }), A = actor.A, T0 = actor.T0, now = actor.now, wakeP = actor.wakeP;
+  function screenToWorld(px, py, depth) {
+    const p = V((px / W) * 2 - 1, -((py / H) * 2 - 1), 0.5).unproject(camera), d = p.sub(camera.position).normalize();
+    const k = (depth - camera.position.z) / d.z;
+    return camera.position.clone().add(d.multiplyScalar(k));
+  }
+
+  function frame(tAbs, noSmooth, noRender) {
+    const t = tAbs - T0, cam = CAM.clone();
+    cam.x += Math.sin(t * 0.21) * 0.05; cam.y += Math.sin(t * 0.17 + 1) * 0.035;
+    camera.position.copy(cam); camera.lookAt(LOOK); camera.updateMatrixWorld();
+    actor.step(tAbs, noSmooth);
     if (!noRender) renderer.render(scene, camera);
   }
 

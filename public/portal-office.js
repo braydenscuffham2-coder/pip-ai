@@ -1,384 +1,509 @@
 // Pip Portal: the office. Loaded by portal.html after sign-in (see loadPart there).
-// The office is a set of pre-rendered scenes made from the Higgsfield concept pictures (public/portal-art/sc/), not
-// live 3D. Moving around is a zoom and a cross-fade the compositor draws on its own, so it runs at the screen's full
-// frame rate on any machine. The only live 3D is Pip, from his original code (portal-pip.js), on one small canvas.
-// Teammates are cut-outs, one per seat, in their own colour; a teammate featured in a close-up gets a scene recoloured
-// to match. Everything you click is ordinary HTML from portal.html, wired to the same actions as the rest of the Portal.
-// Edit positions here in percent of the 16:9 picture.
+// One real room, made in Blender (tools/hall/hall.py) with its light baked into the colours, so the browser only paints
+// it: nothing here computes lighting for the room, which is why it stays smooth. Pip and every teammate are real 3D,
+// from Pip's own code (portal-pip.js, createPipEngine with kit: true): teammates are Pip's model in their colour with
+// their accessory. The camera never cuts: it travels down the hall behind Pip. Everything you click is HTML from
+// portal.html or a part of the room wired to the same actions. Marks in the room file say where things are.
 
-function threeAddons() { return null; } // the 3D office needed these; the scenes do not
+function threeAddons() { return null; }
 
 function createOffice(THREE, X, opts) {
   "use strict";
-  const ART = "/portal-art/sc/";
+  const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
   const RM = () => !!(opts.reduce && opts.reduce());
-  const PHONE = () => innerWidth < 720 || innerHeight < 560;
+  const PHONE = () => innerWidth < 720;
+  const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+  const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
   const TEAM = { violet: "#8f7bff", teal: "#2fc4b2", amber: "#e9a534", rose: "#ff7d98", sky: "#5b9dff", green: "#6fc36a" };
-  const colorName = (hex) => { hex = String(hex || "").toLowerCase(); for (const [k, v] of Object.entries(TEAM)) if (v === hex) return k; let best = "violet", bd = 1e9; const c = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); const a = /^#[0-9a-f]{6}$/.test(hex) ? c(hex) : [143, 123, 255]; for (const [k, v] of Object.entries(TEAM)) { const b = c(v), d = (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2; if (d < bd) { bd = d; best = k; } } return best; };
-  const small = () => PHONE() || innerWidth * (devicePixelRatio || 1) < 1500; // smaller pictures where they look the same
-  const src = (name) => ART + name + (small() ? "-s" : "") + ".webp";
-
-  // ---------- the scenes, in percent of each picture ----------
-  // pip: where Pip floats (x, y of his centre, w = his width). focus: where a glide into this scene aims.
-  // screen: the monitor's four corners, for a teammate's screen. seats: where teammates sit on the floor.
-  const PIP_K = 2.25; // his canvas is wider than he is: the camera leaves room for a hop and a wave
-  const SCENES = {
-    home: { plate: "home-empty", pip: [50, 54, 8.2], focus: [50, 50], halos: [[24.5, 14.5, 15], [77.5, 14.5, 15], [34.7, 21.5, 7], [67.8, 21.5, 7], [42, 25.6, 4], [59.5, 25.6, 4]] },
-    desk: { plate: "desk", mate: [11, 52, 25], pip: [73, 17, 6.5], focus: [46, 42], screen: [[28.4, 24.0], [64.0, 23.8], [63.6, 58.9], [28.2, 59.4]], halos: [[30.5, 12.2, 10], [86.5, 12.2, 10]] },
-    deskNeeds: { plate: "setup", mate: [26, 40, 13], pip: [41, 52, 8], focus: [60, 40], screen: [[51.7, 21.2], [80.4, 20.6], [79.8, 52.6], [52.0, 53.6]], halos: [[30, 11, 10], [77, 11, 10]] },
-    deskCut: { plate: "cables", mate: [17, 38, 16], pip: [66, 38, 8], focus: [36, 55], float: [79, 28, 24], halos: [[15, 11, 12], [80, 11, 12]] },
-    deskPaused: { plate: "paused", mate: [24.5, 47, 11], pip: [50, 40, 7], focus: [26, 50], float: [50, 76, 23], halos: [[23, 11, 12], [75, 11, 12]] },
-    letgo: { plate: "letgo", mate: [75, 45, 9], pip: [41, 37, 7.5], focus: [58, 45], halos: [[23, 9, 12], [76, 9, 12]] },
-    front: { plate: "front", pip: [47.5, 41, 8], focus: [45, 52], halos: [[28.5, 3, 12], [55, 10, 12]] },
-    meter: { plate: "meter-empty", pip: [84, 47, 9.5], focus: [46, 45], halos: [[11.8, 15.1, 15.8], [33.2, 17.4, 10.4]], tube: [43.4, 16.2, 5.6, 45.4] },
-    contract: { plate: "contract", pip: [31, 44, 13], focus: [55, 50], halos: [[24, 12, 14], [77, 12, 14]] },
-    tools: { plate: "tools", pip: [72, 56, 8], focus: [50, 40], halos: [[16, 11, 12], [84, 11, 12]] },
-    comms: { plate: "comms", pip: [36.5, 44, 7], focus: [52, 45], halos: [[25, 9, 13], [75, 9, 13]] },
-    exit: { plate: "exit", pip: [50, 57, 6.5], focus: [24, 38], halos: [[13, 6, 10], [60, 3, 18]] },
-    founder: { plate: "exit", pip: [50, 57, 6.5], focus: [72, 28], zoom: 1.5, halos: [] },
-  };
-  // the four seats you can see from the elevator; more teammates sit further down the aisle, in the roster
-  const SEATS = [
-    { x: 18.6, b: 64.2, h: 23.5, tag: [16, 38], flip: false, fg: [[23.3, 52.6], [33.3, 52.6], [33.5, 61.2], [37.3, 62.6], [37.3, 72.5], [12.5, 72.5], [12.5, 66.5], [14.2, 62.9], [20.4, 62.5], [23.3, 61.6]] },
-    { x: 76.6, b: 58.6, h: 16.5, tag: [78, 40], flip: true, fg: [[64.2, 47.1], [71.7, 47.1], [71.7, 55.2], [72.6, 56], [81.2, 58.2], [81.2, 64.5], [62.3, 64.5], [62.3, 58.1], [64.2, 57.1]] },
-    { x: 32.6, b: 53.8, h: 12, tag: [33.5, 30], flip: false, fg: [[35.3, 44.6], [41.1, 44.6], [41.2, 51.4], [43, 52.4], [43, 56.4], [29.3, 56.4], [29.3, 53.6], [35.3, 52.1]] },
-    { x: 65, b: 48.9, h: 9.6, tag: [65.5, 32], flip: true, fg: [[58.7, 42.1], [63.4, 42.1], [63.4, 47.8], [66.3, 48.8], [66.3, 52.8], [57.8, 52.8], [57.8, 48.6]] },
-  ];
 
   // ---------- the stage ----------
   const css = document.createElement("style"); css.textContent = CSS_TEXT(); document.head.append(css);
-  const root = document.createElement("div"); root.className = "sc-root"; opts.host.append(root);
-  const back = document.createElement("div"); back.className = "sc-back"; back.setAttribute("aria-hidden", "true"); root.append(back); // the same picture, blurred, behind a phone's narrower window
-  const layer = document.createElement("div"); layer.className = "sc-layer fl-css"; // a teammate's screen, mapped onto the monitor
-  const doors = document.createElement("div"); doors.className = "sc-doors"; doors.innerHTML = "<i></i><i></i>"; doors.setAttribute("aria-hidden", "true");
-  const scenes = new Map();
-  let cur = null, mode = "floor", focusId = null, stationId = null, active = true, panel = false, deskVariant = null, deskColor = "violet", letGoOn = false;
-  let model = { agents: [] };
+  const root = document.createElement("div"); root.className = "hl-root"; opts.host.append(root);
+  const canvas = document.createElement("canvas"); canvas.className = "hl-gl"; canvas.setAttribute("aria-hidden", "true"); root.append(canvas);
+  const pins = document.createElement("div"); pins.className = "hl-pins fl-tags"; root.append(pins);
+  const stack = document.createElement("div"); stack.className = "hl-cards"; root.append(stack);
+  const layer = document.createElement("div"); layer.className = "hl-layer fl-css";
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: "high-performance" });
+  renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1;
+  renderer.setClearColor(0x000000, 0);
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog("#e7dff6", 16, 46);
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.08, 120);
+  let dpr = Math.min(devicePixelRatio || 1, 1.6);
 
-  function sceneEl(key, plateName) {
-    const id = key + ":" + plateName;
-    if (scenes.has(id)) return scenes.get(id);
-    const cfg = SCENES[key], el = document.createElement("section"); el.className = "sc off"; el.dataset.key = key;
-    const img = new Image(); img.className = "sc-plate"; img.alt = ""; img.decoding = "async"; img.src = src(plateName); el.append(img);
-    for (const [x, y, w] of cfg.halos || []) { const i = document.createElement("i"); i.className = "sc-halo"; i.style.cssText = `--x:${x}%;--y:${y}%;--w:${w}%;--d:-${(x % 5).toFixed(1)}s`; el.append(i); }
-    if (key === "home" || key === "letgo" || key === "deskPaused") { const d = document.createElement("div"); d.className = "sc-dust"; d.innerHTML = Array.from({ length: PHONE() ? 10 : 22 }, (_, k) => `<i style="--x:${(k * 37) % 92 + 4}%;--y:${(k * 53) % 55 + 22}%;--s:${3 + (k % 4)}px;--t:${8 + (k % 6)}s;--d:-${k * 0.7}s;--dx:${((k * 13) % 50) - 25}px"></i>`).join(""); el.append(d); }
-    if (cfg.tube) { const t = document.createElement("div"); t.className = "sc-tube"; t.style.cssText = `--x:${cfg.tube[0]}%;--y:${cfg.tube[1]}%;--w:${cfg.tube[2]}%;--h:${cfg.tube[3]}%`; t.innerHTML = `<b class="sc-liquid"><s></s>${Array.from({ length: 10 }, (_, k) => `<i style="--x:${10 + (k * 23) % 75}%;--s:${4 + (k % 4)}px;--t:${3 + (k % 4)}s;--d:-${k * 0.5}s"></i>`).join("")}</b>`; el.append(t); }
-    const seats = document.createElement("div"); seats.className = "sc-seats"; el.append(seats);
-    const pins = document.createElement("div"); pins.className = "sc-pins fl-tags"; el.append(pins);
-    let mate = null; if (cfg.mate) { mate = document.createElement("div"); mate.className = "sc-mate" + (key === "letgo" ? " going" : ""); mate.style.cssText = `--x:${cfg.mate[0]}%;--y:${cfg.mate[1]}%;--w:${cfg.mate[2]}%`; el.append(mate); }
-    const pipSlot = document.createElement("div"); pipSlot.className = "sc-pip"; pipSlot.style.cssText = `--x:${cfg.pip[0]}%;--y:${cfg.pip[1]}%;--w:${(cfg.pip[2] * PIP_K).toFixed(2)}%`; el.append(pipSlot);
-    const s = { id, key, cfg, el, img, seats, pins, pipSlot, mate, decoded: img.decode().catch(() => null) };
-    root.append(el); scenes.set(id, s); return s;
-  }
-  const plateOf = (key) => { const p = SCENES[key].plate; return typeof p === "function" ? p(deskColor) : p; };
+  // the same light Pip has always had, for everything drawn live (Pip, teammates, the moving parts)
+  const kit = createPipEngine(THREE, { kit: true });
+  const pmrem = new THREE.PMREMGenerator(renderer), env = pmrem.fromScene(kit.room(), 0.04).texture; pmrem.dispose();
+  scene.add(new THREE.HemisphereLight("#ffffff", "#d9dce8", 0.7));
+  const key = new THREE.DirectionalLight("#ffffff", 2); key.position.set(-4, 9, 6); scene.add(key);
+  const fill = new THREE.DirectionalLight("#dfe8ff", 1); fill.position.set(5, 3, -10); scene.add(fill);
 
-  // ---------- sizing: the picture covers the window on a computer; on a phone it is a wide window at the top ----------
-  let box = { w: 0, h: 0, x: 0, y: 0 };
-  function measure() {
-    const W = innerWidth, H = innerHeight;
-    if (PHONE() && W < H) { const h = Math.min(H * 0.56, W * 1.25), w = (h * 16) / 9; box = { w, h, x: (W - w) / 2, y: Math.max(70, H * 0.085) }; }
-    else { const w = Math.max(W, (H * 16) / 9), h = (w * 9) / 16; box = { w, h, x: (W - w) / 2, y: (H - h) / 2 }; }
-    root.style.setProperty("--bw", box.w + "px"); root.style.setProperty("--bh", box.h + "px"); root.style.setProperty("--bx", box.x + "px"); root.style.setProperty("--by", box.y + "px");
-    root.classList.toggle("tall", PHONE() && W < H);
+  // ---------- the room file: a .glb read directly (no loader to download) ----------
+  const marks = {}, live = {}, hits = [];
+  async function loadRoom(url) {
+    const buf = await (await fetch(url)).arrayBuffer(), dv = new DataView(buf);
+    let off = 12, json = null, bin = null;
+    while (off < buf.byteLength) {
+      const len = dv.getUint32(off, true), type = dv.getUint32(off + 4, true);
+      if (type === 0x4e4f534a) json = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, off + 8, len))); else if (type === 0x004e4942) bin = buf.slice(off + 8, off + 8 + len);
+      off += 8 + len;
+    }
+    const TY = { 5120: Int8Array, 5121: Uint8Array, 5122: Int16Array, 5123: Uint16Array, 5125: Uint32Array, 5126: Float32Array }, N = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
+    const acc = (i) => { const a = json.accessors[i], bv = json.bufferViews[a.bufferView], T = TY[a.componentType], n = N[a.type];
+      return { arr: new T(bin, (bv.byteOffset || 0) + (a.byteOffset || 0), a.count * n), n, norm: !!a.normalized }; };
+    const attr = (i) => { const a = acc(i); return new THREE.BufferAttribute(a.arr, a.n, a.norm); };
+    // the skin: pictures packed in the file, decoded off the main thread
+    const pics = await Promise.all((json.images || []).map(async (im) => { const bv = json.bufferViews[im.bufferView];
+      const bmp = await createImageBitmap(new Blob([new Uint8Array(bin, bv.byteOffset || 0, bv.byteLength)], { type: im.mimeType }), { colorSpaceConversion: "none" });
+      const t = new THREE.Texture(bmp); t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.needsUpdate = true; return t; }));
+    const mats = (json.materials || []).map((m) => { const p = m.pbrMetallicRoughness || {}, e = m.emissiveFactor || [0, 0, 0], k = (m.extensions && m.extensions.KHR_materials_emissive_strength && m.extensions.KHR_materials_emissive_strength.emissiveStrength) || 1;
+      const tx = p.baseColorTexture && json.textures[p.baseColorTexture.index];
+      return { name: m.name, base: p.baseColorFactor || [1, 1, 1, 1], emit: e.map((v) => v * k), map: tx ? pics[tx.source] : null }; });
+    const walk = (ni, parent) => {
+      const nd = json.nodes[ni], m = new THREE.Matrix4();
+      if (nd.matrix) m.fromArray(nd.matrix); else m.compose(V(...(nd.translation || [0, 0, 0])), new THREE.Quaternion(...(nd.rotation || [0, 0, 0, 1])), V(...(nd.scale || [1, 1, 1])));
+      const w = parent.clone().multiply(m);
+      if (nd.mesh != null) for (const pr of json.meshes[nd.mesh].primitives) {
+        const g = new THREE.BufferGeometry();
+        for (const [k, i] of Object.entries(pr.attributes)) { const nm = { POSITION: "position", NORMAL: "normal", COLOR_0: "color", TEXCOORD_0: "uv" }[k]; if (nm) g.setAttribute(nm, attr(i)); }
+        if (pr.indices != null) g.setIndex(attr(pr.indices));
+        g.applyMatrix4(w); g.computeBoundingSphere();
+        make(nd.name, g, mats[pr.material] || { base: [1, 1, 1, 1], emit: [0, 0, 0] });
+      } else if (!nd.children) marks[nd.name] = V().setFromMatrixPosition(w);
+      for (const c of nd.children || []) walk(c, w);
+    };
+    for (const ni of json.scenes[json.scene || 0].nodes) walk(ni, new THREE.Matrix4());
   }
-  // where the active scene sits: a phone window slides so the scene's focus is centred; a panel pushes it aside
-  function rest(s) {
-    const f = s.cfg.focus || [50, 50], zoom = s.cfg.zoom || 1;
-    let dx = 0, dy = 0;
-    if (root.classList.contains("tall")) { const m = Math.max(0, (box.w - innerWidth) / 2); dx = Math.max(-m, Math.min(m, (0.5 - f[0] / 100) * box.w)); }
-    else if (zoom > 1) { dx = (0.5 - f[0] / 100) * box.w * (zoom - 1); dy = (0.5 - f[1] / 100) * box.h * (zoom - 1); }
-    if (panel && !PHONE()) dx -= Math.min(600, innerWidth - 28) / 2 - 20;
-    return { dx, dy, s: zoom * 1.012 };
+  const lin = (c) => new THREE.Color().setRGB(c[0], c[1], c[2], THREE.LinearSRGBColorSpace);
+  function make(name, g, mt) {
+    let mesh;
+    const glow = mt.emit[0] + mt.emit[1] + mt.emit[2] > 0.5 && !/^tile_/.test(name);
+    if (name === "room" && mt.map) mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: mt.map, toneMapped: false })); // the painted skin, shown exactly as painted
+    else if (name === "room") mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(1.75, 1.75, 1.8) }));
+    else if (glow) mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: lin(mt.emit).multiplyScalar(0.55) }));
+    else { // live parts sit inside a painted, sunlit room: lift them towards its pearly pastel so they don't read as grey plastic
+      const base = lin(mt.base).lerp(new THREE.Color(1, 0.97, 1), 0.3), glass = /glass/.test(name);
+      mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: base, emissive: base.clone().multiplyScalar(0.38).add(lin(mt.emit).multiplyScalar(0.25)), transparent: glass, opacity: glass ? 0.42 : 1, depthWrite: !glass, toneMapped: false })); // shown like the painted room around them
+    }
+    if (!g.attributes.normal && !mesh.material.isMeshBasicMaterial) g.computeVertexNormals();
+    mesh.name = name; mesh.matrixAutoUpdate = false; scene.add(mesh);
+    (live[name.replace(/\.\d+$/, "")] ||= []).push(mesh);
+    return mesh;
   }
-  let par = { x: 0, y: 0, tx: 0, ty: 0 };
-  function place(s, extra) {
-    const r = rest(s), p = RM() || root.classList.contains("tall") ? { x: 0, y: 0 } : par;
-    s.el.style.transform = `translate3d(${(r.dx - p.x * 14).toFixed(2)}px,${(r.dy - p.y * 9).toFixed(2)}px,0) scale(${(r.s * (extra || 1)).toFixed(4)})`;
+  const one = (n) => (live[n] || [])[0];
+
+  // ---------- soft light the bake can't hold: halo blooms and their glow on the floor ----------
+  function radial(stops, size = 128) {
+    const cv = document.createElement("canvas"); cv.width = cv.height = size;
+    const g = cv.getContext("2d"), gr = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    for (const [at, col] of stops) gr.addColorStop(at, col);
+    g.fillStyle = gr; g.fillRect(0, 0, size, size);
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+  }
+  const soft = radial([[0, "rgba(255,255,255,1)"], [0.35, "rgba(255,255,255,.35)"], [1, "rgba(255,255,255,0)"]]);
+  function bloom(pos, size, color, floor, opacity) {
+    const m = new THREE.MeshBasicMaterial({ map: soft, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity });
+    const q = new THREE.Mesh(new THREE.PlaneGeometry(size, size), m);
+    q.position.copy(pos); q.rotation.x = -Math.PI / 2; if (floor) q.position.y = 0.012; q.renderOrder = 2; q.userData.o = opacity; scene.add(q); return q;
   }
 
-  // ---------- teammates on the floor ----------
-    function syncSeats(home) {
-    const list = model.agents.filter((a) => a.look !== "open").slice(0, SEATS.length);
-    const keep = new Set();
-    list.forEach((a, i) => {
-      const seat = SEATS[i], c = colorName(a.hex); keep.add(a.id);
-      let g = home.seats.querySelector(`[data-id="${CSS.escape(a.id)}"]`);
-      if (!g) {
-        g = document.createElement("div"); g.className = "sc-ag"; g.dataset.id = a.id;
-        g.innerHTML = `<i class="sc-glow"></i><span class="sc-face"></span><b class="sc-q" aria-hidden="true">?</b><span class="sc-z" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>`;
-        const fg = document.createElement("img"); fg.className = "sc-fg"; fg.alt = ""; fg.decoding = "async"; g._fg = fg;
-        g.addEventListener("click", () => opts.onPick && opts.onPick(a.id)); g.addEventListener("pointerenter", () => hover(a.id));
-        home.seats.append(g, fg);
-      }
-      g.style.cssText = `--x:${seat.x}%;--b:${seat.b}%;--h:${seat.h}%;--d:-${(i * 0.9).toFixed(1)}s`;
-      g.classList.toggle("flip", seat.flip);
-      // the teammate is the original Pip-family floating head from portal.html (face()), never a redrawn one
-      const slot = g.querySelector(".sc-face"); if (a.face && slot._key !== a.faceKey) { slot.replaceChildren(a.face); slot._key = a.faceKey; }
-      const f = slot.firstElementChild; if (f) f.classList.toggle("is-paused", a.look === "sleep");
-      for (const k of ["needs", "paused", "build", "live", "ready"]) g.classList.toggle("k-" + k, a.kind === k || (k === "needs" && a.light === "needs") || (k === "build" && a.look === "build") || (k === "paused" && a.look === "sleep"));
-      g._fg.src = src(home.cfg.plate); g._fg.style.clipPath = "polygon(" + seat.fg.map(([x, y]) => x + "% " + y + "%").join(",") + ")";
-      g.style.zIndex = String(10 + Math.round(seat.b));
-      g._fg.style.zIndex = String(11 + Math.round(seat.b));
-      g._seat = seat;
-    });
-    for (const g of [...home.seats.querySelectorAll(".sc-ag")]) if (!keep.has(g.dataset.id)) { g._fg.remove(); g.remove(); }
+  // ---------- canvases painted onto the room: a teammate's monitor, a sticky note, a tool's tile ----------
+  function canvasTex(w, h) { const cv = document.createElement("canvas"); cv.width = w; cv.height = h; const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; t._cv = cv; return t; }
+  function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+  function wrap(g, text, x, y, maxW, lh, lines) {
+    const words = String(text || "").split(/\s+/); let line = "", n = 0;
+    for (const w of words) { const t = line ? line + " " + w : w; if (g.measureText(t).width > maxW && line) { if (n === lines - 1) { line += "…"; break; } g.fillText(line, x, y + n * lh); line = w; n++; } else line = t; }
+    g.fillText(line, x, y + n * lh, maxW);
   }
-  function hover(id) {
-    const home = homeScene(); const g = home && home.seats.querySelector(`[data-id="${CSS.escape(id)}"]`); if (!g || g.classList.contains("k-paused") || g.classList.contains("k-build")) return;
-    const f = g.querySelector(".tmf"); if (!f || f.classList.contains("is-hov") || RM()) return;
-    f.style.setProperty("--hd", "0s"); f.classList.add("is-hov"); clearTimeout(g._wt); g._wt = setTimeout(() => f.classList.remove("is-hov"), 1700);
+  const FONT = '"Geist", "Inter", system-ui, sans-serif', SERIF = '"Instrument Serif", Georgia, serif';
+  function paintScreen(t, a) {
+    const g = t._cv.getContext("2d"), W = t._cv.width, H = t._cv.height;
+    g.fillStyle = "#fbfaff"; g.fillRect(0, 0, W, H); g.fillStyle = "#f1eefb"; g.fillRect(0, 0, W, 54);
+    g.fillStyle = a.hex || "#8f7bff"; g.beginPath(); g.arc(34, 27, 11, 0, 7); g.fill();
+    g.fillStyle = "#14162b"; g.font = "600 26px " + FONT; g.fillText(a.name || "", 56, 36, W - 260);
+    const chip = a.kind === "needs" ? ["Needs you", "#fff1cc", "#7a4e00"] : a.kind === "paused" ? ["Paused", "#eceaf4", "#6b6f8a"] : a.kind === "build" ? ["Being built", "#efeaff", "#5b48c9"] : a.kind === "ready" ? ["Ready", "#eceaf4", "#4b5175"] : ["Working", "#dcf7f1", "#0c6b5d"];
+    g.font = "600 20px " + FONT; const cw = g.measureText(chip[0]).width + 30;
+    g.fillStyle = chip[1]; rr(g, W - cw - 20, 13, cw, 30, 15); g.fill(); g.fillStyle = chip[2]; g.fillText(chip[0], W - cw - 5, 35);
+    g.fillStyle = "#6b6f8a"; g.font = "600 17px " + FONT; g.fillText("RIGHT NOW", 30, 98);
+    g.fillStyle = "#14162b"; g.font = "400 42px " + SERIF; wrap(g, a.line || "", 30, 148, W - 60, 46, 3);
+    g.fillStyle = "#eceaf6"; rr(g, 30, H - 74, W - 60, 46, 12); g.fill();
+    g.fillStyle = "#6b6f8a"; g.font = "500 19px " + FONT; g.fillText(a.role || "", 46, H - 44, W - 92);
+    t.needsUpdate = true;
   }
-  const homeScene = () => sceneEl("home", SCENES.home.plate);
+  function paintNote(t, text) {
+    const g = t._cv.getContext("2d"), W = t._cv.width, H = t._cv.height;
+    g.clearRect(0, 0, W, H); g.fillStyle = "#ffd86b"; rr(g, 6, 6, W - 12, H - 12, 10); g.fill();
+    g.fillStyle = "#7a4e00"; g.font = "700 34px " + FONT; g.fillText("Needs you", 22, 52);
+    g.font = "500 24px " + FONT; wrap(g, text, 22, 92, W - 44, 30, 3); t.needsUpdate = true;
+  }
+  function paintTile(t, tool) {
+    const g = t._cv.getContext("2d"), W = t._cv.width, H = t._cv.height; g.clearRect(0, 0, W, H);
+    if (tool) {
+      g.fillStyle = "rgba(255,255,255,.94)"; rr(g, 10, H - 70, W - 20, 58, 29); g.fill();
+      g.fillStyle = tool.state === "ok" ? "#2fc4b2" : tool.state === "pip" ? "#9b86ff" : "#f2b02a"; g.beginPath(); g.arc(40, H - 41, 10, 0, 7); g.fill();
+      g.fillStyle = "#14162b"; g.font = "600 26px " + FONT; g.fillText(tool.short, 60, H - 32, W - 80);
+    }
+    t.needsUpdate = true;
+  }
 
-  // tags: a teammate's tag floats over their head, the stations line up under the ceiling like a directory
-  function syncPins(home) {
-    home.pins.replaceChildren();
-    const list = model.agents.filter((a) => a.look !== "open").slice(0, SEATS.length);
-    if (root.classList.contains("tall")) return; // a phone lists the team and the stations under the scene instead
-    const top = opts.safeTop ? opts.safeTop() : 0, tagMin = ((top + 64 - box.y) / box.h) * 100; // tags stay clear of the header
-    list.forEach((a, i) => { const el = (model.tags || new Map()).get(a.id); if (!el) return; const s = SEATS[i]; pin(home, el, s.tag[0], Math.max(s.tag[1], tagMin), "tag"); });
-    const more = model.agents.filter((a) => a.look !== "open").length - list.length;
-    if (more > 0) { const m = document.createElement("span"); m.className = "sc-more card"; m.textContent = "+" + more + " more down the aisle"; pin(home, m, 50, 40.5, "tag"); }
-    if (model.bubble) { const P = SCENES.home.pip, canH = P[2] * PIP_K * (box.w / box.h); pin(home, model.bubble, P[0], P[1] + canH * 0.33, "say"); } // tucked right under Pip, its tail on him
+  // ---------- the cast ----------
+  const SCALE_PIP = 0.42, SCALE_MATE = 0.3;
+  function cast(look, scale, base) {
+    const a = new THREE.Group(); a.scale.setScalar(scale); scene.add(a);
+    const rig = kit.buildPip(env, look);
+    a.add(rig.root, rig.shadow, rig.floorGlow, ...rig.handShadows);
+    const actor = kit.makeActor(rig, camera, { base, core: look.core, local: (v) => a.worldToLocal(v), world: (v) => a.localToWorld(v) });
+    return { a, rig, actor };
   }
-  function pin(s, el, x, y, kind) { el.classList.add("sc-pin", "pin-" + kind); el.style.setProperty("--px", x + "%"); el.style.setProperty("--py", y + "%"); s.pins.append(el); }
-  const stack = document.createElement("div"); stack.className = "sc-stack"; root.append(stack); // a phone's cards, under its scene window
-  function syncStationPins(s, key) {
-    s.pins.replaceChildren(); if (cur === s || !cur) stack.replaceChildren();
-    const tall = root.classList.contains("tall");
-    for (const p of (model.cards && model.cards[key]) || []) {
-      if (tall && p.kind !== "label") { if (cur === s) stack.append(p.el); continue; }
-      pin(s, p.el, p.x, p.y, p.kind || "card");
+  const shade = (hex, k) => "#" + new THREE.Color(hex).lerp(new THREE.Color("#ffffff"), k).getHexString();
+  const pip = cast({}, SCALE_PIP, 3.1);
+  const mates = new Map();
+  let seats = [];
+
+  // ---------- where the camera can be: stops along the hall, and one path between them ----------
+  const AISLE_Y = 2.15, cur = { pos: V(), look: V() };
+  let travel = null, mode = "floor", focusId = null, stationId = null, panel = false;
+  function stopFor(kind, arg) {
+    if (kind === "arrive") return { pos: V(0, 1.7, marks.cam_arrive.z), look: V(0, 1.5, marks.cam_arrive.z - 12) };
+    if (kind === "tools") { const z = marks.cam_tools.z; return { pos: V(0, 2.0, z), look: V(0, 2.35, z - 6.5) }; }
+    if (kind === "desk") {
+      // beside the teammate, so you see their face and their screen together
+      const s = seats[arg]; if (s) { const d = Math.sign(s.pos.x - s.mon.x) || -s.out; return { pos: V(s.pos.x + d * 0.8, 1.72, s.pos.z + 1.75), look: V(s.mon.x * 0.55 + s.pos.x * 0.45, 1.3, s.mon.z - 0.3) }; }
+    }
+    const z = marks.cam_floor.z; return { pos: V(0, AISLE_Y, z), look: V(0, 1.25, z - 11) };
+  }
+  function go(to, ms) {
+    const from = { pos: cur.pos.clone(), look: cur.look.clone() }, pts = [from.pos.clone()];
+    const far = Math.abs(from.pos.z - to.pos.z) > 2.2 || Math.abs(from.pos.x - to.pos.x) > 2.5;
+    if (far) { // through the aisle, never through a desk
+      const dz = Math.sign(to.pos.z - from.pos.z) || -1;
+      pts.push(V(from.pos.x * 0.35, AISLE_Y, from.pos.z + dz * 0.9));
+      pts.push(V(to.pos.x * 0.35, AISLE_Y, to.pos.z - dz * 1.4));
+    }
+    pts.push(to.pos.clone());
+    const curve = new THREE.CatmullRomCurve3(pts, false, "centripetal");
+    const len = curve.getLength(), dur = RM() ? 1 : ms || clamp(900 + len * 110, 1100, 2600);
+    travel = { curve, from, to, t0: performance.now(), dur };
+    pipTravel = { start: pip.a.position.clone(), end: pipTo.clone(), t0: performance.now(), dur: dur * 0.82 };
+    return new Promise((res) => (travel.done = res));
+  }
+  function stepCamera(now) {
+    if (travel) {
+      const k = clamp((now - travel.t0) / travel.dur), e = ease(k);
+      cur.pos.copy(travel.curve.getPointAt(e));
+      const ahead = travel.curve.getPointAt(clamp(e + 0.15)); ahead.y -= 0.3;
+      const settle = ease(clamp((k - 0.5) / 0.5)), lead = Math.sin(Math.min(1, k * 2) * Math.PI / 2) * (1 - settle);
+      cur.look.copy(travel.from.look).lerp(ahead, lead).lerp(travel.to.look, settle);
+      if (k >= 1) { const d = travel.done; travel = null; d && d(); }
+    }
+    const t = now / 1000, px = RM() ? 0 : par.x, py = RM() ? 0 : par.y;
+    camera.position.copy(cur.pos).add(V(Math.sin(t * 0.21) * 0.03 + px * 0.16, Math.sin(t * 0.17 + 1) * 0.02 - py * 0.07, 0));
+    camera.lookAt(cur.look.clone().add(V(px * 0.22, -py * 0.1, 0)));
+    // with a panel open on the right, the room shifts left so what you're looking at stays in view
+    if (panel && !PHONE()) camera.setViewOffset(innerWidth, innerHeight, Math.min(620, innerWidth * 0.42) / 2, 0, innerWidth, innerHeight); else camera.clearViewOffset();
+  }
+
+  // ---------- Pip leads the way: floats ahead along the hall, turns back to you when he gets there ----------
+  let pipTo = V(0, 0, -6), pipTravel = null;
+  function pipMarkFor(kind, arg) {
+    if (kind === "tools") return marks.pip_tools.clone().setY(0);
+    if (kind === "desk") { const s = seats[arg]; if (s) return V(s.mon.x - s.out * 1.7, 0, s.mon.z - 1.5); }
+    return marks.pip_floor.clone().setY(0);
+  }
+  const lerpAngle = (a, b, k) => { let d = b - a; d = Math.atan2(Math.sin(d), Math.cos(d)); return a + d * k; };
+  function stepPip(now) {
+    const toCam = (p) => Math.atan2(camera.position.x - p.x, camera.position.z - p.z);
+    if (pipTravel) {
+      const k = clamp((now - pipTravel.t0) / pipTravel.dur), e = ease(k), d = pipTravel.end.clone().sub(pipTravel.start);
+      const p = pipTravel.start.clone().lerp(pipTravel.end, e); p.y = Math.sin(e * Math.PI) * 0.12 * Math.min(1, d.length() / 4);
+      pip.a.position.copy(p);
+      const heading = d.lengthSq() > 0.01 ? Math.atan2(d.x, d.z) : toCam(p);
+      pip.a.rotation.y = lerpAngle(lerpAngle(pip.a.rotation.y, heading, 0.12), toCam(p), ease(clamp((k - 0.62) / 0.38)));
+      pip.a.rotation.z = -Math.sin(e * Math.PI) * clamp(d.x * 0.03, -0.12, 0.12);
+      if (k >= 1) { pipTravel = null; pip.a.rotation.z = 0; }
+    } else pip.a.rotation.y = lerpAngle(pip.a.rotation.y, toCam(pip.a.position), 0.05);
+  }
+
+  // ---------- the arrival: the elevator doors part, the camera steps onto the floor, Pip says hello ----------
+  let doorsT0 = -1e9, doorsTo = 1;
+  function stepDoors(now) {
+    const k = clamp((now - doorsT0) / 1500), o = doorsTo ? ease(k) : 1 - ease(k);
+    for (const [n, s] of [["door_l", -1], ["door_r", 1]]) for (const m of live[n] || []) m.matrix.makeTranslation(s * o * 2.15, 0, 0);
+  }
+  async function enter(full = true) {
+    await ready;
+    if (full && !RM()) {
+      doorsTo = 0; doorsT0 = -1e9;
+      const a = stopFor("arrive"); cur.pos.copy(a.pos); cur.look.copy(a.look);
+      pipTo = pipMarkFor("floor"); pip.a.position.copy(pipTo);
+      setTimeout(() => { doorsTo = 1; doorsT0 = performance.now(); }, 500);
+      setTimeout(() => { if (mode === "floor") go(stopFor("floor"), 2400).then(() => { pip.actor.acts.wave(); opts.onEntered && opts.onEntered(); }); }, 1350);
+    } else {
+      doorsTo = 1; doorsT0 = -1e9;
+      if (!travel && mode === "floor") { const f = stopFor("floor"); cur.pos.copy(f.pos).add(V(0, 0.12, 1.4)); cur.look.copy(f.look); go(f, 950); }
+      opts.onEntered && opts.onEntered();
     }
   }
 
-  // ---------- Pip: the original engine, one canvas that moves to whichever scene is showing ----------
-  let eng = null, pipCanvas = null, pipT0 = performance.now();
-  async function startPip() {
-    if (RM() || typeof createPipEngine !== "function") return;
-    try {
-      pipCanvas = document.createElement("canvas"); pipCanvas.className = "sc-pip-gl"; pipCanvas.setAttribute("aria-hidden", "true");
-      eng = createPipEngine(THREE, { canvas: pipCanvas });
-    } catch (e) { eng = null; pipCanvas = null; }
+  // ---------- keeping the cast and the room in step with the Portal ----------
+  let model = { agents: [] };
+  const colorName = (hex) => { hex = String(hex || "").toLowerCase(); for (const [k, v] of Object.entries(TEAM)) if (v === hex) return k; return "violet"; };
+  const lookOf = (a) => { const base = TEAM[colorName(a.hex)];
+    return { name: a.id, lite: true, core: base, flank: shade(base, 0.62), belly: shade(base, 0.34), stalk: shade(base, 0.1), acc: a.acc || null }; };
+  function syncCast() {
+    const list = model.agents.filter((a) => a.look !== "open").slice(0, seats.length), keep = new Set();
+    list.forEach((a, i) => {
+      keep.add(a.id); const s = seats[i], lk = lookOf(a), k = JSON.stringify(lk);
+      let m = mates.get(a.id);
+      if (!m || m.key !== k) {
+        if (m) { scene.remove(m.a); const j = hits.findIndex((h) => h.id === a.id); if (j >= 0) hits.splice(j, 1); }
+        m = Object.assign(cast(lk, SCALE_MATE, 4.55), { key: k, id: a.id }); mates.set(a.id, m);
+        hits.push({ obj: m.rig.body, kind: "mate", id: a.id });
+      }
+      m.seat = i; m.data = a;
+      m.a.position.copy(s.pos).setY(0); m.a.rotation.y = Math.atan2(s.mon.x - s.pos.x, s.mon.z - s.pos.z); // turned to their monitor
+      m.actor.A.task = a.kind === "paused" ? "sleep" : a.kind === "needs" ? "needs" : a.kind === "live" || a.kind === "build" ? "type" : null;
+      m.actor.acts.mood(a.kind === "needs" ? "concerned" : "calm");
+      m.rig.skin.transparent = a.kind === "build"; m.rig.skin.opacity = a.kind === "build" ? 0.55 : 1;
+      s.note.visible = a.kind === "needs"; if (a.kind === "needs") paintNote(s.noteTex, a.sticky || a.line || "");
+      s.lamp.visible = a.kind === "needs";
+      paintScreen(s.screenTex, { name: a.name, role: a.role, line: a.line, kind: a.kind, hex: lk.core });
+    });
+    for (const [id, m] of mates) if (!keep.has(id)) { scene.remove(m.a); mates.delete(id); const j = hits.findIndex((h) => h.id === id); if (j >= 0) hits.splice(j, 1); }
+    seats.forEach((s, i) => { if (i >= list.length) { paintScreen(s.screenTex, { name: "Open desk", role: "Room for one more", line: "A new teammate can sit here.", kind: "ready" }); s.note.visible = false; s.lamp.visible = false; } });
+    const tools = (model.stations && model.stations.tools) || [];
+    tiles.forEach((t, i) => { const tool = tools[i] || null; t.tool = tool; paintTile(t.tex, tool && { short: tool.short, state: tool.state }); t.mesh.material.color.copy(t.base).lerp(new THREE.Color(1, 0.97, 1), tool ? 0.12 : 0.5); }); // empty slots are frosted, filled ones candy-bright
   }
-  function pipTo(s) {
-    if (!pipCanvas) { s.pipSlot.classList.add("still"); return; }
-    if (pipCanvas.parentElement !== s.pipSlot) { s.pipSlot.append(pipCanvas); }
-    requestAnimationFrame(() => { const r = s.pipSlot.getBoundingClientRect(); if (eng && r.width > 2) eng.resize(r.width, r.height); });
+  const tiles = [];
+  function buildSeats() {
+    for (let i = 0; i < 12; i++) {
+      const p = marks["seat_" + i], mon = marks["mon_" + i]; if (!p) break;
+      const out = Math.sign(p.x) || 1, screen = one("screen_" + i), screenTex = canvasTex(640, 384);
+      if (screen) { screen.material = new THREE.MeshBasicMaterial({ map: screenTex, toneMapped: false }); remapUV(screen.geometry, out); }
+      const noteTex = canvasTex(320, 220), note = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.24), new THREE.MeshBasicMaterial({ map: noteTex, transparent: true, toneMapped: false }));
+      note.position.set(mon.x - out * 0.075, 1.5, mon.z + 0.3); note.rotation.y = out < 0 ? Math.PI / 2 : -Math.PI / 2; note.rotation.z = out * 0.05; note.visible = false; scene.add(note);
+      const lamp = bloom(V(p.x - out * 0.4, 0, p.z), 2.6, new THREE.Color("#ffb52e"), true, 0.5); lamp.visible = false;
+      // they sit just beside their monitor, turned to it, so you see them from the aisle
+      seats.push({ pos: p.clone().add(V(0, 0, 0.78)), mon: mon.clone(), out, screen, screenTex, note, noteTex, lamp });
+    }
+    for (let i = 0; i < 12; i++) {
+      const m = one("tile_" + i); if (!m) break;
+      m.geometry.computeBoundingBox(); const bb = m.geometry.boundingBox, c = bb.getCenter(V());
+      const tex = canvasTex(256, 256), q = new THREE.Mesh(new THREE.PlaneGeometry(0.86, 0.86), new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false, depthWrite: false }));
+      q.position.set(c.x, c.y, bb.max.z + 0.012); scene.add(q);
+      m.material.toneMapped = false;
+      tiles.push({ mesh: m, tex, label: q, z0: q.position.z, base: m.material.color.clone(), i }); hits.push({ obj: m, kind: "tile", i });
+    }
+  }
+  function remapUV(g, out) { // the screen's picture, the right way round as the teammate sees it
+    const p = g.attributes.position; g.computeBoundingBox(); const b = g.boundingBox, uv = new Float32Array(p.count * 2);
+    for (let i = 0; i < p.count; i++) { const u = (p.getZ(i) - b.min.z) / (b.max.z - b.min.z || 1); uv[i * 2] = out < 0 ? 1 - u : u; uv[i * 2 + 1] = (p.getY(i) - b.min.y) / (b.max.y - b.min.y || 1); }
+    g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
   }
 
-  // ---------- moving between scenes: zoom into the place you picked, cross-fade, settle ----------
-  let moving = null, settleAt = 0;
-  async function show(key, plateName, how = {}) {
-    measure();
-    const next = sceneEl(key, plateName || plateOf(key));
-    if (next.mate) { const f = how.mate && opts.face ? opts.face(how.mate) : null; next.mate.replaceChildren(...(f ? [f] : [])); if (f) f.classList.toggle("is-paused", key === "deskPaused"); }
-    if (key === "home") { syncSeats(next); syncPins(next); } else syncStationPins(next, key);
-    if (cur !== next) layer.classList.remove("on");
-    if (cur === next) { place(next); pipTo(next); return; }
-    await Promise.race([next.decoded, new Promise((r) => setTimeout(r, 900))]);
-    const from = cur; cur = next; pipTo(next); stack.replaceChildren(); if (key !== "home") syncStationPins(next, key);
-    next.el.classList.remove("off"); root.dataset.scene = key; back.style.backgroundImage = `url("${next.img.currentSrc || next.img.src}")`;
-    if (!from || RM()) { if (from) from.el.classList.add("off"); place(next); return; }
-    const out = !!how.out, f = (how.at || next.cfg.focus || [50, 50]);
-    const r0 = rest(from), r1 = rest(next), dur = how.quick ? 560 : 860;
-    from.el.style.transformOrigin = (out ? 50 : f[0]) + "% " + (out ? 50 : f[1]) + "%"; next.el.style.transformOrigin = f[0] + "% " + f[1] + "%";
-    const t0 = `translate3d(${r0.dx}px,${r0.dy}px,0) scale(${r0.s})`, t1 = `translate3d(${r0.dx}px,${r0.dy}px,0) scale(${r0.s * (out ? 0.93 : 1.32)})`;
-    const n0 = `translate3d(${r1.dx}px,${r1.dy}px,0) scale(${r1.s * (out ? 1.16 : 1.1)})`, n1 = `translate3d(${r1.dx}px,${r1.dy}px,0) scale(${r1.s})`;
-    root.classList.add("moving"); moving = true;
-    const ease = "cubic-bezier(.16,1,.3,1)";
-    const a = from.el.animate([{ transform: t0, opacity: 1 }, { transform: t1, opacity: 0 }], { duration: dur * 0.9, easing: ease, fill: "forwards" });
-    const b = next.el.animate([{ transform: n0, opacity: 0 }, { transform: n1, opacity: 1 }], { duration: dur, delay: dur * 0.12, easing: ease, fill: "forwards" });
-    await b.finished.catch(() => null);
-    from.el.classList.add("off"); a.cancel(); b.cancel(); place(next); from.el.style.transformOrigin = next.el.style.transformOrigin = "";
-    root.classList.remove("moving"); moving = false; settleAt = performance.now();
+  // ---------- name pills and Pip's bubble follow their owners on screen ----------
+  const Pp = V();
+  function project(world, el, dy) {
+    Pp.copy(world).project(camera);
+    const vis = Pp.z < 1 && Math.abs(Pp.x) < 1.1 && Math.abs(Pp.y) < 1.15;
+    el.style.transform = `translate3d(${((Pp.x * 0.5 + 0.5) * innerWidth).toFixed(1)}px,${((-Pp.y * 0.5 + 0.5) * innerHeight + dy).toFixed(1)}px,0)`;
+    return vis;
+  }
+  function syncPins() {
+    pins.replaceChildren();
+    if (model.bubble && !PHONE()) { model.bubble.classList.add("hl-pin", "hl-say"); pins.append(model.bubble); }
+    for (const [id, el] of model.tags || []) if (mates.has(id)) { el.classList.add("hl-pin", "hl-tag"); pins.append(el); }
+    stack.replaceChildren();
+    for (const c of (mode === "station" && model.cards && model.cards[stationId]) || []) if (c.kind !== "label" && c.kind !== "hot") stack.append(c.el);
+  }
+  function stepPins() {
+    const b = model.bubble;
+    if (b && b.parentElement === pins) { const vis = project(pip.a.position.clone().add(V(0, 0.68, 0)), b, 22); b.classList.toggle("hl-hide", !vis || mode !== "floor" || !!travel); }
+    for (const [id, el] of model.tags || []) { const m = mates.get(id); if (!m || el.parentElement !== pins) continue;
+      const vis = project(m.a.position.clone().add(V(0, 1.78, 0)), el, -4); el.classList.toggle("hl-hide", !vis || mode !== "floor" || !!travel); }
   }
 
-  // ---------- a teammate's screen on the monitor ----------
+  // ---------- a teammate's screen, the real HTML, glued to their monitor while you're at the desk ----------
   let screenEl = null;
   function mountScreen(id, el) {
     if (screenEl && screenEl !== el) screenEl.remove();
-    screenEl = el || null;
-    if (!el) { layer.classList.remove("on"); return; }
-    el.classList.add("on", "settled"); layer.append(el); fitScreen();
+    screenEl = el || null; if (el) { el.classList.add("on", "settled"); layer.append(el); }
   }
-  function fitScreen() {
-    if (!screenEl || !cur || mode !== "desk") { layer.classList.remove("on"); return; }
-    const q = cur.cfg.screen, fl = cur.cfg.float; layer.classList.toggle("on", !!(q || fl)); layer.classList.toggle("flat", !q && !!fl);
-    if (!q && !fl) return;
-    const r = cur.el.getBoundingClientRect(), W = screenEl.offsetWidth || 1000, H = screenEl.offsetHeight || 600;
-    if (!q) { const w = (fl[2] / 100) * r.width, h = (w * H) / W, x = r.left + (fl[0] / 100) * r.width - w / 2, y = r.top + (fl[1] / 100) * r.height - h / 2; screenEl.style.transformOrigin = "0 0"; screenEl.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) scale(${(w / W).toFixed(4)})`; return; }
-    const pts = q.map(([x, y]) => [r.left + (x / 100) * r.width, r.top + (y / 100) * r.height]);
-    screenEl.style.transformOrigin = "0 0"; screenEl.style.transform = homography(W, H, pts);
+  function stepScreen() {
+    const m = mates.get(focusId), s = m && seats[m.seat];
+    const on = !!(screenEl && mode === "desk" && !travel && !held && s && s.screen);
+    layer.classList.toggle("on", on); if (!on) return;
+    const b = s.screen.geometry.boundingBox, x = (b.min.x + b.max.x) / 2;
+    const zL = s.out < 0 ? b.max.z : b.min.z, zR = s.out < 0 ? b.min.z : b.max.z; // left and right as the teammate (and the camera behind them) sees it
+    let corners = [V(x, b.max.y, zL), V(x, b.max.y, zR), V(x, b.min.y, zR), V(x, b.min.y, zL)].map((v) => { const q = v.project(camera); return [(q.x * 0.5 + 0.5) * innerWidth, (-q.y * 0.5 + 0.5) * innerHeight]; });
+    if (corners[0][0] > corners[1][0]) corners = [corners[1], corners[0], corners[3], corners[2]]; // always read left to right, whichever side the camera is on
+    const W = screenEl.offsetWidth || 1000, H = screenEl.offsetHeight || 600;
+    screenEl.style.transformOrigin = "0 0"; screenEl.style.transform = homography(W, H, corners);
   }
-  function homography(w, h, [[x0, y0], [x1, y1], [x2, y2], [x3, y3]]) { // maps the screen's rectangle onto the monitor's four corners
+  function homography(w, h, [[x0, y0], [x1, y1], [x2, y2], [x3, y3]]) {
     const dx1 = x1 - x2, dx2 = x3 - x2, dx3 = x0 - x1 + x2 - x3, dy1 = y1 - y2, dy2 = y3 - y2, dy3 = y0 - y1 + y2 - y3;
     const den = dx1 * dy2 - dx2 * dy1, g = (dx3 * dy2 - dx2 * dy3) / den, hh = (dx1 * dy3 - dx3 * dy1) / den;
     const a = x1 - x0 + g * x1, b = x3 - x0 + hh * x3, c = x0, d = y1 - y0 + g * y1, e = y3 - y0 + hh * y3, f = y0;
-    const m = [a / w, d / w, 0, g / w, b / h, e / h, 0, hh / h, 0, 0, 1, 0, c, f, 0, 1];
-    return "matrix3d(" + m.map((v) => +v.toFixed(9)).join(",") + ")";
+    return "matrix3d(" + [a / w, d / w, 0, g / w, b / h, e / h, 0, hh / h, 0, 0, 1, 0, c, f, 0, 1].map((v) => +v.toFixed(9)).join(",") + ")";
   }
 
-  // ---------- the frame loop: only parallax and Pip; everything else animates itself in CSS ----------
-  let raf = 0, held = false;
-  addEventListener("pointermove", (e) => { if (e.pointerType === "mouse") { par.tx = e.clientX / innerWidth - 0.5; par.ty = e.clientY / innerHeight - 0.5; kick(); } }, { passive: true });
-  function kick() { if (!raf && active) raf = requestAnimationFrame(loop); }
-  function loop(t) {
+  // ---------- pointing at things: teammates turn and wave, tool tiles lift, Pip looks where you look ----------
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), par = { x: 0, y: 0, tx: 0, ty: 0 }; let hovered = null;
+  function pick(cx, cy) {
+    ndc.set((cx / innerWidth) * 2 - 1, -(cy / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera);
+    let best = null, bd = 1e9;
+    for (const h of hits) { h.obj.updateMatrixWorld(); const r = ray.intersectObject(h.obj, false)[0]; if (r && r.distance < bd) { bd = r.distance; best = h; } }
+    return best;
+  }
+  canvas.addEventListener("pointermove", (e) => {
+    if (e.pointerType === "mouse") { par.tx = e.clientX / innerWidth - 0.5; par.ty = e.clientY / innerHeight - 0.5; }
+    if (travel) return;
+    const h = pick(e.clientX, e.clientY); canvas.style.cursor = h ? "pointer" : "";
+    const same = h && hovered && h.kind === hovered.kind && h.id === hovered.id && h.i === hovered.i;
+    if (!same) { hovered = h; if (h) react(h); }
+  }, { passive: true });
+  canvas.addEventListener("click", (e) => {
+    if (travel) return;
+    const h = pick(e.clientX, e.clientY); if (!h) return;
+    if (h.kind === "mate") { const m = mates.get(h.id); if (m) { m.actor.acts.hop(); m.actor.acts.happy(0.9); } opts.onPick && opts.onPick(h.id); }
+    if (h.kind === "tile") { const t = tiles[h.i]; t.lift = performance.now(); opts.onStation && opts.onStation("tools", t.tool && t.tool.slot); }
+  });
+  function react(h) {
+    const at = h.kind === "mate" ? mates.get(h.id) && mates.get(h.id).a.position.clone().add(V(0, 1.3, 0)) : tiles[h.i] && tiles[h.i].label.position.clone();
+    if (at) pip.actor.acts.lookAt(at, 1.6);
+    if (h.kind === "mate") hover(h.id);
+    if (h.kind === "tile") tiles[h.i].lift = performance.now();
+  }
+  function hover(id) {
+    const m = mates.get(id); if (!m || m.data.kind === "paused" || m.data.kind === "build") return;
+    if (performance.now() - (m.wavedAt || 0) < 3500) return; m.wavedAt = performance.now();
+    m.actor.acts.lookAt(camera.position.clone(), 2); m.actor.acts.wave();
+  }
+
+  // ---------- neighbours: now and then one sends another a paper plane ----------
+  const planeGeo = new THREE.BufferGeometry(); planeGeo.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0.12, -0.08, 0, -0.08, 0, 0.02, -0.06, 0, 0, 0.12, 0, 0.02, -0.06, 0.08, 0, -0.08], 3)); planeGeo.computeVertexNormals();
+  const plane = new THREE.Mesh(planeGeo, new THREE.MeshLambertMaterial({ color: "#ffffff", side: THREE.DoubleSide })); plane.visible = false; scene.add(plane);
+  let flight = null, nextFlight = performance.now() + 9000;
+  function stepPlane(now) {
+    if (!flight && now > nextFlight && mode === "floor" && !RM()) {
+      nextFlight = now + 14000 + Math.random() * 12000;
+      const list = [...mates.values()].filter((m) => m.data.kind === "live" || m.data.kind === "ready");
+      if (list.length >= 2) {
+        const a = list[Math.floor(Math.random() * list.length)], b = list.filter((x) => x !== a)[Math.floor(Math.random() * (list.length - 1))];
+        flight = { a, b, t0: now + 700 }; a.actor.A.throwAt = a.actor.t + 0.25; b.actor.A.catchAt = b.actor.t + 2.3;
+        a.actor.acts.lookAt(b.a.position.clone().add(V(0, 1.3, 0)), 2.6); b.actor.acts.lookAt(a.a.position.clone().add(V(0, 1.3, 0)), 3.8);
+      }
+    }
+    if (flight) {
+      const k = (now - flight.t0) / 1600; plane.visible = k > 0 && k < 1;
+      if (plane.visible) {
+        const p0 = flight.a.a.position.clone().add(V(0, 1.55, 0)), p1 = flight.b.a.position.clone().add(V(0, 1.45, 0)), at = (u) => { const p = p0.clone().lerp(p1, u); p.y += Math.sin(u * Math.PI) * 1.1; return p; };
+        plane.position.copy(at(k)); plane.lookAt(at(k + 0.02)); plane.rotateZ(Math.sin(k * 9) * 0.3);
+      }
+      if (k >= 1.2) flight = null;
+    }
+  }
+
+  // ---------- the frame loop ----------
+  let raf = 0, active = true, held = false, last = performance.now(), slow = 0, nextGlance = 0;
+  const amber = new THREE.Color("#ffb52e"), tmp = new THREE.Color();
+  function loop(now) {
     raf = 0; if (!active || document.hidden) return;
-    par.x += (par.tx - par.x) * 0.07; par.y += (par.ty - par.y) * 0.07;
-    if (cur && !moving && mode !== "desk") place(cur);
-    if (eng && !held) eng.frame(t / 1000);
-    if (mode === "desk" && performance.now() - settleAt < 1200) fitScreen();
+    const dt = now - last; last = now;
+    if (dt > 24) slow++; else slow = Math.max(0, slow - 1);
+    if (slow > 45 && dpr > 1) { dpr = Math.max(1, dpr - 0.25); resize(); slow = 0; } // stays smooth on a smaller machine
+    par.x += (par.tx - par.x) * 0.05; par.y += (par.ty - par.y) * 0.05;
+    stepDoors(now); stepCamera(now); stepPip(now); stepPlane(now);
+    const tS = now / 1000;
+    pip.actor.step(tS); for (const m of mates.values()) m.actor.step(tS);
+    for (const t of tiles) {
+      const k = t.lift ? clamp(1 - (now - t.lift) / 900) : 0, st = t.tool && t.tool.state, lift = Math.sin(k * Math.PI) * 0.07;
+      const glow = st === "you" ? 0.3 + 0.22 * Math.sin(tS * 4) : st === "pip" ? 0.2 + 0.1 * Math.sin(tS * 2) : t.tool ? 0.3 : 0.6;
+      t.mesh.material.emissive.copy(st === "you" ? amber : t.tool ? t.base : t.mesh.material.color).multiplyScalar(glow + k * 0.35); // empty slots: soft frosted glass
+      t.mesh.matrix.makeTranslation(0, 0, lift); t.label.position.z = t.z0 + lift;
+    }
+    for (const s of seats) if (s.lamp.visible) s.lamp.material.opacity = 0.35 + 0.2 * Math.sin(tS * 3.2);
+    if (mode === "desk" && !travel && now > nextGlance) { nextGlance = now + 5200 + Math.random() * 3000; const m = mates.get(focusId); if (m && m.data.kind !== "paused") m.actor.acts.lookAt(camera.position.clone(), 1.6); } // at their desk, they look up at you now and then
+    for (const h of halos) h.material.opacity = h.userData.o * (0.85 + 0.15 * Math.sin(tS * 1.3 + h.position.z));
+    if (!held) renderer.render(scene, camera);
+    stepPins(); stepScreen();
     raf = requestAnimationFrame(loop);
   }
+  const kick = () => { if (!raf && active) raf = requestAnimationFrame(loop); };
   document.addEventListener("visibilitychange", kick);
-  addEventListener("resize", () => { measure(); if (cur) place(cur); if (cur) pipTo(cur); fitScreen(); if (cur && cur.key === "home") syncPins(cur); });
-
-  // ---------- the arrival: elevator doors part onto your floor, once a day; a short glide otherwise ----------
-  function enter(full = true) {
-    const home = homeScene();
-    show("home", SCENES.home.plate).then(() => {
-      if (RM()) { opts.onEntered && opts.onEntered(); return; }
-      if (full) {
-        root.append(doors); doors.classList.remove("open"); void doors.offsetWidth;
-        home.el.animate([{ transform: home.el.style.transform + " scale(1.07)" }, { transform: home.el.style.transform }], { duration: 2100, delay: 350, easing: "cubic-bezier(.16,1,.3,1)", fill: "backwards" });
-        setTimeout(() => doors.classList.add("open"), 380);
-        setTimeout(() => { doors.remove(); opts.onEntered && opts.onEntered(); }, 2300);
-        home.seats.querySelectorAll(".sc-ag").forEach((g, i) => setTimeout(() => hover(g.dataset.id), 1200 + i * 160));
-      } else {
-        home.el.animate([{ opacity: 0.4, transform: home.el.style.transform + " scale(1.05)" }, { opacity: 1, transform: home.el.style.transform }], { duration: 900, easing: "cubic-bezier(.16,1,.3,1)" });
-        setTimeout(() => opts.onEntered && opts.onEntered(), 900);
-      }
-    });
+  function resize() {
+    renderer.setPixelRatio(dpr); renderer.setSize(innerWidth, innerHeight, false);
+    camera.aspect = innerWidth / innerHeight; camera.fov = camera.aspect < 0.8 ? 68 : camera.aspect < 1.2 ? 58 : 50; camera.updateProjectionMatrix();
   }
+  addEventListener("resize", resize);
 
-  // once you're on the floor, fetch the stations' pictures quietly so the first glide to each one is instant
-  function warm() {
-    const go = () => { for (const k of ["front", "meter", "tools", "comms", "exit"]) { const i = new Image(); i.decoding = "async"; i.src = src(SCENES[k].plate); } };
-    (window.requestIdleCallback || ((f) => setTimeout(f, 1200)))(go, { timeout: 4000 });
-  }
+  // ---------- start ----------
+  const halos = [];
+  const ready = (async () => {
+    await loadRoom(opts.room || "/portal-art/hall.glb");
+    for (const [n, ms] of Object.entries(live)) if (/^halo/.test(n)) for (const m of ms) {
+      const c = m.geometry.boundingSphere.center;
+      halos.push(bloom(c.clone(), 3.6, new THREE.Color("#fff4e8"), false, 0.3), bloom(c.clone(), 3.4, new THREE.Color("#fff0dc"), true, 0.14));
+    }
+    buildSeats();
+    const f = stopFor("floor"); cur.pos.copy(f.pos); cur.look.copy(f.look);
+    pipTo = pipMarkFor("floor"); pip.a.position.copy(pipTo);
+    resize(); root.classList.add("ready"); kick();
+  })();
 
-  // ---------- keeping in step with the Portal ----------
-  function sync(m) {
-    const st = m.stations || {};
-    model = Object.assign({}, m, { tags: new Map(m.tags || []), stationTags: st.tags || [], priced: !!st.priced, cards: m.cards || {} });
-    root.classList.toggle("dim", !!m.dim);
-    root.style.setProperty("--k", Math.max(0, Math.min(1, (st.meter && st.meter.frac) || 0)).toFixed(3));
-    root.classList.toggle("warn", !!(st.meter && st.meter.warn));
-    const home = homeScene(); syncSeats(home); if (cur === home) syncPins(home);
-    if (cur && cur !== home) syncStationPins(cur, cur.key);
-    kick();
-  }
-  const stationKey = (id) => (id === "meter" && model.priced ? "contract" : id);
-
-  measure();
-  const ready = (async () => { await startPip(); const home = homeScene(); await home.decoded; root.classList.add("ready"); kick(); setTimeout(warm, 2600); })();
-
-  const api = {
-    ready, layer, sync, enter, mountScreen, hover,
-    get mode() { return mode; }, get tier() { return "scenes"; },
-    floor() { mode = "floor"; focusId = null; stationId = null; letGoOn = false; panel = false; mountScreen(null, null); return show("home", SCENES.home.plate, { out: true }); },
-    station(id) { const key = stationKey(id); if (!SCENES[key]) return Promise.resolve(); if (mode === "station" && stationId === id && cur && cur.key === key) { place(cur); return Promise.resolve(); } mode = "station"; stationId = id; focusId = null; return show(key, null); },
-    panel(on) { if (panel === !!on) return; panel = !!on; root.classList.toggle("paneled", panel); if (cur) { cur.el.style.transition = "transform .7s cubic-bezier(.16,1,.3,1)"; place(cur); setTimeout(() => { if (cur) cur.el.style.transition = ""; }, 720); } },
-    desk(id, variant) {
-      const a = model.agents.find((x) => x.id === id); if (!a) return Promise.resolve();
-      deskColor = colorName(a.hex); deskVariant = variant || a.variant || "normal";
-      const key = deskVariant === "paused" ? "deskPaused" : deskVariant === "cut" ? "deskCut" : deskVariant === "needs" ? "deskNeeds" : "desk";
-      const seat = SEATS[model.agents.filter((x) => x.look !== "open").indexOf(a)];
-      mode = "desk"; focusId = id; letGoOn = false;
-      return show(key, null, { at: seat ? [seat.x, seat.b - seat.h / 2] : null, mate: id }).then(() => { settleAt = performance.now(); fitScreen(); });
+  return {
+    ready, layer,
+    get mode() { return mode; }, get tier() { return "hall"; },
+    has(id) { return id === "tools"; }, // the rest of the floor arrives in the next part of the build
+    sync(m) {
+      model = Object.assign({}, m, { tags: new Map(m.tags || []), cards: m.cards || {} });
+      root.classList.toggle("dim", !!m.dim);
+      ready.then(() => { syncCast(); syncPins(); });
     },
-    letGo(id) { /* the goodbye plays when "Let go" is wired: show the let-go scene, then the floor without them */ const a = model.agents.find((x) => x.id === id); if (!a) return; deskColor = colorName(a.hex); show("letgo", null, { quick: true, mate: id }); },
-    letGoPreview(id, on) { if (on === letGoOn) return; letGoOn = !!on; const a = model.agents.find((x) => x.id === id); if (!a) return; if (on) { deskColor = colorName(a.hex); show("letgo", null, { quick: true, mate: id }); } else if (focusId) api.desk(focusId, deskVariant); },
-    // papers come out of the folders as HTML; the scene only steps back
+    enter,
+    floor() { if (mode === "floor" && !travel) return Promise.resolve(); mode = "floor"; focusId = null; stationId = null; mountScreen(null, null); syncPins(); return ready.then(() => { pipTo = pipMarkFor("floor"); return go(stopFor("floor")); }); },
+    station(id) {
+      if (id !== "tools" || (mode === "station" && stationId === id)) return Promise.resolve();
+      mode = "station"; stationId = id; focusId = null; syncPins();
+      return ready.then(() => { pipTo = pipMarkFor("tools"); return go(stopFor("tools")).then(() => { if (tiles[5]) { pip.actor.acts.point(tiles[5].label.position.clone()); setTimeout(() => pip.actor.acts.point(null), 1800); } }); });
+    },
+    desk(id) {
+      return ready.then(() => { const m = mates.get(id); if (!m) return; if (mode === "desk" && focusId === id) return; mode = "desk"; focusId = id; syncPins(); pipTo = pipMarkFor("desk", m.seat);
+        return go(stopFor("desk", m.seat)).then(() => { m.actor.acts.lookAt(camera.position.clone(), 2.2); if (m.data.kind !== "paused") m.actor.acts.wave(); }); });
+    },
+    letGo(id) { const m = mates.get(id); if (m) m.actor.acts.wave(); }, // the goodbye plays once "Let go" is wired
+    letGoPreview(id, on) { const m = mates.get(id); if (!m) return; if (on) { m.actor.acts.mood("concerned"); m.actor.acts.lookAt(camera.position.clone(), 6); } else m.actor.acts.mood(m.data.kind === "needs" ? "concerned" : "calm"); },
+    panel(on) { panel = !!on; },
+    mountScreen, hover,
     folderOut() { return Promise.resolve(); }, folderIn() {}, hoverFolder() {}, swapFolder() {},
     hold(on) { held = !!on; kick(); },
     setActive(on) { active = !!on; root.style.display = on ? "" : "none"; layer.style.display = on ? "" : "none"; if (on) kick(); },
     invalidate: kick, step() {},
     pip: {
-      mood(m) { eng && eng.mood(m || "calm"); }, talk(s) { eng && eng.talk(s); }, happy(s) { eng && eng.happy(s); }, nod() { eng && eng.nod(); },
-      hop() { eng && eng.hop(); }, wave() { eng && eng.wave(); }, trouble() { eng && eng.mood("concerned"); setTimeout(() => eng && eng.mood("calm"), 2600); }, party() { eng && eng.party(); },
+      mood(m) { pip.actor.acts.mood(m || "calm"); }, talk(s) { pip.actor.acts.talk(s); }, happy(s) { pip.actor.acts.happy(s); }, nod() { pip.actor.acts.nod(); },
+      hop() { pip.actor.acts.hop(); }, wave() { pip.actor.acts.wave(); }, trouble() { pip.actor.acts.mood("concerned"); setTimeout(() => pip.actor.acts.mood("calm"), 2600); }, party() { pip.actor.acts.party(); },
     },
-    dispose() { active = false; cancelAnimationFrame(raf); root.remove(); layer.remove(); css.remove(); if (eng) eng.dispose(); },
+    dispose() { active = false; cancelAnimationFrame(raf); renderer.dispose(); root.remove(); layer.remove(); css.remove(); },
   };
-  return api;
 }
 
 function CSS_TEXT() { return `
-.sc-root{position:fixed;inset:0;z-index:0;overflow:hidden;background:#ece7f7;contain:strict}
-.sc-back{position:absolute;inset:-60px;background:#ece7f7 center/cover no-repeat;filter:blur(30px) saturate(1.15) brightness(1.04);opacity:0;transition:opacity .6s}
-.sc-root.tall .sc-back{opacity:.75}
-.sc-root.tall .sc{border-radius:0 0 28px 28px;overflow:hidden;box-shadow:0 30px 60px -30px rgba(38,34,90,.35)}
-.sc{position:absolute;left:var(--bx);top:var(--by);width:var(--bw);height:var(--bh);will-change:transform,opacity;backface-visibility:hidden}
-.sc.off{display:none}
-.sc-plate{position:absolute;inset:0;width:100%;height:100%;user-select:none;-webkit-user-drag:none;pointer-events:none}
-.sc-root.dim .sc-plate{filter:saturate(.7) brightness(.92)}
-.sc-halo{position:absolute;left:var(--x);top:var(--y);width:var(--w);height:calc(var(--w) * .2);transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(closest-side,rgba(255,255,255,0) 60%,rgba(255,255,255,.95) 80%,rgba(255,255,255,0) 100%);mix-blend-mode:screen;animation:sc-breathe 5.5s ease-in-out infinite;animation-delay:var(--d,0s);pointer-events:none}
-@keyframes sc-breathe{0%,100%{opacity:.25}50%{opacity:.9}}
-.sc-dust{position:absolute;inset:0;pointer-events:none}
-.sc-dust i{position:absolute;left:var(--x);top:var(--y);width:var(--s);height:var(--s);border-radius:50%;background:radial-gradient(#fff8e6,rgba(255,248,230,0) 70%);animation:sc-drift var(--t) linear infinite;animation-delay:var(--d);opacity:0}
-@keyframes sc-drift{0%{transform:translate(0,0);opacity:0}15%{opacity:.9}85%{opacity:.6}100%{transform:translate(var(--dx),-70px);opacity:0}}
-/* the meter's tube: the plate's glass is empty; this is the liquid */
-.sc-tube{position:absolute;left:var(--x);top:var(--y);width:var(--w);height:var(--h);border-radius:999px;overflow:hidden;pointer-events:none}
-.sc-liquid{position:absolute;left:6%;right:6%;bottom:2%;height:calc(var(--k,0) * 96%);border-radius:40% 40% 999px 999px/12px 12px 999px 999px;background:linear-gradient(180deg,rgba(150,245,228,.92),rgba(64,220,200,.88));box-shadow:inset 0 0 18px rgba(255,255,255,.55),0 0 26px rgba(94,234,217,.55);transition:height 1.4s cubic-bezier(.16,1,.3,1) .2s}
-.sc-liquid s{position:absolute;left:0;right:0;top:-3px;height:8px;border-radius:50%;background:rgba(220,255,250,.95)}
-.sc-liquid i{position:absolute;bottom:0;left:var(--x);width:var(--s);height:var(--s);border-radius:50%;background:radial-gradient(circle at 35% 35%,#fff,rgba(255,255,255,.25) 60%,transparent 70%);animation:sc-rise var(--t) ease-in infinite;animation-delay:var(--d)}
-@keyframes sc-rise{0%{transform:translateY(0);opacity:0}10%{opacity:.95}100%{transform:translateY(-320px);opacity:0}}
-.sc-root.warn .sc-tube .sc-liquid{background:linear-gradient(180deg,rgba(255,226,150,.95),rgba(242,176,42,.9));box-shadow:inset 0 0 18px rgba(255,255,255,.55),0 0 26px rgba(242,176,42,.5)}
-/* teammates at their seats */
-.sc-seats{position:absolute;inset:0}
-.sc-ag{position:absolute;left:var(--x);top:calc(var(--b) - var(--h) * .2);height:calc(var(--h) * .7);aspect-ratio:320/272;transform:translate(-50%,-100%);cursor:pointer}
-.sc-face{position:absolute;inset:0;display:block;animation:sc-float 4.6s ease-in-out infinite;animation-delay:var(--d)}
-.sc-face .tmf{width:100%;height:100%}
-@keyframes sc-float{0%,100%{translate:0 0}50%{translate:0 -5%}}
-.sc-ag.k-paused .sc-face{animation-duration:7s}
-.sc-ag.k-paused .tmf .rg-lid{transform:scaleY(1)!important}
-.sc-ag.k-build .sc-face{filter:saturate(.2) brightness(1.15) drop-shadow(0 0 8px rgba(155,134,255,.9));opacity:.62}
-.sc-glow{position:absolute;left:50%;bottom:-14%;width:120%;height:34%;transform:translateX(-50%);border-radius:50%;background:radial-gradient(closest-side,rgba(242,176,42,.55),rgba(242,176,42,0));opacity:0;transition:opacity .4s;animation:sc-pulse 2s ease-in-out infinite}
-.sc-ag.k-needs .sc-glow{opacity:1}
-@keyframes sc-pulse{0%,100%{transform:translateX(-50%) scale(.85);opacity:.55}50%{transform:translateX(-50%) scale(1.08);opacity:1}}
-.sc-q{position:absolute;left:58%;top:-12%;font:italic 400 clamp(18px,2.6vw,40px)/1 "Instrument Serif",Georgia,serif;color:#ffb21f;text-shadow:0 2px 10px rgba(255,178,31,.45);opacity:0;animation:sc-q 2.2s ease-in-out infinite}
-.sc-ag.k-needs .sc-q{opacity:1}
-@keyframes sc-q{0%,100%{transform:translateY(0) rotate(-6deg)}50%{transform:translateY(-14%) rotate(6deg)}}
-.sc-z{position:absolute;left:62%;top:2%;opacity:0;pointer-events:none}.sc-ag.k-paused .sc-z{opacity:1}
-.sc-z i{position:absolute;left:0;top:0;font:italic 400 clamp(11px,1.3vw,20px)/1 "Instrument Serif",Georgia,serif;color:#9b8ee8;animation:sc-zz 3s ease-in infinite;opacity:0}
-.sc-z i:nth-child(2){animation-delay:1s}.sc-z i:nth-child(3){animation-delay:2s}
-@keyframes sc-zz{0%{transform:translate(0,0) scale(.6);opacity:0}20%{opacity:1}100%{transform:translate(160%,-220%) scale(1.3);opacity:0}}
-.sc-fg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-/* Pip */
-.sc-mate{position:absolute;left:var(--x);top:var(--y);width:var(--w);aspect-ratio:320/272;transform:translate(-50%,-50%);pointer-events:none;z-index:40;animation:sc-float 4.6s ease-in-out infinite}
-.sc-mate .tmf{width:100%;height:100%}
-.sc-mate .tmf.is-paused .rg-lid{transform:scaleY(1)!important}
-.sc-mate.going{animation:sc-going 3.2s ease-in-out infinite}
-@keyframes sc-going{0%,100%{opacity:.85;translate:0 0;filter:blur(0)}50%{opacity:.35;translate:0 -6%;filter:blur(1.5px) brightness(1.2)}}
-.sc-pip{position:absolute;left:var(--x);top:var(--y);width:var(--w);aspect-ratio:1;transform:translate(-50%,-50%);pointer-events:none;z-index:60}
-.sc-pip canvas{position:absolute;inset:0;width:100%;height:100%}
-.sc-pip.still{background:url(/portal-art/pip-calm.webp) center/contain no-repeat}
-/* pins: tags, cards, Pip's bubble, the directory */
-.sc-pins{position:absolute;inset:0;z-index:70;pointer-events:none}
-.sc-pin{position:absolute!important;left:var(--px)!important;top:var(--py)!important;pointer-events:auto}
-.sc-pins.fl-tags .tag{opacity:1}
-.sc-pin.pin-tag{transform:translate(-50%,-100%)!important}
-.sc-pin.pin-say{transform:translate(-50%,0)!important;width:300px!important}
-.sc-pin.pin-dir{transform:translate(-50%,0)!important;display:flex;gap:10px;flex-wrap:nowrap}
-.sc-pin.pin-card{transform:none!important}
-.sc-pin.pin-center{transform:translate(-50%,-50%)!important}
-.sc-dir .tag.st{position:relative!important;left:auto!important;top:auto!important;transform:none!important;opacity:1!important}
-.sc-dir .tag.st::after{display:none}
-.sc-more{padding:7px 13px;border-radius:14px;font-size:13px;color:#4b5175;background:rgba(255,255,255,.82)}
-.sc-root.moving .sc-pins,.sc-root.moving .sc-pip{opacity:0;transition:opacity .2s}
-.sc-pins,.sc-pip{transition:opacity .45s .1s}
-/* the elevator doors */
-.sc-doors{position:fixed;inset:0;z-index:90;pointer-events:none}
-.sc-doors i{position:absolute;top:0;bottom:0;width:50.5%;background:linear-gradient(90deg,#f7f4fd,#ece6f8 60%,#f9f7fe);box-shadow:inset 0 0 60px rgba(160,140,220,.18);transition:transform 1.25s cubic-bezier(.65,0,.25,1)}
-.sc-doors i:first-child{left:0;border-right:2px solid rgba(94,234,217,.85);box-shadow:inset -14px 0 40px rgba(94,234,217,.18)}
-.sc-doors i:last-child{right:0;border-left:2px solid rgba(94,234,217,.85);box-shadow:inset 14px 0 40px rgba(94,234,217,.18)}
-.sc-doors.open i:first-child{transform:translateX(-101%)}.sc-doors.open i:last-child{transform:translateX(101%)}
-/* a teammate's screen on the monitor */
-.sc-layer{position:fixed;inset:0;z-index:13;pointer-events:none}
-.sc-layer>*{position:fixed!important;left:0!important;top:0!important;pointer-events:auto;opacity:0;transition:opacity .5s}
-.sc-layer.on>*{opacity:1}
-.sc-layer:not(.on)>*{opacity:0;pointer-events:none}
-.sc-layer.flat .scr{box-shadow:0 0 0 10px rgba(255,255,255,.9),0 50px 90px -40px rgba(38,34,90,.5)}
-@media (prefers-reduced-motion:reduce){.sc *,.sc-doors i{animation:none!important;transition:none!important}}
+.hl-root{position:fixed;inset:0;z-index:0;overflow:hidden;background:linear-gradient(180deg,#c9c0f3 0%,#e3daf8 38%,#f6eefb 62%,#efe8f9 100%)}
+.hl-gl{position:absolute;inset:0;width:100%;height:100%;display:block;opacity:0;transition:opacity .8s}
+.hl-root.ready .hl-gl{opacity:1}
+.hl-root.dim .hl-gl{filter:saturate(.6) brightness(.95)}
+.hl-pins{position:absolute;inset:0;pointer-events:none;z-index:3}
+.hl-pins .hl-pin{position:absolute!important;left:0!important;top:0!important;will-change:transform;transition:opacity .35s}
+.hl-pins .hl-pin.hl-hide{opacity:0!important;pointer-events:none!important}
+.hl-pins .tag.hl-tag{translate:-50% -100%;opacity:1;pointer-events:auto}
+.hl-pins .fl-say.hl-say{translate:-50% 0;width:300px;pointer-events:auto;display:flex;flex-direction:column;align-items:center}
+.hl-pins .fl-say.hl-say .say{width:100%}
+.hl-pins .fl-say .say .b{font-size:14.5px;padding:12px 16px 13px}
+.hl-pins .fl-say .btn.pri{width:auto;min-height:42px;margin-top:9px;padding:0 18px;border-radius:999px;font-size:14px}
+.hl-cards{position:absolute;left:50%;bottom:calc(96px + env(safe-area-inset-bottom,0px));translate:-50% 0;z-index:4;display:flex;gap:12px;pointer-events:auto}
+.hl-cards .sc-card{position:relative!important;transform:none!important}
+.hl-layer{position:fixed;inset:0;z-index:13;pointer-events:none}
+.hl-layer>*{position:fixed!important;left:0!important;top:0!important;pointer-events:auto;opacity:0;transition:opacity .45s}
+.hl-layer.on>*{opacity:1}
+@media (max-width:719px){.hl-cards{left:12px;right:12px;translate:none;flex-direction:column}}
 `; }

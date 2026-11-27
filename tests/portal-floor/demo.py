@@ -69,11 +69,11 @@ html = html.replace("<title>", "<title>Pip Portal · click-through · ", 1)
 assert 'sc.src = name + ".js' in html, "loadPart path not found"
 open(OUT + "/index.html", "w").write(html)
 
-off = open(PUB + "/portal-office.js").read().replace('"/portal-art/sc/"', '"portal-art/sc/"').replace("url(/portal-art/", "url(portal-art/")
+off = open(PUB + "/portal-office.js").read().replace('"/portal-art/', '"portal-art/').replace("url(/portal-art/", "url(portal-art/")
 open(OUT + "/portal-office.js", "w").write(off)
 shutil.copy(PUB + "/portal-pip.js", OUT + "/portal-pip.js")
 for f in os.listdir(PUB + "/portal-art"):
-    if f.endswith(".webp"): shutil.copy(PUB + "/portal-art/" + f, OUT + "/portal-art/" + f)
+    if f.endswith(".webp") or f.endswith(".glb"): shutil.copy(PUB + "/portal-art/" + f, OUT + "/portal-art/" + f)
 for f in os.listdir(PUB + "/portal-art/sc"):
     if f.endswith(".webp") and not f.startswith("agent-"): shutil.copy(PUB + "/portal-art/sc/" + f, OUT + "/portal-art/sc/" + f)
 print(OUT, len(os.listdir(OUT + "/portal-art/sc")), "scene files")

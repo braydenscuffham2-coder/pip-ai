@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://qqaikvgjzzcdwumnyspb.supabase.co; img-src 'self' data:; base-uri 'none'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://qqaikvgjzzcdwumnyspb.supabase.co; img-src 'self' data:; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#fbfaf7">
 <title>Pip Portal</title>
@@ -817,19 +817,19 @@ html.office-live .fl-pipslot{display:none}
 .fl-head .fl-view,.fl-head .acct-btn{background:rgba(255,255,255,.72);box-shadow:0 8px 22px -14px rgba(38,34,90,.4)}
 .fl-head .fl-view[data-k="fl-list"]{padding:0;width:46px}
 .sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-.sc-pins .tag:not(.st){padding:5px 13px 5px 5px;border-radius:999px;font-size:14px;box-shadow:0 10px 26px -14px rgba(38,34,90,.45)}
-.sc-pins .tag:not(.st) .role,.sc-pins .tag:not(.st) .doing{display:none}
-.sc-pins .tag:not(.st):is(:hover,:focus-visible){border-radius:18px;padding:8px 14px 9px 8px}
-.sc-pins .tag:not(.st):is(:hover,:focus-visible) .doing{display:flex}
-.sc-pins .tag:not(.st):is(:hover,:focus-visible) .role{display:inline}
-.sc-pins .tag:not(.st) .fl-av{width:26px;height:26px}
-.sc-pins .tag.k-needs{box-shadow:0 0 0 2px #f6c14b,0 10px 26px -14px rgba(160,110,0,.5)}
-.sc-pins .tag.k-paused b{color:var(--ink-3)}
-.sc-pins .tag::after{width:9px;height:9px;margin-left:-4.5px;bottom:-4px}
-.sc-pins .fl-say{display:flex;flex-direction:column;align-items:center}
-.sc-pins .fl-say .say{width:100%}
-.sc-pins .fl-say .say .b{font-size:14.5px;padding:12px 16px 13px}
-.sc-pins .fl-say .btn.pri{width:auto;min-height:42px;margin-top:9px;padding:0 18px;border-radius:999px;font-size:14px}
+.hl-pins .tag:not(.st){padding:5px 13px 5px 5px;border-radius:999px;font-size:14px;box-shadow:0 10px 26px -14px rgba(38,34,90,.45)}
+.hl-pins .tag:not(.st) .role,.hl-pins .tag:not(.st) .doing{display:none}
+.hl-pins .tag:not(.st):is(:hover,:focus-visible){border-radius:18px;padding:8px 14px 9px 8px}
+.hl-pins .tag:not(.st):is(:hover,:focus-visible) .doing{display:flex}
+.hl-pins .tag:not(.st):is(:hover,:focus-visible) .role{display:inline}
+.hl-pins .tag:not(.st) .fl-av{width:26px;height:26px}
+.hl-pins .tag.k-needs{box-shadow:0 0 0 2px #f6c14b,0 10px 26px -14px rgba(160,110,0,.5)}
+.hl-pins .tag.k-paused b{color:var(--ink-3)}
+.hl-pins .tag::after{width:9px;height:9px;margin-left:-4.5px;bottom:-4px}
+.hl-pins .fl-say{display:flex;flex-direction:column;align-items:center}
+.hl-pins .fl-say .say{width:100%}
+.hl-pins .fl-say .say .b{font-size:14.5px;padding:12px 16px 13px}
+.hl-pins .fl-say .btn.pri{width:auto;min-height:42px;margin-top:9px;padding:0 18px;border-radius:999px;font-size:14px}
 .fl-roster{gap:4px;padding:5px;border-radius:999px;background:rgba(255,255,255,.66)!important}
 .fl-roster .fl-mydesk{min-height:44px;padding:4px 14px 4px 4px;border-radius:999px}
 .fl-roster .fl-mydesk .ico{width:36px;height:36px;border-radius:50%}
@@ -866,8 +866,8 @@ html.fl-desk-open .fl-stpov .fl-pov-top{right:min(630px,calc(100vw - 14px))}
 .sc-hot{width:15vw;max-width:240px;height:4.2vw;max-height:60px;border:0;border-radius:999px;background:transparent;cursor:pointer;transform:translate(-50%,-50%)!important;transition:box-shadow .3s}
 .sc-hot:hover{box-shadow:0 0 0 4px rgba(255,107,125,.35),0 0 40px rgba(255,107,125,.5)}
 .sc-pin.pin-hot{transform:translate(-50%,-50%)!important}
-.sc-pins .tag{max-width:250px;overflow:hidden}
-.sc-pins .tag .doing{overflow:hidden;text-overflow:ellipsis}
+.hl-pins .tag{max-width:250px;overflow:hidden}
+.hl-pins .tag .doing{overflow:hidden;text-overflow:ellipsis}
 .sc-label.s-none i{background:#c9c6da;box-shadow:none}
 .sc-label:hover{box-shadow:0 14px 28px -14px rgba(38,34,90,.55),0 0 0 3px rgba(155,134,255,.25)}
 .sc-pin.pin-label{transform:translate(-50%,-50%)!important}
@@ -1244,7 +1244,7 @@ function loadPart(name) {
   if (!PARTS[name]) PARTS[name] = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "/" + name + ".js?v=" + PART_V; sc.async = true; sc.onload = res; sc.onerror = () => { delete PARTS[name]; rej(new Error(name)); }; document.head.append(sc); });
   return PARTS[name];
 }
-const PART_V = "9";
+const PART_V = "11";
 function loadThree() {
   if (!threeP) { const l = document.createElement("link"); l.rel = "modulepreload"; l.href = THREE_URL; l.integrity = THREE_SRI; l.crossOrigin = "anonymous"; document.head.append(l); threeP = import(THREE_URL); threeP.catch(() => { threeP = null; }); }
   return threeP;
@@ -2528,16 +2528,16 @@ async function startOffice() {
   if (FLOOR.office || FLOOR.starting || FLOOR.failed) return;
   FLOOR.starting = true;
   try {
-    const [THREE] = await Promise.all([loadThree(), loadPart("portal-office")]);
+    const [THREE] = await Promise.all([loadThree(), loadPart("portal-pip"), loadPart("portal-office")]);
     await Promise.all([document.fonts.load("600 44px Geist"), document.fonts.load("italic 400 120px 'Instrument Serif'")]).catch(() => null);
     if (!FLOOR.X) FLOOR.X = threeAddons(THREE);
-    FLOOR.office = createOffice(THREE, FLOOR.X, { host: document.getElementById("office"), cssHost: document.getElementById("office"), reduce: reduced, onPick: (id) => openMate(id), onStation: (id) => openStation(id), face: (id) => { const a = S.data && S.data.agents.find((x) => x.spec_id === id); return a ? face(mateName(a), (a.role || "") + " " + a.name) : null; }, onEntered: () => { FLOOR.entered = true; }, safeTop: () => { const r = document.querySelector(".fl-head"); return r ? r.getBoundingClientRect().bottom : 0; }, safeBottom: () => { const r = document.querySelector(".fl-roster"); return r ? innerHeight - r.getBoundingClientRect().top : 0; },
+    FLOOR.office = createOffice(THREE, FLOOR.X, { host: document.getElementById("office"), cssHost: document.getElementById("office"), reduce: reduced, onPick: (id) => openMate(id), onStation: (id, slot) => openStation(id, slot), room: "/portal-art/hall.glb?v=" + PART_V, face: (id) => { const a = S.data && S.data.agents.find((x) => x.spec_id === id); return a ? face(mateName(a), (a.role || "") + " " + a.name) : null; }, onEntered: () => { FLOOR.entered = true; }, safeTop: () => { const r = document.querySelector(".fl-head"); return r ? r.getBoundingClientRect().bottom : 0; }, safeBottom: () => { const r = document.querySelector(".fl-roster"); return r ? innerHeight - r.getBoundingClientRect().top : 0; },
       onReveal: (el) => { el.classList.add("on"); fitTargets(); setTimeout(fitTargets, 700); } });
     await FLOOR.office.ready; // every shader is compiled before the first frame, so the walk-in is smooth from the start
     document.documentElement.classList.add("office-live");
     if (window.PIP_TEST) window.__office = FLOOR.office;
     if (floorOn()) { Pip.office(FLOOR.office.pip); FLOOR.shown = null; render(); const full = firstToday(); FLOOR.office.enter(full); if (full) setTimeout(() => { if (floorOn() && !S.desk && !S.focus) Pip.wave("Welcome back. Your team is here."); }, reduced() ? 0 : 2300); } else FLOOR.office.setActive(false);
-  } catch (e) { FLOOR.failed = true; FLOOR.office = null; document.documentElement.classList.remove("office-live"); if (S.data) render(); }
+  } catch (e) { console.error("office", e); FLOOR.failed = true; FLOOR.office = null; document.documentElement.classList.remove("office-live"); if (S.data) render(); }
   FLOOR.starting = false;
 }
 
@@ -2752,7 +2752,7 @@ const stationList = () => Object.keys(STATIONS).filter((k) => k !== "founder" ||
 function openStation(id, slot) {
   if (!STATIONS[id] || (id === "founder" && S.data.role !== "founder")) return;
   if (id === "founder" && !S.founder) api("/founder/businesses", {}).then((r) => { S.founder = r; if (S.station === "founder") render(); }).catch(() => null);
-  S.station = id; S.desk = !!slot; S.focus = null; S.menu = null; S.letGo = null; say(null);
+  S.station = id; S.desk = !!slot || !(FLOOR.office && FLOOR.office.has && FLOOR.office.has(id)); S.focus = null; // a place not in the room yet opens straight to its panel S.menu = null; S.letGo = null; say(null);
   if (slot) { S.openTouched = true; S.openSlots = new Set([slot]); }
   render({ keepFocus: slot ? null : "fl-st-back", scroll: "top" });
   if (slot) requestAnimationFrame(() => { const el = document.getElementById("step-" + slot); if (el) { el.open = true; el.scrollIntoView({ behavior: reduced() ? "auto" : "smooth", block: "start" }); } });
@@ -2978,7 +2978,7 @@ function renderFloor(opts = {}) {
     o.sync({ dim: b.status === "disconnected", agents: ag.map((a, i) => { const L = looks.get(a.spec_id), p = propOf((a.role || "") + " " + a.name);
       const fk = colorOf(mateName(a)) + ":" + propOf((a.role || "") + " " + a.name), slot = FLOOR.faces || (FLOOR.faces = new Map()); // the same rigged head stays put between renders
       if (!slot.has(a.spec_id) || slot.get(a.spec_id).k !== fk) slot.set(a.spec_id, { k: fk, el: face(mateName(a), (a.role || "") + " " + a.name) });
-      return { id: a.spec_id, face: slot.get(a.spec_id).el, faceKey: fk, look: L.look, light: L.light, kind: L.kind, variant: deskVariant(a), hex: hexOf(a), prop: p === "headset" || p === "glasses" ? "letters" : p || "letters", phone: p === "headset", sticky: L.kind === "needs" ? "Needs you: " + lowerFirst(youNeeds(a)[0]) : null, ph: i * 1.3 + 0.3 }; }),
+      return { id: a.spec_id, name: mateName(a), role: a.role || "", line: L.text, acc: propOf((a.role || "") + " " + a.name), face: slot.get(a.spec_id).el, faceKey: fk, look: L.look, light: L.light, kind: L.kind, variant: deskVariant(a), hex: hexOf(a), prop: p === "headset" || p === "glasses" ? "letters" : p || "letters", phone: p === "headset", sticky: L.kind === "needs" ? "Needs you: " + lowerFirst(youNeeds(a)[0]) : null, ph: i * 1.3 + 0.3 }; }),
       tags: [...tags.entries()], bubble: narrow() ? null : say, pipPoint: pipPoint || null, stations: Object.assign(stationModel(), { tags: [...stTags.entries()], priced: stageOf(d) === "priced" }), cards: sceneCards() });
     if (o.panel) o.panel(!!(S.desk && S.station) && !narrow());
     if (FLOOR.reenter) { FLOOR.reenter = false; o.enter(false); }
