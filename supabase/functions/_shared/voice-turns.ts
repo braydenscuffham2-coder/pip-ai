@@ -48,6 +48,8 @@ export const SAME_TURN_MS = 10000;
 // What the caller hears while the teammate works.
 export const ACK_MS = 800;   // after this long with nothing to say yet: a short acknowledgement
 export const HOLD_MS = 3200; // after this long: a holding phrase
+export const STILL_MS = 6400; // and after this long, one more: looking at a calendar and writing to it took 7 s on a live booking
+export const STILL = ["Thanks for waiting, almost there.", "Still with you, just finishing that.", "Nearly done."];
 const ACK_QUESTION = ["Let's see.", "Okay.", "Let me see."];
 const ACK_OTHER = ["Okay.", "Alright.", "Got it."];
 export const HOLD = ["One moment.", "Bear with me one second.", "Just a moment, I'm pulling that up.", "One second."];

@@ -883,3 +883,26 @@ test("a calendar with no working connection is still called unavailable", async 
   assert.match(sys, /Not available right now: [^\n]*Calendar/);
   assert.ok(!offeredTo(t).includes("GOOGLECALENDAR_EVENTS_LIST"));
 });
+
+test("a teammate whose calendar is down is told never to say what it shows or that something was booked", async () => {
+  const tables = baseTables();
+  for (const c of tables.business_connections) if (c.slot === "calendar") c.status = "expired";
+  const t = await boot({ tables, model: [says("I am an AI assistant. I will pass that on.")] });
+  await t.turn("is Tuesday at 10 open?");
+  const sys = t.world.model.calls[0].system.map((x) => x.text).join("\n");
+  assert.match(sys, /Never say what it shows \(that a time is open, free or taken\) and never say something was booked, added or sent through it\./);
+});
+
+test("what a teammate did earlier in a conversation is told to it in plain words, so it does not doubt its own work", async () => {
+  const tables = baseTables();
+  tables.conversations.push({ id: CONV, spec_id: IDS.spec, channel: "voice" });
+  tables.messages.push({ id: 1, conversation_id: CONV, role: "user", content: "book me Tuesday at 10", actions: [] },
+    { id: 2, conversation_id: CONV, role: "assistant", content: "You're booked for Tuesday at 10.", actions: [{ tool: "GOOGLECALENDAR_EVENTS_LIST", status: "done" }, { tool: "capture_lead", status: "done" }, { tool: "GMAIL_SEND_EMAIL", status: "blocked" }] });
+  const t = await boot({ tables, model: [says("Sure, what's your email?")] });
+  await t.turn("can you email me the details", { conversation: CONV, channel: "voice" });
+  const sys = t.world.model.calls[0].system.map((x) => x.text).join("\n");
+  assert.match(sys, /ALREADY DONE EARLIER IN THIS CONVERSATION \(you did these with your tools in earlier turns and they worked as shown; they are finished/);
+  assert.match(sys, /- checked the calendar \(GOOGLECALENDAR_EVENTS_LIST\): done/);
+  assert.match(sys, /- saved the customer's details as a lead \(capture_lead\): done/);
+  assert.match(sys, /- sent an email \(GMAIL_SEND_EMAIL\): blocked/);
+});
