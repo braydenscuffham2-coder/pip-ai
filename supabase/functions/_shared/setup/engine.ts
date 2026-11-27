@@ -62,12 +62,12 @@ export async function step(row: SetupRow, deps: Deps): Promise<Outcome> {
   switch (row.state) {
     case "queued": {
       const terms = await deps.terms(row.tool_key);
-      if (terms === "forbidden") return end("manual", { reason: `${row.tool}'s terms do not allow automated sign-in. The owner gets a short checklist instead.` });
+      if (terms === "forbidden") return end("manual", { reason: `${row.tool}'s terms do not allow an automated sign-in, so this one is set up by hand. Pip will send you a short checklist.` });
       if (row.mode === "manual") return end("manual", { reason: "This tool is set up by hand." });
       if (await deps.healthBlocked(row.business_id)) return end("blocked", { reason: "A health business needs the vendor agreements on file before a browser may see its tools." });
-      if (row.mode === "composio") return wait("composio", { reason: "Waiting for the owner's one-tap sign-in on the tool's own page." });
-      if (!row.login_url) return end("failed", { reason: "No sign-in page for this tool." });
-      return row.consent_at ? go("opening") : wait("consent", { reason: "Waiting for the owner to agree to a watched sign-in." });
+      if (row.mode === "composio") return wait("composio", { reason: "Waiting for you to sign in on the tool's own page." });
+      if (!row.login_url) return end("failed", { reason: "Pip needs the address of this tool's sign-in page. Go back to your Portal and add it." });
+      return row.consent_at ? go("opening") : wait("consent", { reason: "Waiting for your yes before Pip opens anything." });
     }
     case "consent":
       return row.consent_at ? go("opening") : wait("consent");
@@ -77,7 +77,7 @@ export async function step(row: SetupRow, deps: Deps): Promise<Outcome> {
     case "opening": {
       const { sessionId, contextId } = await deps.browser.open(row);
       const page = await deps.browser.page(sessionId);
-      if (!page) return end("failed", { reason: "The secure browser did not start.", browser_session_id: sessionId });
+      if (!page) return end("failed", { reason: "The secure browser did not start. Nothing was saved. Tap Open it again.", browser_session_id: sessionId });
       await page.goto(row.login_url!);
       return go("find_login", { browser_session_id: sessionId, browser_context_id: contextId, log: entry(row, { did: "opened" }) });
     }
@@ -88,7 +88,7 @@ export async function step(row: SetupRow, deps: Deps): Promise<Outcome> {
       // The page's own markup first: no model, no cost.
       const found = await page.evaluate<{ user: boolean; pass: boolean; submit: boolean; twoStep: boolean }>(TAG_LOGIN_JS);
       const keybox = found.pass && found.user;
-      return wait("owner_control", { plan: { ...row.plan, keybox, twoStep: found.twoStep }, reason: keybox ? "Waiting for the owner to sign in with the key box." : "Waiting for the owner to sign in on the page.", log: entry(row, { did: "login_form", keybox }) });
+      return wait("owner_control", { plan: { ...row.plan, keybox, twoStep: found.twoStep }, reason: keybox ? "Your turn: type your login in the key box, then tap I'm signed in." : "Your turn: sign in inside the window, then tap I'm signed in.", log: entry(row, { did: "login_form", keybox }) });
     }
 
     case "owner_control":
@@ -113,7 +113,7 @@ export async function step(row: SetupRow, deps: Deps): Promise<Outcome> {
       if (!page) return lost(row, deps);
       if (!canScreenshot(row.state)) return wait("owner_control");
       const seen = await page.evaluate<{ masked: number; exposed: number; captcha: boolean; url: string }>(MASK_JS);
-      if (seen.captcha || isCaptchaUrl(seen.url)) return wait("owner_control", { reason: "A captcha appeared. Only the owner answers those.", log: entry(row, { did: "captcha" }) });
+      if (seen.captcha || isCaptchaUrl(seen.url)) return wait("owner_control", { reason: "A captcha appeared. Pip never answers those: please answer it in the window, then tap I'm signed in.", log: entry(row, { did: "captcha" }) });
       if (seen.exposed > 0) return wait("owner_control", { reason: "A secret is showing on the page, so Pip will not look. Hide it, then tap I'm signed in.", log: entry(row, { did: "secret_showing" }) });
       const steps = row.state === "testing" ? ["Run the test: open one existing record in this tool and confirm you can read it. Do not change anything."] : await deps.steps(row);
       const image = await page.screenshot();
@@ -166,5 +166,5 @@ async function act(page: Page, a: Action) {
 /** The browser session is gone. Only this tool waits; the owner gets a one-tap re-sign-in. */
 async function lost(row: SetupRow, deps: Deps): Promise<Outcome> {
   await deps.reSignIn(row).catch(() => {});
-  return wait("paused", { reason: "The secure browser closed. The owner was sent a one-tap link to sign in again.", browser_session_id: null, log: entry(row, { did: "session_lost" }) });
+  return wait("paused", { reason: "The secure browser closed before the sign-in was finished. Nothing was saved and no password was kept. Tap Open it again to pick up where you were.", browser_session_id: null, log: entry(row, { did: "session_lost" }) });
 }

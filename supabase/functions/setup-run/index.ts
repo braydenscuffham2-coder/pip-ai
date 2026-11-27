@@ -2,12 +2,18 @@
 //
 //   POST /setup-run/step  { setup_id }   internal (service key): run one step, then chain the next unless it waits
 //   POST /setup-run/live  { setup_id }   internal (service key): the live-view link for pip-portal to hand the owner
+//   POST /setup-run/hold  { setup_id }   internal: connect to this setup's browser and stay connected until the setup
+//                                        lets go. On the free Browserbase plan a browser closes the moment the last
+//                                        connection drops, and each step is its own request (see _shared/setup/hold.ts).
+//   POST /setup-run/probe {}             internal, or a founder test ticket: opens a throwaway browser for a few seconds and reports whether a
+//                                        second connection can come and go without closing it. No page is opened.
 //   POST /setup-run/stop  { setup_id }   internal (service key): close the browser and stop
 //
 // The steps themselves live in ../_shared/setup/engine.ts and the limits in ../_shared/setup/guards.ts.
 // Secrets: ANTHROPIC_API_KEY, BROWSERBASE_API_KEY, optional BROWSERBASE_PROJECT_ID and SETUP_MODEL. No 1Password token:
 // only vault-writer holds that.
 import { type Deps, type SetupRow, step } from "../_shared/setup/engine.ts";
+import { hold, RELEASED } from "../_shared/setup/hold.ts";
 import { Cdp, openPage } from "../_shared/setup/cdp.ts";
 import { browserbase } from "../_shared/setup/vendors.ts";
 import { type Action, leaks, sessionMinutes, siteOf } from "../_shared/setup/guards.ts";
@@ -136,6 +142,46 @@ async function load(id: string): Promise<SetupRow | null> { return (await rows(`
 async function save(id: string, patch: Partial<SetupRow>) {
   await db(`setup_sessions?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }) }).then((r) => r.body?.cancel());
 }
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/** The setup's row for the holder. Throws when the read fails, so a network blip never looks like "the setup ended". */
+async function rowForHold(id: string) {
+  const r = await db(`setup_sessions?id=eq.${id}&select=state,browser_session_id`);
+  if (!r.ok) { await r.body?.cancel(); throw new Error("read failed"); }
+  return (await r.json())?.[0] ?? null;
+}
+/** Ask for a holder. True only once it is connected to the browser. */
+async function startHold(id: string): Promise<boolean> {
+  const r = await fetch(`${SELF}/hold`, { method: "POST", headers: { authorization: `Bearer ${SB_KEY}`, "content-type": "application/json" }, body: JSON.stringify({ setup_id: id }), signal: AbortSignal.timeout(25000) }).catch(() => null);
+  const j = r ? await r.json().catch(() => null) : null;
+  return j?.ok === true;
+}
+/** Does a second connection end the browser when it leaves? Measured, not assumed. Uses a few seconds of browser time. */
+async function probe() {
+  const out: Record<string, unknown> = { ok: false, at: "context" };
+  let sid = "";
+  try {
+    const s = await bb.session(await bb.context(), 1); sid = s.id; out.at = "first_connection";
+    const a = await Cdp.connect(s.connectUrl); out.at = "second_connection";
+    const b = await Cdp.connect(s.connectUrl); await b.send("Browser.getVersion", {}, undefined, 8000); out.second_connected = true; out.at = "second_leaves";
+    b.close(); await sleep(5000);
+    out.running_after_second_left = !!(await bb.connectUrl(sid));
+    out.first_still_works = await a.send("Browser.getVersion", {}, undefined, 8000).then(() => true).catch(() => false); out.at = "third_connection";
+    const c = await Cdp.connect(s.connectUrl).catch(() => null); out.can_connect_again = !!c; c?.close(); await sleep(3000);
+    out.first_works_after_third_left = await a.send("Browser.getVersion", {}, undefined, 8000).then(() => true).catch(() => false); out.at = "all_leave";
+    a.close(); await sleep(5000);
+    out.running_after_all_left = !!(await bb.connectUrl(sid));
+    out.ok = true; out.at = "done";
+  } catch (e) { out.error = String((e as Error)?.message ?? e).slice(0, 160); }
+  if (sid) await bb.release(sid).catch(() => {});
+  return out;
+}
+async function ticketOk(ticket: string | null): Promise<boolean> {
+  if (!ticket || ticket.length < 24 || ticket.length > 200) return false;
+  const v = await setting("run_ticket");
+  if (!v?.hash || !v.expires || new Date(v.expires).getTime() <= Date.now()) return false;
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ticket));
+  return same([...new Uint8Array(d)].map((x) => x.toString(16).padStart(2, "0")).join(""), String(v.hash));
+}
 function chain(id: string) {
   EdgeRuntime.waitUntil(fetch(`${SELF}/step`, { method: "POST", headers: { authorization: `Bearer ${SB_KEY}`, "content-type": "application/json" }, body: JSON.stringify({ setup_id: id }) }).then((r) => r.body?.cancel()).catch(() => {}));
 }
@@ -143,8 +189,12 @@ function chain(id: string) {
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "not_found" }, 404);
   const bearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
-  if (!SB_KEY || !same(bearer, SB_KEY)) return json({ error: "forbidden" }, 403);
   const path = new URL(req.url).pathname.replace(/^.*\/setup-run/, "") || "/";
+  // The probe opens no page and touches no business, so a founder's short-lived test ticket may run it too (the same
+  // ticket pip-jobs accepts: only its hash is stored, in forge_settings 'run_ticket', with an expiry).
+  const internal = !!SB_KEY && same(bearer, SB_KEY);
+  if (path === "/probe" && (internal || await ticketOk(req.headers.get("x-pip-ticket")))) return json(BBKEY ? await probe() : { ok: false, error: "not_configured" });
+  if (!internal) return json({ error: "forbidden" }, 403);
   const body = await req.json().catch(() => ({}));
   const id = typeof body?.setup_id === "string" && /^[0-9a-f-]{36}$/i.test(body.setup_id) ? body.setup_id : "";
   if (!id) return json({ error: "bad_request" }, 400);
@@ -157,10 +207,27 @@ Deno.serve(async (req) => {
       await save(id, { state: "stopped", reason: "Stopped by the owner.", browser_session_id: null, ended_at: new Date().toISOString() });
       return json({ ok: true });
     }
+    if (path === "/hold") {
+      const sid = row.browser_session_id;
+      const url = sid ? await bb.connectUrl(sid) : null;
+      if (!sid || !url) return json({ ok: false, error: "browser_gone" });
+      const c = await Cdp.connect(url);
+      const conn = { ping: () => c.send("Browser.getVersion", {}, undefined, 8000).then(() => true), close: () => c.close() };
+      EdgeRuntime.waitUntil(hold(conn, sid, { row: () => rowForHold(id), next: () => startHold(id), sleep, now: () => Date.now() })
+        .then((end) => console.log("[setup-run] holder", id, end)).catch(() => {}));
+      return json({ ok: true });
+    }
     if (path !== "/step") return json({ error: "not_found" }, 404);
     if (!ANTHROPIC || !BBKEY) { await save(id, { state: "failed", reason: "The Setup Agent is not configured yet." }); return json({ ok: false, error: "not_configured" }, 503); }
     const out = await step(row, deps);
     await save(id, out.patch);
+    // A browser was just opened in this request. It must have a holder before this request lets go of it.
+    const opened = typeof out.patch.browser_session_id === "string" && out.patch.browser_session_id !== row.browser_session_id && !RELEASED.has(String(out.patch.state ?? row.state));
+    if (opened && !(await startHold(id))) {
+      await deps.browser.close(out.patch.browser_session_id as string).catch(() => {});
+      await save(id, { state: "paused", browser_session_id: null, reason: "The secure browser could not be kept open. Nothing was saved. Tap Open it again." });
+      return json({ ok: false, state: "paused", error: "no_holder" });
+    }
     if (out.next === "again") chain(id);
     return json({ ok: true, state: out.patch.state ?? row.state, next: out.next });
   } catch (e) {

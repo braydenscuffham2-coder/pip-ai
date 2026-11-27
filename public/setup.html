@@ -29,6 +29,11 @@ button{font:600 15px/1 var(--f-body);padding:13px 18px;border-radius:12px;border
 .note{margin-top:12px;padding:12px 14px;border-radius:12px;background:#f4f5fa;font-size:14px}
 .note.err{background:#fdeee9;color:var(--warn)}.note.ok{background:#e7f6ef;color:var(--good)}
 ul.say{margin:10px 0 0;padding-left:20px;color:var(--ink-2);font-size:15px}
+ol.steps{list-style:none;display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 0;padding:0;font-size:13px;color:var(--ink-3)}
+ol.steps li{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:#fff}
+ol.steps li b{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#eef0f6;font-size:11px;color:var(--ink-2)}
+ol.steps li.now{border-color:var(--ink);color:var(--ink);font-weight:600}ol.steps li.now b{background:var(--ink);color:#fff}
+ol.steps li.done{color:var(--good)}ol.steps li.done b{background:#e7f6ef;color:var(--good)}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -76,7 +81,7 @@ const WORDS = {
   vault_failed: "Your vault didn't answer, so nothing was typed. You can sign in directly in the window instead.",
   vault_not_configured: "The vault isn't switched on yet. Sign in directly in the window instead.",
   not_waiting_for_sign_in: "Pip isn't waiting for a sign-in right now.",
-  browser_closed: "The secure window closed. Tap Sign in again.",
+  browser_closed: "The secure window closed, so nothing was typed or saved. Tap Open it again below.",
   wrong_site: "The window is not on this tool's own sign-in page, so nothing was saved or typed. Go back to the sign-in page in the window and send again.",
   authenticator_not_allowed: "Pip has not checked this tool's rules on automated sign-in yet, so it won't keep an authenticator key for it. Clear that field and send again.",
   bad_authenticator: "That doesn't look like an authenticator setup key. Clear that field, or paste the key the tool shows when you turn on two-step sign-in.",
@@ -118,8 +123,15 @@ function keyBox(s) {
   return h("div", { class: "card" }, h("span", { class: "tag" }, "Key box"), form);
 }
 
-function render(s) {
-  const tag = { done: ["Connected", "good"], failed: ["Didn't connect", "warn"], paused: ["Needs you", "warn"], manual: ["Set up by hand", "warn"], blocked: ["Waiting on paperwork", "warn"], stopped: ["Stopped", ""] }[s.state] || ["In progress", ""];
+// Where the owner is: say yes, sign in, Pip tests it. Shown on every screen so nobody has to guess what comes next.
+function steps(s) {
+  const at = s.state === "consent" ? 0 : ["opening", "queued", "find_login", "owner_control", "verify"].includes(s.state) ? 1 : ["configuring", "testing", "saving"].includes(s.state) ? 2 : s.state === "done" ? 3 : ["paused", "failed"].includes(s.state) ? 1 : -1;
+  if (at < 0) return null;
+  return h("ol", { class: "steps", "aria-label": "Steps" }, ["Say yes", "Sign in yourself", "Pip tests it"].map((t, i) => h("li", { class: i < at ? "done" : i === at ? "now" : "", "aria-current": i === at ? "step" : null }, h("b", {}, i < at ? "✓" : String(i + 1)), t)));
+}
+function render(s) { const v = view(s); return [steps(s)].concat(v); }
+function view(s) {
+  const tag = { done: ["Connected", "good"], failed: ["Didn't connect", "warn"], paused: ["Not finished yet", "warn"], manual: ["Set up by hand", "warn"], blocked: ["Waiting on paperwork", "warn"], stopped: ["Stopped", ""] }[s.state] || ["In progress", ""];
   $("title").textContent = "Connect " + s.tool + " with Pip's help";
   const stop = h("button", { class: "link", type: "button", onclick: () => go("stop") }, "Stop");
   const reason = s.reason ? h("p", { class: "note" }, s.reason) : null;
@@ -138,10 +150,11 @@ function render(s) {
         h("div", { class: "card" }, reason, h("button", { class: "pri", type: "button", onclick: () => go("signed_in") }, "I'm signed in"), h("div", {}, stop))))];
   }
   if (["find_login", "verify", "configuring", "testing", "opening", "queued", "saving"].includes(s.state)) {
-    return [liveView(s.live, false), h("div", { class: "card" }, h("span", { class: "tag" }, tag[0]), h("p", { style: "margin-top:10px" }, s.state === "testing" ? "Pip is testing the connection." : "Pip is setting up " + s.tool + ". You can watch; you don't need to do anything."), reason, stop)];
+    return [liveView(s.live, false), h("div", { class: "card" }, h("span", { class: "tag" }, tag[0]), h("p", { style: "margin-top:10px" }, s.state === "testing" ? "Pip is testing the connection." : ["opening", "queued", "find_login"].includes(s.state) ? "Opening " + s.tool + "'s sign-in page in the secure browser. This takes a few seconds. Your turn comes next." : "Pip is setting up " + s.tool + ". You can watch; you don't need to do anything."), reason, stop)];
   }
-  const again = ["paused", "failed"].includes(s.state) ? h("button", { class: "pri", type: "button", onclick: () => go("resume") }, "Sign in again") : null;
-  return [h("div", { class: "card" }, h("span", { class: "tag " + tag[1] }, tag[0]), reason || h("p", { style: "margin-top:10px" }, s.state === "done" ? s.tool + " is connected and its test passed." : ""), again, h("p", {}, h("a", { href: "/portal.html?b=" + encodeURIComponent(BID) }, "Back to your Portal")))];
+  const again = ["paused", "failed"].includes(s.state) ? h("button", { class: "pri", type: "button", "data-k": "again", onclick: () => go("resume") }, "Open it again") : null;
+  const what = ["paused", "failed"].includes(s.state) ? h("p", { class: "fine", style: "margin-top:10px" }, "What happens when you tap: Pip opens the secure browser on " + s.tool + "'s sign-in page, right here. You sign in, then Pip tests the connection.") : null;
+  return [h("div", { class: "card" }, h("span", { class: "tag " + tag[1] }, tag[0]), reason || h("p", { style: "margin-top:10px" }, s.state === "done" ? s.tool + " is connected and its test passed." : ""), what, again, h("p", {}, h("a", { href: "/portal.html?b=" + encodeURIComponent(BID) }, "Back to your Portal")))];
 }
 
 async function go(action) {
