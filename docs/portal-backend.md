@@ -118,9 +118,9 @@ Bump `PART_V` in portal.html when either part changes in a way the page depends 
 
 `portal-office.js` no longer renders a 3D room. Each place (the floor, every station, a teammate's desk in four moods,
 the goodbye) is one cleaned Higgsfield picture in `public/portal-art/sc/` (2400px, plus a `-s` 1280px copy for smaller
-screens). Teammates are cut-outs in their own colour (`agent-{work,sleep,wave}-{colour}.webp`), seated over an empty
-floor with a clipped copy of the floor drawn in front of them; a desk close-up uses a copy of the scene recoloured to
-that teammate. Moving around is a zoom and cross-fade the browser's compositor runs on its own, so it stays at full
+screens). The pictures have no characters in them. Teammates are the original Pip-family floating heads from portal.html
+(`face()`, the same rigged art as the Marketplace), placed live: at their seats on the floor (with a clipped copy of the
+floor drawn in front), and at their own desk in a close-up. Moving around is a zoom and cross-fade the browser's compositor runs on its own, so it stays at full
 frame rate. Pip is the only live 3D, from his original engine on one small canvas.
 
 Everything you click is HTML from portal.html: tags, Pip's bubble, and `sceneCards()` (the cards and labels inside each

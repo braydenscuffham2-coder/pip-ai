@@ -1244,7 +1244,7 @@ function loadPart(name) {
   if (!PARTS[name]) PARTS[name] = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "/" + name + ".js?v=" + PART_V; sc.async = true; sc.onload = res; sc.onerror = () => { delete PARTS[name]; rej(new Error(name)); }; document.head.append(sc); });
   return PARTS[name];
 }
-const PART_V = "7";
+const PART_V = "9";
 function loadThree() {
   if (!threeP) { const l = document.createElement("link"); l.rel = "modulepreload"; l.href = THREE_URL; l.integrity = THREE_SRI; l.crossOrigin = "anonymous"; document.head.append(l); threeP = import(THREE_URL); threeP.catch(() => { threeP = null; }); }
   return threeP;
@@ -2531,7 +2531,7 @@ async function startOffice() {
     const [THREE] = await Promise.all([loadThree(), loadPart("portal-office")]);
     await Promise.all([document.fonts.load("600 44px Geist"), document.fonts.load("italic 400 120px 'Instrument Serif'")]).catch(() => null);
     if (!FLOOR.X) FLOOR.X = threeAddons(THREE);
-    FLOOR.office = createOffice(THREE, FLOOR.X, { host: document.getElementById("office"), cssHost: document.getElementById("office"), reduce: reduced, onPick: (id) => openMate(id), onStation: (id) => openStation(id), onEntered: () => { FLOOR.entered = true; }, safeTop: () => { const r = document.querySelector(".fl-head"); return r ? r.getBoundingClientRect().bottom : 0; }, safeBottom: () => { const r = document.querySelector(".fl-roster"); return r ? innerHeight - r.getBoundingClientRect().top : 0; },
+    FLOOR.office = createOffice(THREE, FLOOR.X, { host: document.getElementById("office"), cssHost: document.getElementById("office"), reduce: reduced, onPick: (id) => openMate(id), onStation: (id) => openStation(id), face: (id) => { const a = S.data && S.data.agents.find((x) => x.spec_id === id); return a ? face(mateName(a), (a.role || "") + " " + a.name) : null; }, onEntered: () => { FLOOR.entered = true; }, safeTop: () => { const r = document.querySelector(".fl-head"); return r ? r.getBoundingClientRect().bottom : 0; }, safeBottom: () => { const r = document.querySelector(".fl-roster"); return r ? innerHeight - r.getBoundingClientRect().top : 0; },
       onReveal: (el) => { el.classList.add("on"); fitTargets(); setTimeout(fitTargets, 700); } });
     await FLOOR.office.ready; // every shader is compiled before the first frame, so the walk-in is smooth from the start
     document.documentElement.classList.add("office-live");
@@ -2976,7 +2976,9 @@ function renderFloor(opts = {}) {
   if (o) {
     const pipPoint = st === "paused" ? (ag.find(isPaused) || {}).spec_id : (ag.find((a) => youNeeds(a).length && !isPaused(a)) || {}).spec_id;
     o.sync({ dim: b.status === "disconnected", agents: ag.map((a, i) => { const L = looks.get(a.spec_id), p = propOf((a.role || "") + " " + a.name);
-      return { id: a.spec_id, look: L.look, light: L.light, kind: L.kind, variant: deskVariant(a), hex: hexOf(a), prop: p === "headset" || p === "glasses" ? "letters" : p || "letters", phone: p === "headset", sticky: L.kind === "needs" ? "Needs you: " + lowerFirst(youNeeds(a)[0]) : null, ph: i * 1.3 + 0.3 }; }),
+      const fk = colorOf(mateName(a)) + ":" + propOf((a.role || "") + " " + a.name), slot = FLOOR.faces || (FLOOR.faces = new Map()); // the same rigged head stays put between renders
+      if (!slot.has(a.spec_id) || slot.get(a.spec_id).k !== fk) slot.set(a.spec_id, { k: fk, el: face(mateName(a), (a.role || "") + " " + a.name) });
+      return { id: a.spec_id, face: slot.get(a.spec_id).el, faceKey: fk, look: L.look, light: L.light, kind: L.kind, variant: deskVariant(a), hex: hexOf(a), prop: p === "headset" || p === "glasses" ? "letters" : p || "letters", phone: p === "headset", sticky: L.kind === "needs" ? "Needs you: " + lowerFirst(youNeeds(a)[0]) : null, ph: i * 1.3 + 0.3 }; }),
       tags: [...tags.entries()], bubble: narrow() ? null : say, pipPoint: pipPoint || null, stations: Object.assign(stationModel(), { tags: [...stTags.entries()], priced: stageOf(d) === "priced" }), cards: sceneCards() });
     if (o.panel) o.panel(!!(S.desk && S.station) && !narrow());
     if (FLOOR.reenter) { FLOOR.reenter = false; o.enter(false); }

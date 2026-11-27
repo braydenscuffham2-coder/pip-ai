@@ -21,14 +21,14 @@ function createOffice(THREE, X, opts) {
   // ---------- the scenes, in percent of each picture ----------
   // pip: where Pip floats (x, y of his centre, w = his width). focus: where a glide into this scene aims.
   // screen: the monitor's four corners, for a teammate's screen. seats: where teammates sit on the floor.
-  const PIP_K = 1.6; // his canvas is wider than he is: the camera leaves room for a hop and a wave
+  const PIP_K = 2.25; // his canvas is wider than he is: the camera leaves room for a hop and a wave
   const SCENES = {
     home: { plate: "home-empty", pip: [50, 54, 8.2], focus: [50, 50], halos: [[24.5, 14.5, 15], [77.5, 14.5, 15], [34.7, 21.5, 7], [67.8, 21.5, 7], [42, 25.6, 4], [59.5, 25.6, 4]] },
-    desk: { plate: (c) => "desk-" + c, pip: [73, 17, 6.5], focus: [46, 42], screen: [[28.4, 24.0], [64.0, 23.8], [63.6, 58.9], [28.2, 59.4]], halos: [[30.5, 12.2, 10], [86.5, 12.2, 10]] },
-    deskNeeds: { plate: (c) => "setup-" + c, pip: [40.5, 47.5, 10.5], focus: [60, 40], screen: [[51.7, 21.2], [80.4, 20.6], [79.8, 52.6], [52.0, 53.6]], halos: [[30, 11, 10], [77, 11, 10]] },
-    deskCut: { plate: (c) => "cables-" + c, pip: [66, 38, 8], focus: [36, 55], float: [79, 21, 25], halos: [[15, 11, 12], [80, 11, 12]] },
-    deskPaused: { plate: (c) => "paused-" + c, pip: [50, 40, 7], focus: [26, 50], float: [50, 76, 23], halos: [[23, 11, 12], [75, 11, 12]] },
-    letgo: { plate: (c) => "letgo-" + c, pip: [41, 37, 7.5], focus: [58, 45], halos: [[23, 9, 12], [76, 9, 12]] },
+    desk: { plate: "desk", mate: [11, 52, 25], pip: [73, 17, 6.5], focus: [46, 42], screen: [[28.4, 24.0], [64.0, 23.8], [63.6, 58.9], [28.2, 59.4]], halos: [[30.5, 12.2, 10], [86.5, 12.2, 10]] },
+    deskNeeds: { plate: "setup", mate: [26, 40, 13], pip: [41, 52, 8], focus: [60, 40], screen: [[51.7, 21.2], [80.4, 20.6], [79.8, 52.6], [52.0, 53.6]], halos: [[30, 11, 10], [77, 11, 10]] },
+    deskCut: { plate: "cables", mate: [17, 38, 16], pip: [66, 38, 8], focus: [36, 55], float: [79, 28, 24], halos: [[15, 11, 12], [80, 11, 12]] },
+    deskPaused: { plate: "paused", mate: [24.5, 47, 11], pip: [50, 40, 7], focus: [26, 50], float: [50, 76, 23], halos: [[23, 11, 12], [75, 11, 12]] },
+    letgo: { plate: "letgo", mate: [75, 45, 9], pip: [41, 37, 7.5], focus: [58, 45], halos: [[23, 9, 12], [76, 9, 12]] },
     front: { plate: "front", pip: [47.5, 41, 8], focus: [45, 52], halos: [[28.5, 3, 12], [55, 10, 12]] },
     meter: { plate: "meter-empty", pip: [84, 47, 9.5], focus: [46, 45], halos: [[11.8, 15.1, 15.8], [33.2, 17.4, 10.4]], tube: [43.4, 16.2, 5.6, 45.4] },
     contract: { plate: "contract", pip: [31, 44, 13], focus: [55, 50], halos: [[24, 12, 14], [77, 12, 14]] },
@@ -65,8 +65,9 @@ function createOffice(THREE, X, opts) {
     if (cfg.tube) { const t = document.createElement("div"); t.className = "sc-tube"; t.style.cssText = `--x:${cfg.tube[0]}%;--y:${cfg.tube[1]}%;--w:${cfg.tube[2]}%;--h:${cfg.tube[3]}%`; t.innerHTML = `<b class="sc-liquid"><s></s>${Array.from({ length: 10 }, (_, k) => `<i style="--x:${10 + (k * 23) % 75}%;--s:${4 + (k % 4)}px;--t:${3 + (k % 4)}s;--d:-${k * 0.5}s"></i>`).join("")}</b>`; el.append(t); }
     const seats = document.createElement("div"); seats.className = "sc-seats"; el.append(seats);
     const pins = document.createElement("div"); pins.className = "sc-pins fl-tags"; el.append(pins);
+    let mate = null; if (cfg.mate) { mate = document.createElement("div"); mate.className = "sc-mate" + (key === "letgo" ? " going" : ""); mate.style.cssText = `--x:${cfg.mate[0]}%;--y:${cfg.mate[1]}%;--w:${cfg.mate[2]}%`; el.append(mate); }
     const pipSlot = document.createElement("div"); pipSlot.className = "sc-pip"; pipSlot.style.cssText = `--x:${cfg.pip[0]}%;--y:${cfg.pip[1]}%;--w:${(cfg.pip[2] * PIP_K).toFixed(2)}%`; el.append(pipSlot);
-    const s = { id, key, cfg, el, img, seats, pins, pipSlot, decoded: img.decode().catch(() => null) };
+    const s = { id, key, cfg, el, img, seats, pins, pipSlot, mate, decoded: img.decode().catch(() => null) };
     root.append(el); scenes.set(id, s); return s;
   }
   const plateOf = (key) => { const p = SCENES[key].plate; return typeof p === "function" ? p(deskColor) : p; };
@@ -96,8 +97,7 @@ function createOffice(THREE, X, opts) {
   }
 
   // ---------- teammates on the floor ----------
-  const POSE = { work: "work", type: "work", idle: "work", scratch: "work", build: "work", sleep: "sleep", wave: "wave" };
-  function syncSeats(home) {
+    function syncSeats(home) {
     const list = model.agents.filter((a) => a.look !== "open").slice(0, SEATS.length);
     const keep = new Set();
     list.forEach((a, i) => {
@@ -105,15 +105,16 @@ function createOffice(THREE, X, opts) {
       let g = home.seats.querySelector(`[data-id="${CSS.escape(a.id)}"]`);
       if (!g) {
         g = document.createElement("div"); g.className = "sc-ag"; g.dataset.id = a.id;
-        g.innerHTML = `<i class="sc-glow"></i><img class="sc-body" alt="" decoding="async"><b class="sc-q" aria-hidden="true">?</b><span class="sc-z" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>`;
+        g.innerHTML = `<i class="sc-glow"></i><span class="sc-face"></span><b class="sc-q" aria-hidden="true">?</b><span class="sc-z" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>`;
         const fg = document.createElement("img"); fg.className = "sc-fg"; fg.alt = ""; fg.decoding = "async"; g._fg = fg;
         g.addEventListener("click", () => opts.onPick && opts.onPick(a.id)); g.addEventListener("pointerenter", () => hover(a.id));
         home.seats.append(g, fg);
       }
       g.style.cssText = `--x:${seat.x}%;--b:${seat.b}%;--h:${seat.h}%;--d:-${(i * 0.9).toFixed(1)}s`;
       g.classList.toggle("flip", seat.flip);
-      const pose = g._wave && performance.now() < g._wave ? "wave" : POSE[a.look] || "work";
-      const want = ART + "agent-" + pose + "-" + c + ".webp"; const body = g.querySelector(".sc-body"); if (body.getAttribute("src") !== want) body.src = want;
+      // the teammate is the original Pip-family floating head from portal.html (face()), never a redrawn one
+      const slot = g.querySelector(".sc-face"); if (a.face && slot._key !== a.faceKey) { slot.replaceChildren(a.face); slot._key = a.faceKey; }
+      const f = slot.firstElementChild; if (f) f.classList.toggle("is-paused", a.look === "sleep");
       for (const k of ["needs", "paused", "build", "live", "ready"]) g.classList.toggle("k-" + k, a.kind === k || (k === "needs" && a.light === "needs") || (k === "build" && a.look === "build") || (k === "paused" && a.look === "sleep"));
       g._fg.src = src(home.cfg.plate); g._fg.style.clipPath = "polygon(" + seat.fg.map(([x, y]) => x + "% " + y + "%").join(",") + ")";
       g.style.zIndex = String(10 + Math.round(seat.b));
@@ -124,8 +125,8 @@ function createOffice(THREE, X, opts) {
   }
   function hover(id) {
     const home = homeScene(); const g = home && home.seats.querySelector(`[data-id="${CSS.escape(id)}"]`); if (!g || g.classList.contains("k-paused") || g.classList.contains("k-build")) return;
-    if (g._wave && performance.now() < g._wave) return;
-    g._wave = performance.now() + 1500; syncSeats(home); clearTimeout(g._wt); g._wt = setTimeout(() => syncSeats(home), 1550);
+    const f = g.querySelector(".tmf"); if (!f || f.classList.contains("is-hov") || RM()) return;
+    f.style.setProperty("--hd", "0s"); f.classList.add("is-hov"); clearTimeout(g._wt); g._wt = setTimeout(() => f.classList.remove("is-hov"), 1700);
   }
   const homeScene = () => sceneEl("home", SCENES.home.plate);
 
@@ -138,7 +139,7 @@ function createOffice(THREE, X, opts) {
     list.forEach((a, i) => { const el = (model.tags || new Map()).get(a.id); if (!el) return; const s = SEATS[i]; pin(home, el, s.tag[0], Math.max(s.tag[1], tagMin), "tag"); });
     const more = model.agents.filter((a) => a.look !== "open").length - list.length;
     if (more > 0) { const m = document.createElement("span"); m.className = "sc-more card"; m.textContent = "+" + more + " more down the aisle"; pin(home, m, 50, 40.5, "tag"); }
-    if (model.bubble) pin(home, model.bubble, SCENES.home.pip[0], SCENES.home.pip[1] + SCENES.home.pip[2] * 0.95, "say");
+    if (model.bubble) { const P = SCENES.home.pip, canH = P[2] * PIP_K * (box.w / box.h); pin(home, model.bubble, P[0], P[1] + canH * 0.33, "say"); } // tucked right under Pip, its tail on him
   }
   function pin(s, el, x, y, kind) { el.classList.add("sc-pin", "pin-" + kind); el.style.setProperty("--px", x + "%"); el.style.setProperty("--py", y + "%"); s.pins.append(el); }
   const stack = document.createElement("div"); stack.className = "sc-stack"; root.append(stack); // a phone's cards, under its scene window
@@ -171,6 +172,7 @@ function createOffice(THREE, X, opts) {
   async function show(key, plateName, how = {}) {
     measure();
     const next = sceneEl(key, plateName || plateOf(key));
+    if (next.mate) { const f = how.mate && opts.face ? opts.face(how.mate) : null; next.mate.replaceChildren(...(f ? [f] : [])); if (f) f.classList.toggle("is-paused", key === "deskPaused"); }
     if (key === "home") { syncSeats(next); syncPins(next); } else syncStationPins(next, key);
     if (cur !== next) layer.classList.remove("on");
     if (cur === next) { place(next); pipTo(next); return; }
@@ -284,10 +286,10 @@ function createOffice(THREE, X, opts) {
       const key = deskVariant === "paused" ? "deskPaused" : deskVariant === "cut" ? "deskCut" : deskVariant === "needs" ? "deskNeeds" : "desk";
       const seat = SEATS[model.agents.filter((x) => x.look !== "open").indexOf(a)];
       mode = "desk"; focusId = id; letGoOn = false;
-      return show(key, null, { at: seat ? [seat.x, seat.b - seat.h / 2] : null }).then(() => { settleAt = performance.now(); fitScreen(); });
+      return show(key, null, { at: seat ? [seat.x, seat.b - seat.h / 2] : null, mate: id }).then(() => { settleAt = performance.now(); fitScreen(); });
     },
-    letGo(id) { /* the goodbye plays when "Let go" is wired: show the let-go scene, then the floor without them */ const a = model.agents.find((x) => x.id === id); if (!a) return; deskColor = colorName(a.hex); show("letgo", null, { quick: true }); },
-    letGoPreview(id, on) { if (on === letGoOn) return; letGoOn = !!on; const a = model.agents.find((x) => x.id === id); if (!a) return; if (on) { deskColor = colorName(a.hex); show("letgo", null, { quick: true }); } else if (focusId) api.desk(focusId, deskVariant); },
+    letGo(id) { /* the goodbye plays when "Let go" is wired: show the let-go scene, then the floor without them */ const a = model.agents.find((x) => x.id === id); if (!a) return; deskColor = colorName(a.hex); show("letgo", null, { quick: true, mate: id }); },
+    letGoPreview(id, on) { if (on === letGoOn) return; letGoOn = !!on; const a = model.agents.find((x) => x.id === id); if (!a) return; if (on) { deskColor = colorName(a.hex); show("letgo", null, { quick: true, mate: id }); } else if (focusId) api.desk(focusId, deskVariant); },
     // papers come out of the folders as HTML; the scene only steps back
     folderOut() { return Promise.resolve(); }, folderIn() {}, hoverFolder() {}, swapFolder() {},
     hold(on) { held = !!on; kick(); },
@@ -325,14 +327,14 @@ function CSS_TEXT() { return `
 .sc-root.warn .sc-tube .sc-liquid{background:linear-gradient(180deg,rgba(255,226,150,.95),rgba(242,176,42,.9));box-shadow:inset 0 0 18px rgba(255,255,255,.55),0 0 26px rgba(242,176,42,.5)}
 /* teammates at their seats */
 .sc-seats{position:absolute;inset:0}
-.sc-ag{position:absolute;left:var(--x);top:var(--b);height:var(--h);aspect-ratio:.86;transform:translate(-50%,-100%);cursor:pointer}
-.sc-ag .sc-body{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:50% 100%;transform-origin:50% 100%;animation:sc-bob 3.8s ease-in-out infinite;animation-delay:var(--d)}
-.sc-ag.flip .sc-body{transform:scaleX(-1)}
-.sc-ag.flip .sc-body{animation-name:sc-bob-f}
-@keyframes sc-bob{0%,100%{transform:translateY(0) scale(1,1)}50%{transform:translateY(-2.5%) scale(.993,1.012)}}
-@keyframes sc-bob-f{0%,100%{transform:scaleX(-1) translateY(0) scale(1,1)}50%{transform:scaleX(-1) translateY(-2.5%) scale(.993,1.012)}}
-.sc-ag.k-paused .sc-body{animation-duration:6s}
-.sc-glow{position:absolute;left:50%;bottom:-6%;width:150%;height:40%;transform:translateX(-50%);border-radius:50%;background:radial-gradient(closest-side,rgba(242,176,42,.55),rgba(242,176,42,0));opacity:0;transition:opacity .4s;animation:sc-pulse 2s ease-in-out infinite}
+.sc-ag{position:absolute;left:var(--x);top:calc(var(--b) - var(--h) * .2);height:calc(var(--h) * .7);aspect-ratio:320/272;transform:translate(-50%,-100%);cursor:pointer}
+.sc-face{position:absolute;inset:0;display:block;animation:sc-float 4.6s ease-in-out infinite;animation-delay:var(--d)}
+.sc-face .tmf{width:100%;height:100%}
+@keyframes sc-float{0%,100%{translate:0 0}50%{translate:0 -5%}}
+.sc-ag.k-paused .sc-face{animation-duration:7s}
+.sc-ag.k-paused .tmf .rg-lid{transform:scaleY(1)!important}
+.sc-ag.k-build .sc-face{filter:saturate(.2) brightness(1.15) drop-shadow(0 0 8px rgba(155,134,255,.9));opacity:.62}
+.sc-glow{position:absolute;left:50%;bottom:-14%;width:120%;height:34%;transform:translateX(-50%);border-radius:50%;background:radial-gradient(closest-side,rgba(242,176,42,.55),rgba(242,176,42,0));opacity:0;transition:opacity .4s;animation:sc-pulse 2s ease-in-out infinite}
 .sc-ag.k-needs .sc-glow{opacity:1}
 @keyframes sc-pulse{0%,100%{transform:translateX(-50%) scale(.85);opacity:.55}50%{transform:translateX(-50%) scale(1.08);opacity:1}}
 .sc-q{position:absolute;left:58%;top:-12%;font:italic 400 clamp(18px,2.6vw,40px)/1 "Instrument Serif",Georgia,serif;color:#ffb21f;text-shadow:0 2px 10px rgba(255,178,31,.45);opacity:0;animation:sc-q 2.2s ease-in-out infinite}
@@ -342,9 +344,13 @@ function CSS_TEXT() { return `
 .sc-z i{position:absolute;left:0;top:0;font:italic 400 clamp(11px,1.3vw,20px)/1 "Instrument Serif",Georgia,serif;color:#9b8ee8;animation:sc-zz 3s ease-in infinite;opacity:0}
 .sc-z i:nth-child(2){animation-delay:1s}.sc-z i:nth-child(3){animation-delay:2s}
 @keyframes sc-zz{0%{transform:translate(0,0) scale(.6);opacity:0}20%{opacity:1}100%{transform:translate(160%,-220%) scale(1.3);opacity:0}}
-.sc-ag.k-build .sc-body{filter:saturate(.2) brightness(1.15) drop-shadow(0 0 8px rgba(155,134,255,.9));opacity:.62;-webkit-mask:repeating-linear-gradient(180deg,#000 0 3px,rgba(0,0,0,.55) 3px 5px);mask:repeating-linear-gradient(180deg,#000 0 3px,rgba(0,0,0,.55) 3px 5px)}
 .sc-fg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 /* Pip */
+.sc-mate{position:absolute;left:var(--x);top:var(--y);width:var(--w);aspect-ratio:320/272;transform:translate(-50%,-50%);pointer-events:none;z-index:40;animation:sc-float 4.6s ease-in-out infinite}
+.sc-mate .tmf{width:100%;height:100%}
+.sc-mate .tmf.is-paused .rg-lid{transform:scaleY(1)!important}
+.sc-mate.going{animation:sc-going 3.2s ease-in-out infinite}
+@keyframes sc-going{0%,100%{opacity:.85;translate:0 0;filter:blur(0)}50%{opacity:.35;translate:0 -6%;filter:blur(1.5px) brightness(1.2)}}
 .sc-pip{position:absolute;left:var(--x);top:var(--y);width:var(--w);aspect-ratio:1;transform:translate(-50%,-50%);pointer-events:none;z-index:60}
 .sc-pip canvas{position:absolute;inset:0;width:100%;height:100%}
 .sc-pip.still{background:url(/portal-art/pip-calm.webp) center/contain no-repeat}
