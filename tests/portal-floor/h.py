@@ -43,7 +43,7 @@ def run(scn="live", role="owner", w=1280, h=800, path="/portal.html", signed_in=
             if u.netloc == "www.hirepip.com":
                 local = REPO + (u.path if u.path != "/" else "/index.html")
                 if os.path.isfile(local):
-                    ct = "text/html" if local.endswith(".html") else "text/javascript" if local.endswith(".js") else "image/webp" if local.endswith(".webp") else "application/octet-stream"
+                    ct = "text/html" if local.endswith(".html") else "text/javascript" if local.endswith(".js") else "image/webp" if local.endswith(".webp") else "image/svg+xml" if local.endswith(".svg") else "application/octet-stream"
                     return route.fulfill(path=local, content_type=ct)
                 return route.fulfill(status=404, body="nf")
             if "fonts.googleapis.com" in u.netloc or "fonts.gstatic.com" in u.netloc:

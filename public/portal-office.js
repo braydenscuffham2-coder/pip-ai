@@ -114,25 +114,42 @@ function createOffice(THREE, X, opts) {
   function lines(g, text, maxW) { const words = String(text || "").split(/\s+/), out = []; let line = "";
     for (const w of words) { const t = line ? line + " " + w : w; if (g.measureText(t).width > maxW && line) { out.push(line); line = w; } else line = t; } if (line) out.push(line); return out; }
   const FONT = '"Geist", "Inter", system-ui, sans-serif', SERIF = '"Instrument Serif", Georgia, serif', MONO = '"Geist Mono", ui-monospace, monospace';
+  // every monitor shows the teammate's own desktop: wallpaper in their colour, their files, the app they're in, a dock.
+  // Laid out like the live screen you zoom into, so the hand-over from this picture to the real thing is seamless.
   function paintScreen(s, a, typed, t) {
-    const c = s.cv, g = c.getContext("2d"), W = c.width, H = c.height, hex = a.hex || "#8f7bff";
-    g.fillStyle = "#ffffff"; g.fillRect(0, 0, W, H);
-    g.fillStyle = "#f4f5f8"; g.fillRect(0, 0, W, 64); g.fillStyle = "#e7e9ef"; g.fillRect(0, 64, W, 2);
-    ["#ff8a7a", "#ffc65c", "#5fd6a0"].forEach((col, i) => { g.fillStyle = col; g.beginPath(); g.arc(30 + i * 24, 32, 7, 0, 7); g.fill(); });
-    g.fillStyle = "#1b1e2b"; g.font = "600 24px " + FONT; g.fillText(a.name || "", 116, 40);
-    const chip = a.kind === "needs" ? ["Needs you", "#fff1cc", "#7a4e00"] : a.kind === "paused" ? ["Paused", "#eef0f4", "#6b6f8a"] : a.kind === "build" ? ["Being built", "#eef0ff", "#4b48c9"] : a.kind === "ready" ? ["Ready", "#eef0f4", "#4b5175"] : ["Working", "#dcf7f1", "#0c6b5d"];
-    g.font = "600 19px " + FONT; const cw = g.measureText(chip[0]).width + 34;
-    g.fillStyle = chip[1]; rr(g, W - cw - 22, 17, cw, 30, 15); g.fill(); g.fillStyle = chip[2]; g.fillText(chip[0], W - cw - 5, 38);
-    g.fillStyle = hex; g.fillRect(40, 104, 4, 26);
-    g.fillStyle = "#6b6f8a"; g.font = "500 17px " + MONO; g.fillText((a.kind === "live" ? "WORKING ON" : a.kind === "needs" ? "WAITING ON YOU" : "RIGHT NOW").split("").join(String.fromCharCode(8202)), 58, 124);
-    g.fillStyle = "#1b1e2b"; g.font = "400 46px " + SERIF;
-    const txt = typed == null ? (a.line || "") : typed, ls = lines(g, txt, W - 96).slice(0, 4);
-    ls.forEach((l, i) => g.fillText(l, 40, 196 + i * 52));
-    if (typed != null && Math.floor(t * 2.2) % 2 === 0) { const last = ls[ls.length - 1] || ""; g.fillStyle = hex; g.fillRect(40 + g.measureText(last).width + 4, 196 + (ls.length - 1) * 52 - 36, 3, 42); }
-    // a quiet activity strip along the bottom
-    g.fillStyle = "#f4f5f8"; rr(g, 40, H - 92, W - 80, 56, 14); g.fill();
-    g.fillStyle = "#6b6f8a"; g.font = "500 18px " + FONT; g.fillText(a.role || "", 62, H - 57, W - 300);
-    for (let i = 0; i < 12; i++) { const hgt = 6 + ((Math.sin(i * 1.7 + (a.ph || 0)) + 1) * 10); g.fillStyle = i === 11 ? hex : "#d6d9e2"; g.fillRect(W - 220 + i * 14, H - 46 - hgt, 8, hgt); }
+    const c = s.cv, g = c.getContext("2d"), W = c.width, H = c.height, hex = a.hex || "#8f7bff", k = W / 1000;
+    const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, "#f8f9fc"); bg.addColorStop(1, "#eceff6"); g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    const wash = g.createRadialGradient(W * 0.9, -H * 0.1, 10, W * 0.9, -H * 0.1, W * 0.75); wash.addColorStop(0, hex + "66"); wash.addColorStop(1, hex + "00"); g.fillStyle = wash; g.fillRect(0, 0, W, H);
+    g.fillStyle = "rgba(255,255,255,.62)"; g.fillRect(0, 0, W, 36 * k);
+    g.fillStyle = hex; g.beginPath(); g.arc(24 * k, 18 * k, 10 * k, 0, 7); g.fill();
+    g.fillStyle = "#1b1e2b"; g.font = 600 * 1 + " " + Math.round(15 * k) + "px " + FONT; g.fillText(a.name || "", 42 * k, 23 * k);
+    const chip = a.kind === "needs" ? ["Needs you", "#fff1cc", "#7a4e00"] : a.kind === "paused" ? ["Paused", "#eef0f4", "#6b6f8a"] : a.kind === "build" ? ["Being built", "#eef0ff", "#4b48c9"] : a.kind === "ready" ? ["Ready", "#ffffff", "#4b5175"] : ["Working", "#e6f7f3", "#0c6b5d"];
+    g.font = "600 " + Math.round(13 * k) + "px " + FONT; const cw = g.measureText(chip[0]).width + 30 * k;
+    g.fillStyle = chip[1]; rr(g, W - cw - 92 * k, 6 * k, cw, 24 * k, 12 * k); g.fill(); g.fillStyle = chip[2]; g.fillText(chip[0], W - cw - 74 * k, 23 * k);
+    for (let i = 0; i < 4; i++) { const y = (60 + i * 112) * k; g.fillStyle = "#ffffff"; rr(g, 42 * k, y, 40 * k, 50 * k, 6 * k); g.fill(); g.fillStyle = i === 3 ? "#5b5680" : i === 2 ? "#c9a24a" : hex; g.fillRect(42 * k, y + 41 * k, 40 * k, 9 * k);
+      g.fillStyle = "#d9dcea"; for (let r = 0; r < 4; r++) g.fillRect(50 * k, y + (12 + r * 6) * k, 24 * k, 2 * k); }
+    // the app window
+    const wx = 118 * k, wy = 50 * k, ww = W - wx - 308 * k, wh = H - wy - 92 * k;
+    g.fillStyle = "rgba(30,30,90,.08)"; rr(g, wx, wy + 8 * k, ww, wh, 18 * k); g.fill();
+    g.fillStyle = "#ffffff"; rr(g, wx, wy, ww, wh, 18 * k); g.fill();
+    ["#ff6b5f", "#febc2e", "#28c840"].forEach((col, i) => { g.fillStyle = col; g.beginPath(); g.arc(wx + (22 + i * 18) * k, wy + 21 * k, 5.5 * k, 0, 7); g.fill(); });
+    g.fillStyle = "#1b1e2b"; g.font = "600 " + Math.round(14 * k) + "px " + FONT; g.fillText(a.kind === "needs" ? "Waiting on you" : a.kind === "paused" ? "Paused" : a.kind === "build" ? "Getting set up" : a.kind === "live" ? "Today" : "Ready", wx + 84 * k, wy + 26 * k);
+    g.fillStyle = "#f0eff6"; g.fillRect(wx, wy + 42 * k, ww, 1.5 * k);
+    g.fillStyle = "#1b1e2b"; g.font = "400 " + Math.round(33 * k) + "px " + SERIF;
+    const txt = typed == null ? (a.line || "") : typed, ls = lines(g, txt, ww - 48 * k).slice(0, 3);
+    ls.forEach((l, i) => g.fillText(l, wx + 24 * k, wy + (104 + i * 36) * k));
+    if (typed != null && Math.floor(t * 2.2) % 2 === 0) { const last = ls[ls.length - 1] || ""; g.fillStyle = hex; g.fillRect(wx + 24 * k + g.measureText(last).width + 4 * k, wy + (104 + (ls.length - 1) * 36 - 26) * k, 2.5 * k, 30 * k); }
+    const ly = wy + (104 + ls.length * 36 + 18) * k;
+    for (let r = 0; r < 4 && ly + r * 34 * k < wy + wh - 30 * k; r++) { g.fillStyle = "#f4f3f8"; g.fillRect(wx + 24 * k, ly + r * 34 * k, ww - 48 * k, 1.5 * k); g.fillStyle = "#c9ccd8"; g.fillRect(wx + 24 * k, ly + (r * 34 + 13) * k, 40 * k, 7 * k); g.fillStyle = "#e2e4ec"; g.fillRect(wx + 84 * k, ly + (r * 34 + 13) * k, (ww - 160 * k) * (0.55 + 0.4 * Math.abs(Math.sin(r * 2.3 + (a.ph || 0)))), 7 * k); }
+    // widgets
+    const rx = W - 294 * k;
+    g.fillStyle = "rgba(255,255,255,.82)"; rr(g, rx, 50 * k, 280 * k, 92 * k, 16 * k); g.fill(); rr(g, rx, 154 * k, 280 * k, 180 * k, 16 * k); g.fill();
+    for (let i = 0; i < 3; i++) { g.fillStyle = "#1b1e2b"; g.font = "400 " + Math.round(28 * k) + "px " + SERIF; g.fillText(String((a.ph | 0) % 4 + i), rx + (16 + i * 88) * k, 112 * k); }
+    for (let r = 0; r < 4; r++) { const y = (190 + r * 34) * k; g.fillStyle = "#eef0f5"; rr(g, rx + 14 * k, y, 22 * k, 22 * k, 6 * k); g.fill(); g.fillStyle = "#dfe2ea"; g.fillRect(rx + 46 * k, y + 8 * k, 140 * k, 7 * k); g.fillStyle = r === 0 && a.kind === "needs" ? "#e3a008" : "#19b39b"; g.beginPath(); g.arc(rx + 258 * k, y + 11 * k, 4.5 * k, 0, 7); g.fill(); }
+    // the dock
+    const n = 6, dw = (n * 54 + 20) * k, dx = (W - dw) / 2, dy = H - 76 * k;
+    g.fillStyle = "rgba(255,255,255,.66)"; rr(g, dx, dy, dw, 62 * k, 20 * k); g.fill();
+    for (let i = 0; i < n; i++) { g.fillStyle = i === 0 ? hex : i === 1 ? "#5b5680" : ["#ffffff", "#ffffff", "#ffffff", "#ffffff"][i - 2]; rr(g, dx + (12 + i * 54) * k, dy + 9 * k, 44 * k, 44 * k, 11 * k); g.fill(); }
     s.tex.needsUpdate = true;
   }
   function paintNote(t, text) {
@@ -141,15 +158,41 @@ function createOffice(THREE, X, opts) {
     g.fillStyle = "#7a4e00"; g.font = "700 30px " + FONT; g.fillText("Needs you", 24, 52);
     g.font = "500 24px " + FONT; lines(g, text, W - 48).slice(0, 3).forEach((l, i) => g.fillText(l, 24, 92 + i * 30)); t.needsUpdate = true;
   }
+  // a tool's tile: the software's own logo, full colour once it's connected, greyed while it waits on you
+  const LOGO_BASE = opts.logoBase || "/portal-art/logos/", logoImgs = new Map();
+  function logoImg(k) {
+    if (logoImgs.has(k)) return logoImgs.get(k);
+    const im = new Image(); im.decoding = "async"; logoImgs.set(k, im);
+    im.onload = () => { for (const v of devices) if (v.tool && (v.tool.logos || []).includes(k)) { v.sig = null; paintFace(v.ft, v.tool); v.sig = sigOf(v.tool); } };
+    im.src = LOGO_BASE + k + ".svg"; return im;
+  }
+  const sigOf = (tool) => (tool ? tool.short + "|" + tool.state + "|" + (tool.logos || []).join(",") : "");
   function paintFace(t, tool) {
-    const c = t.image, g = c.getContext("2d"), W = c.width, H = c.height; g.clearRect(0, 0, W, H);
-    g.fillStyle = tool ? "#ffffff" : "#f6f7f9"; rr(g, 0, 0, W, H, 26); g.fill();
-    if (!tool) { g.fillStyle = "#b8bcc8"; g.font = "500 30px " + FONT; g.fillText("Open slot", 36, 110); }
-    if (tool) {
-      g.fillStyle = "#1b1e2b"; g.font = "600 64px " + FONT; g.fillText(tool.short, 34, 92, W - 68);
-      const st = tool.state === "ok" ? ["Connected", "#0c6b5d"] : tool.state === "pip" ? ["Pip is on it", "#4b48c9"] : ["Needs you", "#8a5a00"];
-      g.fillStyle = st[1]; g.font = "500 40px " + FONT; g.fillText(st[0], 34, 150);
+    const c = t.image, g = c.getContext("2d"), W = c.width; g.clearRect(0, 0, W, W);
+    if (!tool) { t.needsUpdate = true; return; }
+    if (tool.add) { // the next empty slot: room for any other software they use
+      g.strokeStyle = "#b9bdcc"; g.lineWidth = 6; g.setLineDash([18, 14]); rr(g, W / 2 - 118, 92, 236, 236, 58); g.stroke(); g.setLineDash([]);
+      g.strokeStyle = "#8b90a8"; g.lineWidth = 12; g.lineCap = "round"; g.beginPath(); g.moveTo(W / 2 - 40, 210); g.lineTo(W / 2 + 40, 210); g.moveTo(W / 2, 170); g.lineTo(W / 2, 250); g.stroke();
+      g.textAlign = "center"; g.fillStyle = "#4a4f6a"; g.font = "600 40px " + FONT; g.fillText("Add a tool", W / 2, 404); g.textAlign = "left"; t.needsUpdate = true; return;
     }
+    const live = tool.state === "ok", logos = (tool.logos || []).slice(0, 3), n = logos.length;
+    const box = n <= 1 ? 236 : n === 2 ? 168 : 124, gap = 22, total = n * box + (n - 1) * gap;
+    g.save(); if (!live) { g.filter = "grayscale(1)"; g.globalAlpha = 0.42; }
+    logos.forEach((k, i) => {
+      const x = W / 2 - total / 2 + i * (box + gap), y = n <= 1 ? 92 : 128;
+      if (k.charAt(0) === "~") { // no file for this one: its initial, quietly
+        g.fillStyle = "#eef0f5"; rr(g, x, y, box, box, box * 0.24); g.fill();
+        g.fillStyle = "#4a4f6a"; g.font = "600 " + Math.round(box * 0.5) + "px " + FONT; g.textAlign = "center"; g.fillText(k.slice(1, 2).toUpperCase(), x + box / 2, y + box * 0.68); g.textAlign = "left"; return;
+      }
+      const im = logoImg(k); if (!im.complete || !im.naturalWidth) return;
+      const r = im.naturalWidth / im.naturalHeight, w = r >= 1 ? box : box * r, h = r >= 1 ? box / r : box;
+      g.drawImage(im, x + (box - w) / 2, y + (box - h) / 2, w, h);
+    });
+    if (!n) { const hx = tool.hex || "#9b86ff"; g.strokeStyle = hx; g.lineWidth = 10; rr(g, W / 2 - 100, 100, 200, 200, 50); g.stroke(); g.fillStyle = hx; g.font = "600 110px " + FONT; g.textAlign = "center"; g.fillText((tool.short || "?").charAt(0), W / 2, 240); g.textAlign = "left"; }
+    g.restore();
+    g.textAlign = "center"; g.fillStyle = "#1b1e2b"; g.font = "600 48px " + FONT; g.fillText(tool.brand || tool.short, W / 2, 408, W - 36);
+    const st = live ? ["Connected", "#0c6b5d"] : tool.state === "pip" ? ["Pip is on it", "#4b48c9"] : ["Connect", "#9a6400"];
+    g.fillStyle = st[1]; g.font = "600 36px " + FONT; g.fillText(st[0], W / 2, 458); g.textAlign = "left";
     t.needsUpdate = true;
   }
   function paintMeter(t, m) {
@@ -169,13 +212,13 @@ function createOffice(THREE, X, opts) {
     const a = new THREE.Group(); a.scale.setScalar(scale); scene.add(a);
     const rig = kit.buildPip(env, look);
     a.add(rig.root, rig.shadow, rig.floorGlow, ...rig.handShadows);
-    const actor = kit.makeActor(rig, camera, { base, core: look.core, local: (v) => a.worldToLocal(v), world: (v) => a.localToWorld(v) });
+    const actor = kit.makeActor(rig, camera, { base, pm: !!look.pm, core: look.core, local: (v) => a.worldToLocal(v), world: (v) => a.localToWorld(v) });
     a.traverse((o) => o.layers.enable(1));
     for (const o of [rig.shadow, rig.floorGlow, ...rig.handShadows]) o.traverse((x) => x.layers.disable(1));
     return { a, rig, actor, last: V(), vel: V() };
   }
   const shade = (hex, k) => "#" + new THREE.Color(hex).lerp(new THREE.Color("#ffffff"), k).getHexString();
-  const pip = cast({}, SCALE_PIP, PIP_BASE);
+  const pip = cast({ pm: true }, SCALE_PIP, PIP_BASE); // the floor manager carries his clipboard
   const mates = new Map();
   const desks = []; // { g, side, screen, tex, cv, note, lamp, seat, monC, monN, hit, mate }
 
@@ -221,8 +264,8 @@ function createOffice(THREE, X, opts) {
       const g = new THREE.Group(); g.position.copy(at); g.scale.setScalar(1.45); scene.add(g);
       mesh("device", tpl.device, g);
       const led = mesh("dev_led", new THREE.MeshBasicMaterial({ color: "#5fd6c8", toneMapped: false }), g);
-      const fc = cvs(512, 192), ft = texOf(fc), face = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.233), new THREE.MeshBasicMaterial({ map: ft, transparent: true, toneMapped: false }));
-      face.position.set(0, 0.29, 0.248); g.add(face);
+      const fc = cvs(512, 512), ft = texOf(fc), face = new THREE.Mesh(new THREE.PlaneGeometry(0.44, 0.44), new THREE.MeshBasicMaterial({ map: ft, transparent: true, toneMapped: false, depthWrite: false }));
+      face.position.set(0, 0.27, 0.0765); g.add(face);
       contact(g, 0, 0, 1.2, 0.8, 0.35);
       devices.push({ i, g, led, ft, tool: null, lift: 0 }); hits.push({ obj: g, kind: "device", i });
     }
@@ -270,8 +313,10 @@ function createOffice(THREE, X, opts) {
     for (const p of opt.after || []) pts.push(p.clone());
     pts.push(to.pos.clone());
     const curve = new THREE.CatmullRomCurve3(pts, false, "centripetal");
-    const len = curve.getLength(), dur = RM() ? 1 : opt.ms || clamp(1100 + len * 120, 1300, 3000);
-    travel = { curve, from, to, t0: performance.now() + (opt.delay ?? 140), dur, looks: opt.looks || null, fov0: camera.fov, fov1: opt.fov ?? baseFov };
+    const len = curve.getLength(), dur = RM() ? 1 : opt.ms || clamp(750 + len * 95, 950, 2300);
+    // face where you're going only when that's roughly where you'll end up facing: backing out of a desk never spins you round
+    const fwd = curve.getPointAt(0.5).sub(curve.getPointAt(0)).setY(0), endF = to.look.clone().sub(to.pos).setY(0), aligned = fwd.lengthSq() > 1e-4 && endF.lengthSq() > 1e-4 ? fwd.normalize().dot(endF.normalize()) : 0;
+    travel = { curve, from, to, t0: performance.now() + (opt.delay ?? 40), dur, lead: clamp((aligned - 0.35) / 0.5), looks: opt.looks || null, fov0: camera.fov, fov1: opt.fov ?? baseFov };
     return new Promise((res) => (travel.done = res));
   }
   function stepCamera(now, dt) {
@@ -282,7 +327,7 @@ function createOffice(THREE, X, opts) {
       else {
         const ahead = travel.curve.getPointAt(clamp(e + 0.18)).add(V(0, -0.15, 0));
         const settle = ease(clamp((k - 0.45) / 0.55)), lead = Math.sin(Math.min(1, k * 2.2) * Math.PI / 2) * (1 - settle);
-        cur.look.copy(travel.from.look).lerp(ahead, lead * 0.6).lerp(travel.to.look, settle);
+        cur.look.copy(travel.from.look).lerp(ahead, lead * 0.45 * travel.lead).lerp(travel.to.look, settle);
       }
       if (RM()) camera.fov = travel.fov1; else camera.fov = travel.fov0 + (travel.fov1 - travel.fov0) * ease(clamp((k - 0.35) / 0.65));
       camera.updateProjectionMatrix();
@@ -298,7 +343,7 @@ function createOffice(THREE, X, opts) {
     camera.position.copy(view.pos).add(V(Math.sin(t * 0.21) * 0.025 * idle + px * 0.12, Math.sin(t * 0.17 + 1) * 0.015 * idle - py * 0.05, 0));
     camera.lookAt(view.look.clone().add(V(px * 0.16, -py * 0.08, 0)));
     { const f = view.look.clone().sub(view.pos).setY(0), yaw = Math.atan2(f.x, f.z), dy = Math.atan2(Math.sin(yaw - (lastYaw ?? yaw)), Math.cos(yaw - (lastYaw ?? yaw)));
-      lastYaw = yaw; bank += (clamp(-dy * (1000 / Math.max(1, dt)) * 0.03, -0.035, 0.035) - bank) * 0.08; if (!RM()) camera.rotateZ(bank); }
+      lastYaw = yaw; bank = 0; } // the horizon stays level: no leaning into turns
     if (panel && !PHONE() && mode !== "desk") camera.setViewOffset(innerWidth, innerHeight, Math.min(620, innerWidth * 0.42) / 2, 0, innerWidth, innerHeight); else camera.clearViewOffset();
   }
   // resolves once the soft follow has caught up, so nothing is glued on while the view is still moving
@@ -331,6 +376,9 @@ function createOffice(THREE, X, opts) {
       pip.a.rotation.z = -Math.sin(e * Math.PI) * clamp(d.x * 0.04, -0.14, 0.14);
       if (k >= 1) { pipTravel = null; pip.a.rotation.z = 0; }
     } else pip.a.rotation.y = lerpAngle(pip.a.rotation.y, toCam(pip.a.position), 0.06);
+    // never fill the lens: if the camera passes right by him, he shrinks out of the way and back
+    const near = clamp((camera.position.distanceTo(pip.a.position.clone().setY(pip.a.position.y + 1.1)) - 0.9) / 0.7);
+    pip.a.scale.setScalar(SCALE_PIP * (0.001 + 0.999 * near * near * (3 - 2 * near))); pip.a.visible = near > 0.01;
   }
   // he looks where you point: at a teammate, a device, or just towards the cursor
   let gazeAt = 0;
@@ -413,7 +461,7 @@ function createOffice(THREE, X, opts) {
       if (open.sig !== "open") { open.sig = "open"; paintScreen(open, { name: "Open desk", role: "Room for one more", line: "A new teammate can sit here.", kind: "ready", hex: "#2fc4b2" }, null, 0); } }
     const tools = (model.stations && model.stations.tools) || [];
     const order = [4, 5, 6, 7, 0, 1, 2, 3, 8, 9, 10, 11];
-    devices.forEach((v) => { const k = order.indexOf(v.i), tool = tools[k] || null, sig = tool ? tool.short + "|" + tool.state : "";
+    devices.forEach((v) => { const k = order.indexOf(v.i), tool = tools[k] || (k === tools.length && opts.canAddTool !== false ? { add: true, short: "+", state: "add" } : null), sig = sigOf(tool); v.g.visible = !!tool;
       v.tool = tool; if (v.sig !== sig) { v.sig = sig; paintFace(v.ft, tool); } }); // repaint only what changed: uploads are what stutter
     const ms = JSON.stringify(meterOf(model.stations)); if (meterTex && ms !== meterSig) { meterSig = ms; paintMeter(meterTex, meterOf(model.stations)); }
     if (mode === "floor" && !travel && !pipTravel) { const to = pipSpot(STOPS.floor()); if (to.distanceTo(pip.a.position) > 0.05) pipGo(to, 900); }
@@ -717,7 +765,7 @@ function createOffice(THREE, X, opts) {
       m.actor.step(tS);
     }
     for (const v of devices) {
-      const k = v.lift ? clamp(1 - (now - v.lift) / 900) : 0, st = v.tool ? v.tool.state : "none";
+      const k = v.lift ? clamp(1 - (now - v.lift) / 900) : 0, st = v.tool && !v.tool.add ? v.tool.state : "none";
       v.g.position.y = marks["slot_" + v.i].y + Math.sin(k * Math.PI) * 0.05;
       if (v.glow) { v.glow.material.color.copy(st === "ok" ? aqua : st === "pip" ? violet : amber); v.glow.material.opacity = st === "none" ? 0 : st === "you" ? 0.25 + 0.25 * Math.abs(Math.sin(tS * 2.6)) : 0.3; }
       if (st === "none") v.led.material.color.set("#d9dce2"); else v.led.material.color.copy(st === "ok" ? aqua : st === "pip" ? violet : amber).multiplyScalar(st === "you" ? 0.7 + 0.5 * Math.abs(Math.sin(tS * 2.6)) : 1.1);
@@ -729,7 +777,7 @@ function createOffice(THREE, X, opts) {
     stepWebcam(now);
     { const m = mates.get(focusId), inScreen = !!m && camera.position.distanceTo(m.desk.monC) < 0.95;
       for (const x of mates.values()) x.a.visible = !(x === m && (inScreen || camera.position.distanceTo(m.desk.seat) < 0.78));
-      pip.a.visible = !inScreen; if (m) m.desk.note.visible = m.data.kind === "needs" && !inScreen; } // inside the monitor, only the screen
+      pip.a.visible = !inScreen && pip.a.visible; if (m) m.desk.note.visible = m.data.kind === "needs" && !inScreen; } // inside the monitor, only the screen
     if (!held) { stepReflection(); renderer.render(scene, camera); }
     stepPins(); stepScreen(dt);
     raf = requestAnimationFrame(loop);
@@ -764,7 +812,7 @@ function createOffice(THREE, X, opts) {
       const pm = new THREE.PMREMGenerator(renderer), roomEnv = pm.fromCubemap(rt.texture).texture; pm.dispose(); rt.dispose();
       pip.a.traverse((o) => { if (o.material && o.material.envMap) o.material.envMap = roomEnv; }); env = roomEnv; }
     if (marks.cam_arrive) glow(B(0, 0.14, 3.25), "#7fe6da", 0.7, 0.35);
-    for (const v of devices) v.glow = glow(v.g.position.clone().add(V(0.3 * 1.45, 0.095 * 1.45, 0.25 * 1.45)), "#7fe6da", 0.28, 0.0);
+    for (const v of devices) v.glow = glow(v.g.position.clone().add(V(0.185 * 1.45, 0.455 * 1.45, 0.08 * 1.45)), "#7fe6da", 0.2, 0.0);
     snap(STOPS.floor()); pip.a.position.copy(pipSpot(STOPS.floor())); pipTo = pip.a.position.clone();
     resize(); kick();
     setTimeout(() => root.classList.add("ready"), 1500); // in case nobody calls enter()
@@ -786,13 +834,14 @@ function createOffice(THREE, X, opts) {
       mode = "floor"; focusId = null; stationId = null; zoomed = false; mountScreen(null, null); syncPins();
       return ready.then(() => { const home = STOPS.floor(); pipSide = -1; pipGo(pipSpot(home), 1300); // he sets off first and keeps ahead
         const st = wasDesk && m ? deskStops(m.desk) : null;
-        return go(home, { before: st ? [st.shoulder.pos, st.side, st.corner] : [], delay: 420 }).then(() => pip.actor.acts.lookAt(camera.position.clone(), 1)); });
+        return go(home, { before: st ? [st.shoulder.pos, st.side, st.corner] : [], delay: 80 }).then(() => pip.actor.acts.lookAt(camera.position.clone(), 1)); });
     },
     station(id) {
       if (!(id in STOPS) || (mode === "station" && stationId === id)) return Promise.resolve();
       mode = "station"; stationId = id; focusId = null; zoomed = false; syncPins();
-      return ready.then(() => { const s = STOPS[id](); pipSide = id === "front" || id === "meter" || id === "comms" ? -1 : 1; pipGo(pipSpot(s, pipSide, 2.2), 1700);
-        return go(s).then(() => { pip.actor.acts.point(PLACE[id].clone()); setTimeout(() => pip.actor.acts.point(null), 1800); }); });
+      return ready.then(() => { const s = STOPS[id](); pipSide = id === "front" || id === "meter" || id === "comms" ? -1 : 1;
+        if (!RM()) pip.actor.acts.beckon(PLACE[id].clone()); pipGo(pipSpot(s, pipSide, 3.1), 1500); // "this way", and he leads
+        return go(s).then(() => { if (mode === "station" && stationId === id) pip.actor.acts.present(PLACE[id].clone(), 1.8); }); });
     },
     desk(id) {
       return ready.then(() => {
@@ -800,11 +849,12 @@ function createOffice(THREE, X, opts) {
         mode = "desk"; focusId = id; zoomed = false; syncPins();
         const d = m.desk, st = deskStops(d);
         // Pip waits by the desk on the aisle side; the camera comes over the teammate's shoulder and into their screen
-        pipGo(d.g.localToWorld(V(-0.9, 0, 2.3)).setY(0), 1500);
+        if (!RM()) pip.actor.acts.beckon(d.seat.clone()); pipGo(d.g.localToWorld(V(-0.9, 0, 2.3)).setY(0), 1400);
+        setTimeout(() => { if (mode === "desk" && focusId === id) pip.actor.acts.present(d.seat.clone().add(V(0, 0.3, 0)), 1.4); }, 1500); // "here's Maren"
         setTimeout(() => { m.actor.acts.lookAt(camera.position.clone(), 1.4); if (m.data.kind !== "paused") m.actor.acts.wave(); }, 900);
         const looks = [cur.look.clone(), d.seat.clone().add(V(0, 0.05, 0)), d.monC.clone(), d.monC.clone()];
         const looks2 = [cur.look.clone(), d.seat.clone().add(V(0, 0.05, 0)), d.seat.clone().add(V(0, 0.05, 0)), d.monC.clone(), st.near.look.clone()];
-        return go(st.near, { after: [st.corner, st.side, st.shoulder.pos], looks: looks2, ms: RM() ? 1 : 3200, delay: 180, fov: baseFov - (TALL() ? 0 : PUSH) }).then(() => settled()).then(() => { if (mode === "desk" && focusId === id) zoomed = true; });
+        return go(st.near, { after: [st.corner, st.side, st.shoulder.pos], looks: looks2, ms: RM() ? 1 : 2300, delay: 40, fov: baseFov - (TALL() ? 0 : PUSH) }).then(() => settled()).then(() => { if (mode === "desk" && focusId === id) zoomed = true; });
       });
     },
     letGo(id) { const m = mates.get(id); if (m) m.actor.acts.wave(); }, // the goodbye plays once "Let go" is wired
@@ -861,8 +911,7 @@ function CSS_TEXT() { return `
 .hl-layer{position:fixed;inset:0;z-index:13;pointer-events:none}
 .hl-layer>*{position:fixed!important;left:0!important;top:0!important;pointer-events:auto;opacity:var(--k,0)}
 .hl-layer:not(.on)>*{pointer-events:none}
-.hl-layer .scr .ctl .fine{padding-left:150px}
-.hl-cam{position:absolute;left:16px;bottom:14px;width:126px;height:84px;border-radius:14px;overflow:hidden;box-shadow:0 8px 20px -10px rgba(20,24,40,.35),0 0 0 1px rgba(16,20,40,.06);background:#eef0f4;z-index:3}
+.hl-cam{position:absolute;right:14px;bottom:92px;width:132px;height:88px;border-radius:14px;overflow:hidden;box-shadow:0 8px 20px -10px rgba(20,24,40,.35),0 0 0 1px rgba(16,20,40,.06);background:#eef0f4;z-index:3}
 .hl-cam canvas{width:100%;height:100%;display:block}
 .hl-cam::after{content:"";position:absolute;left:9px;top:9px;width:8px;height:8px;border-radius:50%;background:#ff5a5a;box-shadow:0 0 0 3px rgba(255,90,90,.18)}
 @media (max-width:719px){.hl-cards{left:12px;right:12px;translate:none;flex-direction:column}}

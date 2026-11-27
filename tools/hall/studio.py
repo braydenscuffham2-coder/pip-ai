@@ -70,7 +70,7 @@ def pot(name, x, y, r, h, c):
 
 def plant(name, x, y, c, s=1.0, tall=False):
     """A stylised fig: a few soft trunks and broad, drooping leaves radiating out, no balls on sticks."""
-    rnd = random.Random(hash(name) & 0xffff)
+    rnd = random.Random(__import__("zlib").crc32(name.encode()) & 0xffff)  # stable across runs: hash() is salted per process
     pot(name + "_pot", x, y, 0.27 * s, 0.48 * s, c)
     h = (1.75 if tall else 1.1) * s
     for t in range(3 if tall else 2):
@@ -241,11 +241,10 @@ def desk(dc, live, marks):
     empty("desk_kb", (-0.02, 0.2, 0.79), c=marks)
 
 def device(dv, live):
-    """A tool, as a soft pearl pod with a little window for its name and a light that says how it is."""
-    rbox("dev_body", (0.86, 0.46, 0.5), (0, 0, 0.25), M['white'], dv, bevel=0.19, segs=8)
-    rbox("dev_face", (0.64, 0.03, 0.27), (0, -0.222, 0.29), M['soft'], dv, bevel=0.012, segs=4)
-    rbox("dev_foot", (0.6, 0.3, 0.02), (0, 0, 0.01), M['soft'], dv, bevel=0.009, segs=3)
-    cyl("dev_led", 0.03, 0.02, (0.3, -0.232, 0.095), M['aqua'], live, rot=(math.pi / 2, 0, 0), v=24)
+    """A tool, as a soft square tile like an app icon: the page paints the tool's own logo on its face."""
+    rbox("dev_body", (0.5, 0.15, 0.5), (0, 0, 0.27), M["white"], dv, bevel=0.07, segs=8)
+    rbox("dev_foot", (0.3, 0.12, 0.02), (0, 0.01, 0.01), M['soft'], dv, bevel=0.008, segs=3)
+    cyl("dev_led", 0.018, 0.01, (0.185, -0.078, 0.455), M['aqua'], live, rot=(math.pi / 2, 0, 0), v=20)
 
 def lights(S):
     w = bpy.data.worlds.new("w"); S.world = w; w.use_nodes = True

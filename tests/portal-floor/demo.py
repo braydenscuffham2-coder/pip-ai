@@ -74,4 +74,7 @@ open(OUT + "/portal-office.js", "w").write(off)
 shutil.copy(PUB + "/portal-pip.js", OUT + "/portal-pip.js")
 for f in os.listdir(PUB + "/portal-art"):
     if f.endswith(".webp") or f.endswith(".glb"): shutil.copy(PUB + "/portal-art/" + f, OUT + "/portal-art/" + f)
+os.makedirs(OUT + "/portal-art/logos", exist_ok=True)
+for f in os.listdir(PUB + "/portal-art/logos"):
+    if f.endswith(".svg"): shutil.copy(PUB + "/portal-art/logos/" + f, OUT + "/portal-art/logos/" + f)
 print(OUT, sorted(os.listdir(OUT + "/portal-art")))

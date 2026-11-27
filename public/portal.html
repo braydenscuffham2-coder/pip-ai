@@ -909,6 +909,7 @@ html.fl-pov-on .fl-roster{opacity:0;pointer-events:none;transform:translate(-50%
 html.fl-pov-on .fl-head{opacity:0;pointer-events:none;transform:translateY(-16px)}
 .fl-pov-top,.fl-folders,.fl-keys{transition:opacity .3s var(--ease)}
 html.fl-paper-on :is(.fl-pov-top,.fl-folders,.fl-keys){opacity:0;pointer-events:none}
+html.fl-paper-on .hl-cam{opacity:0}
 
 /* over the shoulder */
 .fl-pov{position:fixed;inset:0;z-index:12;pointer-events:none;animation:fade .6s var(--ease) both}
@@ -1002,6 +1003,114 @@ html.fl-paper-on :is(.fl-pov-top,.fl-folders,.fl-keys){opacity:0;pointer-events:
 .scr .ctl .fine{margin:0}
 .scr .ctl .btn{margin-left:auto}
 .scr .pill{font-size:13px}
+/* ---- the teammate's own computer: a desktop, not a dashboard ---- */
+.scr.os2{height:600px;min-height:0;overflow:hidden;font-size:15px;background:radial-gradient(110% 90% at 88% -10%,color-mix(in srgb,var(--c) 30%,#fff) 0,transparent 58%),radial-gradient(80% 70% at -5% 105%,#e9ecff 0,transparent 60%),linear-gradient(180deg,#f8f9fc,#eceff6)}
+.os2::after{display:none}
+.os2 .mb{position:absolute;left:0;right:0;top:0;height:36px;display:flex;align-items:center;gap:10px;padding:0 14px 0 12px;background:rgba(255,255,255,.6);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-bottom:1px solid rgba(20,24,60,.06);font-size:13.5px;color:var(--ink-3);z-index:4}
+.os2 .mb .fl-av{width:22px;height:22px;flex:none}
+.os2 .mb b{color:var(--ink);font-weight:600}
+.os2 .mb .role{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px}
+.os2 .sp{flex:1}
+.os2 .mb .st{display:inline-flex;align-items:center;gap:7px;height:24px;padding:0 10px;border-radius:999px;background:rgba(255,255,255,.85);font-weight:600;font-size:12.5px;color:var(--ink-2)}
+.os2 .mb .st i{width:8px;height:8px;border-radius:50%;background:#a3a7bd}
+.os2 .mb .st.k-live i{background:#19b39b;box-shadow:0 0 0 4px rgba(25,179,155,.16);animation:fl-beat 1.6s ease-in-out infinite}
+.os2 .mb .st.k-needs{background:#fff4d6;color:#7a5200}.os2 .mb .st.k-needs i{background:var(--gold)}
+.os2 .mb .st.k-build i{background:var(--violet)}.os2 .mb .st.k-paused i{background:#c2c5d3}
+.os2 .mb .clock{font:400 13px/1 var(--f-mono);color:var(--ink-2)}
+.os2 .more{position:relative}
+.os2 .dots{appearance:none;border:0;background:transparent;display:flex;gap:3px;align-items:center;justify-content:center;width:30px;height:26px;border-radius:8px;cursor:pointer}
+.os2 .dots:hover,.os2 .dots[aria-expanded=true]{background:rgba(20,24,60,.07)}
+.os2 .dots i{width:4px;height:4px;border-radius:50%;background:var(--ink-2)}
+.os2 .menu{position:absolute;right:0;top:32px;min-width:190px;padding:6px;border-radius:12px;background:rgba(255,255,255,.97);box-shadow:0 0 0 1px rgba(20,24,60,.07),0 18px 40px -16px rgba(30,30,80,.4);z-index:6}
+.os2 .menu button{appearance:none;border:0;background:none;width:100%;text-align:left;padding:9px 12px;border-radius:8px;font:500 14px/1.2 var(--f-body);color:var(--ink);cursor:pointer}
+.os2 .menu button:hover{background:#f3f2f8}.os2 .menu .danger{color:#b4232f}
+.os2 .files{position:absolute;left:12px;top:52px;width:96px;display:flex;flex-direction:column;gap:10px;z-index:2}
+.os2 .file{appearance:none;border:0;background:transparent;display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 4px 6px;border-radius:12px;cursor:pointer;color:var(--ink);font:500 12.5px/1.2 var(--f-body);text-align:center}
+.os2 .file:hover,.os2 .file:focus-visible{background:rgba(255,255,255,.6)}
+.os2 .file .doc{position:relative;width:40px;height:50px;border-radius:5px 12px 5px 5px;background:linear-gradient(180deg,#fff,#f4f4f8);box-shadow:0 0 0 1px rgba(20,24,60,.08),0 8px 14px -8px rgba(20,24,60,.35)}
+.os2 .file .doc::before{content:"";position:absolute;left:8px;right:8px;top:14px;height:20px;background:repeating-linear-gradient(180deg,#d9dcea 0 2px,transparent 2px 6px)}
+.os2 .file .doc::after{content:"";position:absolute;left:0;right:0;bottom:0;height:9px;border-radius:0 0 5px 5px;background:var(--c)}
+.os2 .file.f3 .doc::after{background:#5b5680}.os2 .file.f2 .doc::after{background:#c9a24a}
+.os2 .file .nm{max-width:90px;text-shadow:0 1px 0 rgba(255,255,255,.7)}
+.os2 .win{position:absolute;left:118px;top:50px;right:308px;bottom:92px;border-radius:18px;background:rgba(255,255,255,.95);box-shadow:0 0 0 1px rgba(20,24,60,.06),0 30px 60px -30px rgba(30,30,90,.45);display:flex;flex-direction:column;overflow:hidden;z-index:2}
+.os2 .win .bar{height:42px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 16px;border-bottom:1px solid #f0eff6;font-size:14px}
+.os2 .win .bar .lights{display:flex;gap:7px}.os2 .win .bar .lights i{width:11px;height:11px;border-radius:50%;background:#ff6b5f}.os2 .win .bar .lights i+i{background:#febc2e}.os2 .win .bar .lights i+i+i{background:#28c840}
+.os2 .win .bar b{font-weight:600}
+.os2 .btn.sm{min-height:32px;padding:0 12px;font-size:13.5px;gap:6px}
+.os2 .btn.sm svg.i{width:15px;height:15px}
+.os2 .body{padding:20px 24px;overflow:hidden;flex:1;min-height:0}
+.os2 .big{font:400 33px/1.08 var(--f-display);letter-spacing:-.01em;margin:6px 0 10px;max-width:22ch;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.os2 .lede{color:var(--ink-2);font-size:15.5px;max-width:42ch;margin:0 0 14px}
+.os2 .now-k{display:flex;align-items:center;gap:9px;margin:0;font:600 12.5px/1.2 var(--f-body);letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+.os2 .typing::after{content:"";display:inline-block;width:2px;height:.9em;margin-left:4px;vertical-align:-.08em;background:var(--c);animation:os-caret 1s steps(1) infinite}
+@keyframes os-caret{50%{opacity:0}}
+.os2 .feed{background:none;box-shadow:none;padding:0;margin-top:6px;border-top:1px solid #f0eff6}
+.os2 .feed li{grid-template-columns:62px minmax(0,1fr) auto;font-size:14.5px;padding:9px 0;border-top:1px solid #f4f3f8}
+.os2 .feed li:first-child{border-top:0}
+.os2 .feed li span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.os2 .feed .ok{color:var(--good);display:grid}.os2 .feed .ok svg.i{width:15px;height:15px}
+.os2 .now-k.gap{margin:22px 0 10px}
+.os2 .jobs{display:flex;flex-direction:column;gap:9px}
+.os2 .jobs li{display:flex;gap:12px;align-items:baseline;font-size:15px;color:var(--ink-2)}
+.os2 .jobs li i{width:8px;height:8px;flex:none;border-radius:50%;background:var(--c);transform:translateY(-1px)}
+.os2 .asks{display:flex;flex-direction:column;gap:10px;margin-top:4px}
+.os2 .asks li{display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:14px;background:#fbfaf6;box-shadow:inset 0 0 0 1px rgba(227,160,8,.2)}
+.os2 .asks .tx{flex:1;min-width:0;display:flex;flex-direction:column}
+.os2 .asks .tx b{font-size:15px}.os2 .asks .tx span{font-size:13px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.os2 .hero{display:flex;gap:18px;align-items:flex-start;margin-bottom:12px}
+.os2 .hero .glyph{width:52px;height:52px;flex:none;border-radius:16px;display:grid;place-items:center;background:#f1f0f6;color:var(--ink-2)}
+.os2 .build{display:flex;flex-direction:column;gap:10px;margin-top:6px}
+.os2 .build li{display:flex;align-items:center;gap:12px;font-size:15px;color:var(--ink-3)}
+.os2 .build li i{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;box-shadow:inset 0 0 0 2px #dcdbe8}
+.os2 .build li.done{color:var(--ink)}.os2 .build li.done i{background:var(--violet);box-shadow:none;color:#fff}.os2 .build li.done i svg.i{width:14px;height:14px}
+.os2 .build li.now{color:var(--ink);font-weight:600}.os2 .build li.now i{box-shadow:inset 0 0 0 2px var(--violet);animation:fl-beat 1.4s ease-in-out infinite}
+.os2 .lg{width:var(--s);height:var(--s);flex:none;display:grid;place-items:center;border-radius:calc(var(--s) * .26);background:#fff;box-shadow:0 0 0 1px rgba(20,24,60,.07)}
+.os2 .lg img{width:74%;height:74%;object-fit:contain}
+.os2 .lg.off img{filter:grayscale(1);opacity:.5}
+.os2 .lg b{font-size:calc(var(--s) * .45);color:var(--ink-2)}
+.os2 .wid{position:absolute;right:14px;top:50px;width:280px;display:flex;flex-direction:column;gap:12px;z-index:2}
+.os2 .w{padding:12px 14px;border-radius:16px;background:rgba(255,255,255,.8);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:0 0 0 1px rgba(20,24,60,.05),0 14px 30px -22px rgba(30,30,90,.4)}
+.os2 .w .wl{margin:0 0 8px;font:600 12px/1.2 var(--f-body);letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+.os2 .wk .nums{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.os2 .wk span{display:flex;flex-direction:column;font-size:12.5px;color:var(--ink-3)}
+.os2 .wk b{font:400 30px/1 var(--f-display);color:var(--ink)}
+.os2 .wk .warn b{color:#b4232f}
+.os2 .tools ul{display:flex;flex-direction:column;gap:7px}
+.os2 .tools li{display:flex;align-items:center;gap:10px;font-size:14px}
+.os2 .tools .tn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.os2 .dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--gold)}
+.os2 .dot.k-ok{background:#19b39b}.os2 .dot.k-pip{background:var(--violet)}
+.os2 .osdock{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:22px;background:rgba(255,255,255,.62);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:0 0 0 1px rgba(255,255,255,.7),0 18px 36px -20px rgba(30,30,90,.45);z-index:3}
+.os2 .ap{appearance:none;border:0;background:none;padding:0;position:relative;display:grid;place-items:center;width:46px;height:46px;border-radius:13px;cursor:pointer;transition:transform .25s var(--ease)}
+.os2 .ap:hover{transform:translateY(-4px) scale(1.06)}
+.os2 .ap.on::after{content:"";position:absolute;bottom:-6px;width:4px;height:4px;border-radius:50%;background:var(--ink-2)}
+.os2 .ap .lg{--s:42px!important;width:42px;height:42px;border-radius:11px}
+.os2 .appi{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;color:#fff}
+.os2 .appi svg.i{width:22px;height:22px}
+.os2 .appi.today{background:linear-gradient(160deg,color-mix(in srgb,var(--c) 70%,#fff),var(--c))}
+.os2 .appi.log{background:linear-gradient(160deg,#7c77a8,#4f4a78)}
+.os2 .badge{position:absolute;top:-2px;right:-2px;width:12px;height:12px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 2px #fff}
+.os2 .badge.k-pip{background:var(--violet)}
+.os2 .sep{width:1px;height:30px;background:rgba(20,24,60,.12);margin:0 2px}
+.fl-css .os2 :is(.btn,.file,.ap,.dots){min-height:0}
+@media (prefers-reduced-motion:no-preference){
+  .fl-css .scr.os2.on:not(.settled) :is(.mb,.files .file,.win,.w,.osdock){animation:scr-in .5s var(--ease) both}
+  .fl-css .scr.os2.on:not(.settled) .win{animation-delay:.06s}
+  .fl-css .scr.os2.on:not(.settled) .w{animation-delay:.12s}.fl-css .scr.os2.on:not(.settled) .w+.w{animation-delay:.18s}
+  .fl-css .scr.os2.on:not(.settled) .files .file:nth-child(2){animation-delay:.04s}.fl-css .scr.os2.on:not(.settled) .files .file:nth-child(3){animation-delay:.08s}.fl-css .scr.os2.on:not(.settled) .files .file:nth-child(4){animation-delay:.12s}
+  .fl-css .scr.os2.on:not(.settled) .osdock{animation-delay:.2s}
+}
+@media (max-width:719px),(max-height:559px){
+  .fl-scr-host .scr.os2{height:auto;background:none}
+  .fl-scr-host .os2 :is(.mb,.files,.osdock,.wid .wk){display:none}
+  .fl-scr-host .os2 :is(.win,.wid){position:static;width:auto;box-shadow:none;background:none}
+  .fl-scr-host .os2 .win .bar{height:auto;border:0;padding:12px 16px 0;justify-content:flex-end}
+  .fl-scr-host .os2 .win .bar :is(.lights,b){display:none}
+  .fl-scr-host .os2 .feed li{grid-template-columns:62px minmax(0,1fr) auto}
+  .fl-scr-host .os2 .body{padding:16px}
+  .fl-scr-host .os2 .wid{padding:0 16px 16px}
+  .fl-scr-host .os2 .big{font-size:28px}
+}
 
 /* your desk: the Portal's sections in a drawer over the floor */
 .fl-desk{position:fixed;z-index:16;top:calc(94px + env(safe-area-inset-top,0px));right:max(14px,env(safe-area-inset-right,0px));bottom:max(14px,env(safe-area-inset-bottom,0px));width:min(600px,calc(100vw - 28px));display:flex;flex-direction:column;border-radius:28px;background:rgba(251,250,247,.94);-webkit-backdrop-filter:blur(24px) saturate(1.4);backdrop-filter:blur(24px) saturate(1.4);box-shadow:0 0 0 1px rgba(255,255,255,.9),0 40px 90px -40px rgba(38,34,90,.55);overflow:hidden;animation:fl-drawer .55s var(--ease) both}
@@ -1042,7 +1151,7 @@ html.fl-desk-open .fl-tags .tag{visibility:hidden}
 .pp-tab{position:absolute;top:-36px;width:52%;height:40px;padding:0 20px;border-radius:14px 14px 0 0;background:color-mix(in srgb,var(--c,#e9a534) 55%,#fff);display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px;color:#4a3a10}
 .pp-folder.even .pp-tab{right:0}.pp-folder.odd .pp-tab{left:0} /* where the tab sits on the folder you picked up */
 .pp-tab i{display:none}
-.pp-paper{position:relative;z-index:1;margin:0 28px;border-radius:6px;background:var(--paper);box-shadow:0 1px 0 rgba(0,0,0,.03),0 24px 50px -24px rgba(38,34,60,.45);padding:40px 46px 96px;min-height:440px;
+.pp-paper{position:relative;z-index:1;margin:0 28px;border-radius:6px;background:var(--paper);box-shadow:0 1px 0 rgba(0,0,0,.03),0 24px 50px -24px rgba(38,34,60,.45);padding:40px 46px 124px;min-height:440px;
   transform:translateY(170px) rotate(-.5deg);opacity:0;clip-path:inset(0 0 180px 0);transition:transform .38s var(--ease),opacity .2s var(--ease),clip-path .38s var(--ease)} /* inside the folder until it opens */
 #paper.pp-open .pp-paper{transform:rotate(-.5deg);opacity:1;clip-path:inset(-60px -60px -60px -60px);transition:transform .7s var(--ease) .16s,opacity .25s var(--ease) .16s,clip-path .7s var(--ease) .16s}
 #paper.pp-swap .pp-paper{transform:translateY(170px) rotate(-.5deg);opacity:0;clip-path:inset(0 0 180px 0);transition:transform .23s var(--ease),opacity .2s var(--ease) .03s,clip-path .23s var(--ease)}
@@ -1063,10 +1172,10 @@ html.fl-desk-open .fl-tags .tag{visibility:hidden}
 .pp-paper .tl span{font-size:13.5px;color:var(--ink-3)}
 .pp-paper .wl li{display:grid;grid-template-columns:70px minmax(0,1fr) auto;gap:10px;align-items:baseline;padding:8px 0;border-top:1px solid rgba(11,13,31,.06)}
 .pp-paper .wl time{font:400 13px/1.3 var(--f-mono);color:var(--ink-3)}
-.pp-paper .stamp{position:absolute;right:40px;bottom:62px;transform:rotate(-9deg);padding:10px 16px 9px;border:2.5px solid rgba(91,63,224,.62);border-radius:12px;color:rgba(91,63,224,.78);font:500 12px/1.4 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;text-align:center;mix-blend-mode:multiply}
+.pp-paper .stamp{position:absolute;right:40px;bottom:34px;transform:rotate(-9deg);padding:10px 16px 9px;border:2.5px solid rgba(91,63,224,.62);border-radius:12px;color:rgba(91,63,224,.78);font:500 12px/1.4 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;text-align:center;mix-blend-mode:multiply}
 .pp-paper .stamp b{display:block;font:400 24px/1.1 var(--f-display);letter-spacing:0;text-transform:none}
 .pp-front{position:absolute;z-index:2;left:-6px;right:-6px;top:118px;bottom:-4px;border-radius:12px 12px 16px 16px;background:linear-gradient(180deg,#fbf2de,#efdfba);box-shadow:0 -12px 24px -16px rgba(80,60,20,.3),inset 0 1px 0 rgba(255,255,255,.75);transform-origin:50% 100%;transform:rotateX(0);transition:transform .38s var(--ease) .1s;backface-visibility:hidden} /* the front cover, closed */
-#paper.pp-open .pp-front{transform:rotateX(77deg);transition:transform .6s cubic-bezier(.3,1.25,.5,1)}
+#paper.pp-open .pp-front{transform:rotateX(88deg);opacity:0;transition:transform .6s cubic-bezier(.3,1.25,.5,1),opacity .25s var(--ease) .4s}
 .pp-front span{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);padding:6px 14px;border-radius:8px;background:rgba(255,255,255,.55);font:400 12.5px/1.2 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:#6b5320;white-space:nowrap}
 @keyframes pp-rise{from{opacity:0;transform:translateY(170px) rotate(-.5deg);clip-path:inset(0 0 180px 0)}to{opacity:1;transform:rotate(-.5deg);clip-path:inset(-60px)}}
 
@@ -1255,7 +1364,7 @@ function loadPart(name) {
   if (!PARTS[name]) PARTS[name] = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "/" + name + ".js?v=" + PART_V; sc.async = true; sc.onload = res; sc.onerror = () => { delete PARTS[name]; rej(new Error(name)); }; document.head.append(sc); });
   return PARTS[name];
 }
-const PART_V = "16";
+const PART_V = "17";
 function loadThree() {
   if (!threeP) { const l = document.createElement("link"); l.rel = "modulepreload"; l.href = THREE_URL; l.integrity = THREE_SRI; l.crossOrigin = "anonymous"; document.head.append(l); threeP = import(THREE_URL); threeP.catch(() => { threeP = null; }); }
   return threeP;
@@ -2573,37 +2682,71 @@ const avatar = (a, cls) => { // their real 3D head once the office has drawn it,
   return h("span", { class: "fl-av" + (cls ? " " + cls : "") + (u ? " img" : ""), style: u ? { "--c": hexOf(a), backgroundImage: "url(" + u + ")" } : { "--c": hexOf(a) }, "aria-hidden": "true" });
 };
 
-// ---------- the screen you read over a teammate's shoulder ----------
+// ---------- the screen you read over a teammate's shoulder: their own computer ----------
+// A real desktop: their files down the side, the app they're working in, widgets for the week and their tools, a dock.
+const stepState = (x) => (x.status === "active" ? "ok" : ["failed", "expired", "revoked"].includes(x.status) ? "you" : x.waiting_on === "pip" || ["submitted", "unsupported"].includes(x.status) ? "pip" : "you");
+const toolName = (x) => brandsOf(x, stepState(x)).name;
+function logoMark(x, size, decor) { // the tool's own logo (greyed until it's connected), or its initial
+  const st = stepState(x), b = brandsOf(x, st), k = b.logos[0];
+  return h("span", { class: "lg" + (st === "ok" ? "" : " off"), style: { "--s": size + "px" }, "aria-hidden": "true" },
+    k && k.charAt(0) !== "~" ? h("img", { src: "/portal-art/logos/" + k + ".svg", alt: "", width: size, height: size, decoding: "async" }) : h("b", {}, (k ? k.slice(1) : b.name).charAt(0).toUpperCase()));
+}
+const goTool = (x) => openStation(COMMS_KINDS.includes(x.kind) ? "comms" : "tools", x.slot);
 function screenFor(a, decor) {
   const d = S.data, name = mateName(a), L = mateLook(a), log = logFor(a), steps = d.checklist.filter((s) => (s.agents || []).includes(a.skill_id));
   const now = new Date(), today = log.filter((l) => dayKey(l.at) === now.toDateString()).length, week = log.filter((l) => now - new Date(l.at) < 7 * 864e5).length, rough = log.filter((l) => l.outcome === "failed" || l.outcome === "paused").length;
-  const st = AGENT[a.status] || [a.status, ""], paused = a.pauses.length > 0;
-  let eyebrow = "Right now · " + (paused && a.status !== "paused" ? "Held" : st[0]), title;
-  if (d.business.status === "disconnected") title = "Switched off. Everything is disconnected.";
-  else if (isPaused(a)) title = a.pauses.length ? "Paused: " + (a.pauses[0].detail || ({ owner: "by an owner", staff: "by staff", founder: "by Pip", expired_access: "a sign-in stopped working", disconnect: "everything was disconnected" }[a.pauses[0].reason] || a.pauses[0].reason)) : "Paused";
-  else if (building(a)) title = a.status === "testing" ? "Being tested by Pip" : "Being built by Pip";
-  else if (youNeeds(a).length) title = "Waiting on you: " + lowerFirst(youNeeds(a)[0]);
-  else if (a.status === "live") title = log[0] ? log[0].summary : "On the job. Nothing to report yet.";
-  else if (a.status === "approved") title = "Ready for Brayden's final check";
-  else title = "Ready. Starts once setup is done.";
-  const k = (x) => (decor ? null : x);
-  const feed = S.logState === "loading" ? h("div", { class: "feed", "aria-busy": "true" }, [1, 2, 3].map(() => h("div", { class: "sk p" })))
-    : S.logState === "error" ? h("p", { class: "quiet" }, "I couldn't load the log just now.")
-    : !log.length ? h("p", { class: "quiet" }, "Nothing yet. Every action shows here in plain words.")
-    : h("ul", { class: "feed" }, log.slice(0, 4).map((l) => h("li", {}, h("time", {}, new Date(l.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })), h("span", {}, l.summary), l.outcome === "failed" ? pill("Failed", "warn") : l.outcome === "paused" ? pill("Paused", "warn") : null)));
-  const needs = a.needs.length ? h("div", { class: "chips" }, a.needs.map((n) => { const s = d.checklist.find((x) => x.label === n || x.slot === n); return s && !decor ? h("button", { class: "chip", type: "button", "data-k": "scr-need-" + s.slot, onclick: () => openStation(COMMS_KINDS.includes(s.kind) ? "comms" : "tools", s.slot) }, n, icon("arrow")) : h("span", { class: "chip" }, n); }))
-    : h("p", { class: "okline" }, h("span", { class: "tick" }, icon("check")), "Nothing right now.");
-  const ctl = decor ? null : paused ? (isOwner() ? h("button", { class: "btn pri", "data-k": "res-" + a.spec_id, onclick: () => run(() => api("/business/" + S.bid + "/agents/" + a.spec_id + "/resume", {}), "Resumed.", () => Pip.happy()) }, icon("play"), "Resume") : h("p", { class: "fine" }, "An owner can resume."))
-    : h("button", { class: "btn quiet", "data-k": "pau-" + a.spec_id, "aria-label": (a.status === "live" ? "Pause " : "Hold before go-live: ") + name, onclick: () => run(() => api("/business/" + S.bid + "/agents/" + a.spec_id + "/pause", {}), "Paused. The rest of your team keeps working.") }, icon("pause"), a.status === "live" ? "Pause" : "Hold before go-live");
-  return h("div", { class: "scr", style: { "--c": hexOf(a) }, "aria-hidden": decor ? "true" : null, inert: decor ? "" : null },
-    h("div", { class: "os" }, h("span", { class: "lights", "aria-hidden": "true" }, h("i"), h("i"), h("i")), h("b", {}, name + "'s screen"), h("span", {}, a.role || a.name), h("span", { class: "clock" }, now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }))),
-    h("div", { class: "grid" },
-      h("section", { class: "now" }, h("p", { class: "eyebrow" }, h("span", { class: "rec " + L.kind }), eyebrow), h(decor ? "p" : "h2", { class: "title" }, title), k(h("h3", { class: "sub" }, "Recent")), feed),
-      h("div", { class: "side" },
-        h("div", { class: "card" }, h("p", { class: "eyebrow" }, "Activity"), h("div", { class: "stats" }, h("div", {}, h("b", {}, String(today)), h("span", {}, "today")), h("div", {}, h("b", {}, String(week)), h("span", {}, "this week")), h("div", {}, h("b", {}, String(rough)), h("span", {}, "needed a look")))),
-        h("div", { class: "card" + (youNeeds(a).length ? " warm" : "") }, h("p", { class: "eyebrow" }, youNeeds(a).length ? "Needs from you" : "Tools it uses"), needs),
-        steps.length ? h("div", { class: "card" }, h("p", { class: "eyebrow" }, "Tools"), h("ul", { class: "tools" }, steps.slice(0, 3).map((s) => h("li", {}, h("span", {}, s.label.replace(/^(Connect|Add|Register for)\s+(your\s+)?/i, "").replace(/^./, (c) => c.toUpperCase())), pill((STEP[s.status] || [s.status])[0], (STEP[s.status] || ["", ""])[1]))))) : null)),
-    h("div", { class: "ctl" }, h("p", { class: "fine" }, a.teammate ? a.name : a.role || ""), ctl));
+  const paused = isPaused(a), off = d.business.status === "disconnected", yn = youNeeds(a), owner = isOwner();
+  const k = (x) => (decor ? null : x), btn = (cls, dk, label, fn, ico) => decor ? h("span", { class: "btn " + cls }, ico ? icon(ico) : null, label) : h("button", { class: "btn " + cls, type: "button", "data-k": dk, onclick: fn }, ico ? icon(ico) : null, label);
+  const t = (at) => new Date(at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const jobs = [...new Set(steps.map((x) => x.can).filter(Boolean))].slice(0, 3);
+  // what the main window shows
+  let app, title, body, action = null;
+  if (off) { app = "off"; title = "Switched off"; body = [h("h2", { class: "big" }, "Everything is switched off."), h("p", { class: "lede" }, name + " isn't answering anything until the business is reconnected.")]; }
+  else if (paused) {
+    app = "paused"; title = "Paused";
+    const why = a.pauses.length ? (a.pauses[0].detail || ({ owner: "an owner paused " + name, staff: "staff paused " + name, founder: "Pip paused " + name, expired_access: "a sign-in stopped working", disconnect: "everything was disconnected" }[a.pauses[0].reason] || a.pauses[0].reason)) : "paused";
+    body = [h("div", { class: "hero paused" }, h("span", { class: "glyph", "aria-hidden": "true" }, icon("pause")), h("div", {}, h("h2", { class: "big" }, name + " is paused."), h("p", { class: "lede" }, "Because " + lowerFirst(why) + ". Nothing goes out until " + (owner ? "you resume." : "an owner resumes.")))),
+      owner ? btn("pri", "res-" + a.spec_id, "Resume " + name, () => run(() => api("/business/" + S.bid + "/agents/" + a.spec_id + "/resume", {}), "Resumed.", () => Pip.happy()), "play") : null];
+  } else if (building(a)) {
+    app = "build"; title = "Getting set up";
+    const phase = a.status === "testing" ? 2 : 1;
+    body = [h("h2", { class: "big" }, "Pip is " + (phase === 2 ? "testing " : "building ") + name + "."), h("p", { class: "lede" }, "You don't need to do anything yet. " + name + " moves in here the moment it's ready."),
+      h("ol", { class: "build" }, ["Job written", "Tools lined up", "Practice runs", "Brayden's check"].map((x, i) => h("li", { class: i < phase ? "done" : i === phase ? "now" : "" }, h("i", { "aria-hidden": "true" }, i < phase ? icon("check") : null), x)))];
+  } else if (yn.length) {
+    app = "needs"; title = "Waiting on you";
+    const need = yn.map(stepFor).filter(Boolean);
+    body = [h("h2", { class: "big" }, need.length === 1 ? "One thing from you, then " + name + " starts." : need.length + " things from you, then " + name + " starts."),
+      h("ul", { class: "asks" }, need.map((x) => h("li", {}, logoMark(x, 34), h("div", { class: "tx" }, h("b", {}, toolName(x)), h("span", {}, x.can || "")),
+        owner ? btn("pri sm", "scr-need-" + x.slot, ["failed", "expired", "revoked"].includes(x.status) ? "Reconnect" : "Connect", () => goTool(x), null) : h("span", { class: "fine" }, "An owner connects this.")))),
+      jobs.length ? [h("p", { class: "now-k gap" }, "Then " + name + " gets on with"), h("ul", { class: "jobs" }, jobs.map((x) => h("li", {}, h("i", { "aria-hidden": "true" }), x)))] : null];
+  } else if (a.status === "live") {
+    app = "today"; title = "Today";
+    if (S.logState === "loading") body = [h("div", { class: "feed", "aria-busy": "true" }, [1, 2, 3].map(() => h("div", { class: "sk p" })))];
+    else if (!log.length) body = [h("p", { class: "now-k" }, h("span", { class: "rec live" }), "On the job"), h("h2", { class: "big typing" }, "Waiting for the first customer to write in."), h("p", { class: "lede" }, "Every action " + name + " takes shows up here, in plain words.")];
+    else body = [h("p", { class: "now-k" }, h("span", { class: "rec live" }), "Just now · " + t(log[0].at)), h("h2", { class: "big typing" }, log[0].summary),
+      log.length > 1 ? h("ul", { class: "feed" }, log.slice(1, 6).map((l) => h("li", {}, h("time", {}, t(l.at)), h("span", {}, l.summary), l.outcome === "failed" ? pill("Failed", "warn") : l.outcome === "paused" ? pill("Paused", "warn") : h("i", { class: "ok", "aria-hidden": "true" }, icon("check"))))) : null];
+  } else { app = "ready"; title = a.status === "approved" ? "Final check" : "Ready";
+    body = [h("h2", { class: "big" }, a.status === "approved" ? "Ready for Brayden's final check." : "Ready. " + name + " starts once setup is done."), h("p", { class: "lede" }, a.teammate ? a.name : a.role || ""),
+      jobs.length ? [h("p", { class: "now-k gap" }, "What " + name + " will do"), h("ul", { class: "jobs" }, jobs.map((x) => h("li", {}, h("i", { "aria-hidden": "true" }), x)))] : null]; }
+  if (!decor && !paused && !off && !building(a)) action = owner ? h("button", { class: "btn quiet sm", type: "button", "data-k": "pau-" + a.spec_id, "aria-label": (a.status === "live" ? "Pause " : "Hold before go-live: ") + name, onclick: () => run(() => api("/business/" + S.bid + "/agents/" + a.spec_id + "/pause", {}), "Paused. The rest of your team keeps working.") }, icon("pause"), a.status === "live" ? "Pause" : "Hold") : null;
+  const more = !decor && owner ? h("div", { class: "more" }, h("button", { class: "dots", type: "button", "data-k": "scr-more", "aria-label": "More for " + name, "aria-expanded": S.deskMenu ? "true" : "false", onclick: () => { S.deskMenu = !S.deskMenu; render({ keepFocus: "scr-more" }); } }, h("i"), h("i"), h("i")),
+    S.deskMenu ? h("div", { class: "menu", role: "menu" }, h("button", { type: "button", role: "menuitem", "data-k": "fl-letgo", class: "danger", onclick: () => { S.deskMenu = false; S.letGo = a.spec_id; render({ keepFocus: "lg-keep" }); } }, "Let " + name + " go…")) : null) : null;
+  const st = L.kind === "needs" ? ["Needs you", "needs"] : L.kind === "live" ? ["Working", "live"] : L.kind === "build" ? ["Being built", "build"] : L.kind === "paused" ? ["Paused", "paused"] : ["Ready", "ready"];
+  const files = FOLDERS.map((f, i) => decor ? h("span", { class: "file f" + i }, h("span", { class: "doc", "aria-hidden": "true" }), h("span", { class: "nm" }, f))
+    : h("button", { class: "file f" + i, type: "button", "data-k": "scr-file-" + i, onclick: () => openPaper(a.spec_id, i), onpointerenter: () => FLOOR.office && FLOOR.office.hoverFolder(a.spec_id, i), onpointerleave: () => FLOOR.office && FLOOR.office.hoverFolder(a.spec_id, -1) }, h("span", { class: "doc", "aria-hidden": "true" }), h("span", { class: "nm" }, f)));
+  const tools = steps.slice(0, 6);
+  return h("div", { class: "scr os2 app-" + app, style: { "--c": hexOf(a) }, "aria-hidden": decor ? "true" : null, inert: decor ? "" : null },
+    h("div", { class: "mb" }, avatar(a, "sm"), h("b", {}, name), h("span", { class: "role" }, a.role || a.name), h("span", { class: "sp" }), h("span", { class: "st k-" + st[1] }, h("i"), st[0]), h("span", { class: "clock" }, now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })), more),
+    h("div", { class: "files", role: decor ? null : "group", "aria-label": decor ? null : name + "'s files" }, files),
+    h("section", { class: "win" }, h("div", { class: "bar" }, h("span", { class: "lights", "aria-hidden": "true" }, h("i"), h("i"), h("i")), h("b", {}, title), h("span", { class: "sp" }), action), h("div", { class: "body" }, body)),
+    h("aside", { class: "wid" },
+      h("div", { class: "w wk" }, h("p", { class: "wl" }, "This week"), h("div", { class: "nums" }, h("span", {}, h("b", {}, String(today)), "today"), h("span", {}, h("b", {}, String(week)), "this week"), h("span", { class: rough ? "warn" : "" }, h("b", {}, String(rough)), "to look at"))),
+      tools.length ? h("div", { class: "w tools" }, h("p", { class: "wl" }, name + "'s tools"), h("ul", {}, tools.map((x) => h("li", {}, logoMark(x, 22), h("span", { class: "tn" }, toolName(x)), h("i", { class: "dot k-" + stepState(x), title: (STEP[x.status] || [x.status])[0] }))))) : null),
+    h("nav", { class: "osdock", "aria-label": decor ? null : "Apps" },
+      k(h("button", { class: "ap on", type: "button", "data-k": "dock-today", "aria-label": title, onclick: () => {} }, h("span", { class: "appi today", "aria-hidden": "true" }, icon("activity")))) || h("span", { class: "ap on" }, h("span", { class: "appi today" }, icon("activity"))),
+      decor ? h("span", { class: "ap" }, h("span", { class: "appi log" }, icon("setup"))) : h("button", { class: "ap", type: "button", "data-k": "dock-log", "aria-label": "Work log", onclick: () => openPaper(a.spec_id, 3) }, h("span", { class: "appi log", "aria-hidden": "true" }, icon("setup"))),
+      tools.length ? h("span", { class: "sep", "aria-hidden": "true" }) : null,
+      tools.map((x) => decor ? h("span", { class: "ap" }, logoMark(x, 30, true)) : h("button", { class: "ap", type: "button", "data-k": "dock-" + x.slot, "aria-label": toolName(x) + ": " + (STEP[x.status] || [x.status])[0], title: toolName(x), onclick: () => goTool(x) }, logoMark(x, 30), stepState(x) === "ok" ? null : h("i", { class: "badge k-" + stepState(x), "aria-hidden": "true" })))));
 }
 
 // ---------- folders and their papers ----------
@@ -2717,8 +2860,8 @@ addEventListener("resize", () => {
   // crossing into or out of the compact layout (a phone turning, a window shrinking, zooming to 200%) moves the screen between the monitor and the sheet
   const n = narrow(); if (FLOOR.wasNarrow != null && n !== FLOOR.wasNarrow && floorOn()) { FLOOR.focusShown = null; render(); } FLOOR.wasNarrow = n;
 });
-function openMate(id) { if (!S.data.agents.some((a) => a.spec_id === id)) return; S.focus = id; S.desk = false; S.station = null; S.menu = null; S.letGo = null; render({ keepFocus: "fl-back" }); }
-function closeMate() { const id = S.focus; S.focus = null; S.letGo = null; render({ keepFocus: "fl-m-" + id }); }
+function openMate(id) { if (!S.data.agents.some((a) => a.spec_id === id)) return; S.deskMenu = false; S.focus = id; S.desk = false; S.station = null; S.menu = null; S.letGo = null; render({ keepFocus: "fl-back" }); }
+function closeMate() { const id = S.focus; S.focus = null; S.letGo = null; S.deskMenu = false; render({ keepFocus: "fl-m-" + id }); }
 function walk(dir) { const ag = S.data.agents, i = ag.findIndex((a) => a.spec_id === S.focus); if (i < 0 || !ag.length) return; openMate(ag[(i + dir + ag.length) % ag.length].spec_id); }
 function openDesk(tab, slot) { const was = S.desk && !S.station; S.desk = true; S.focus = null; S.station = null; S.menu = null; S.deskFocus = !was && !slot; if (slot) { S.openTouched = true; S.openSlots = new Set([slot]); } setTab(tab || S.tab || "team", slot); }
 function closeDesk() { if (S.station && S.desk) { S.desk = false; render({ keepFocus: "fl-st-open" }); return; } toFloor(); } // a station's panel closes back onto its scene
@@ -2791,7 +2934,8 @@ function stationModel() {
   const frac = u && !u.off && Number(u.included_usd) > 0 ? Number(u.value_usd || 0) / Number(u.included_usd) : 0;
   const late = bill && (bill.billing_status === "past_due" || bill.billing_status === "paused");
   const stateOf = (x) => (x.status === "active" ? "ok" : ["failed", "expired", "revoked"].includes(x.status) ? "you" : x.waiting_on === "pip" || ["submitted", "unsupported"].includes(x.status) ? "pip" : "you");
-  const tools = d.checklist.filter((x) => !COMMS_KINDS.includes(x.kind)).concat(d.extra_tools || []).map((x) => ({ short: shortTool(x.label || x.name || x.toolkit || "Tool"), kind: toolKind(x), hex: toolHex(x), state: x.slot ? stateOf(x) : x.status === "active" ? "ok" : "you" }));
+  const tools = d.checklist.filter((x) => !COMMS_KINDS.includes(x.kind)).concat(d.extra_tools || []).map((x) => { const st = x.slot ? stateOf(x) : x.status === "active" ? "ok" : "you", br = brandsOf(x, st);
+    return { short: shortTool(x.label || x.name || x.toolkit || "Tool"), kind: toolKind(x), hex: toolHex(x), state: st, slot: x.slot || null, logos: br.logos, brand: br.name }; });
   const cables = d.agents.filter((a) => !building(a)).map((a) => { const steps = a.needs.map(stepFor).filter(Boolean), st = steps.map(stateOf); return { id: a.spec_id, state: isPaused(a) ? "none" : st.includes("you") ? "you" : st.includes("pip") ? "pip" : "ok", cut: steps.some((x) => ["failed", "expired", "revoked"].includes(x.status)) }; });
   return { meter: { frac, warn: !!late || (u && Number(u.beyond_plan_usd) > 0) }, tools, cables, founder: d.role === "founder" };
 }
@@ -2853,6 +2997,18 @@ const toolKind = (x) => { const t = [x.slot, x.label, x.name, x.toolkit, x.kind]
   return /calendar/.test(t) ? "cal" : /book|appoint|calendly|acuity/.test(t) ? "book" : /mail|gmail|outlook/.test(t) ? "mail" : /sheet|excel/.test(t) ? "grid" : /chat|slack|teams|message|text/.test(t) ? "chat" : /sign/.test(t) ? "sign" : /review|profile|google_profile/.test(t) ? "star" : /pay|square|stripe|quickbooks|invoice|account/.test(t) ? "coin" : /camera/.test(t) ? "cam" : /web|site/.test(t) ? "web" : "plug"; };
 const TOOL_HEX = { cal: "#ff9ac0", book: "#5eead9", mail: "#7cc4ff", grid: "#8fd8bb", chat: "#9b86ff", sign: "#ffc861", star: "#ffc861", coin: "#8fd8bb", cam: "#7cc4ff", web: "#9b86ff", plug: "#cfc3ff" };
 const toolHex = (x) => TOOL_HEX[toolKind(x)];
+// the real software behind a tool: its own logo once it's connected, the choices (greyed) until then
+const LOGOS = new Set(["googlecalendar", "gmail", "googlesheets", "outlook", "calendly", "square", "slack", "hubspot", "shopify", "google", "googledrive", "quickbooks", "stripe", "mailchimp", "zoom", "salesforce", "notion", "airtable", "dropbox", "trello", "asana", "facebook", "instagram", "whatsapp", "intercom", "zendesk", "xero", "typeform", "yelp", "googlemaps", "twilio", "microsoftteams", "squarespace"]);
+const BRAND = { googlecalendar: "Google Calendar", gmail: "Gmail", googlesheets: "Google Sheets", outlook: "Outlook", calendly: "Calendly", acuityscheduling: "Acuity", square: "Square", slack: "Slack", hubspot: "HubSpot", shopify: "Shopify", docusign: "DocuSign", google: "Google", googledrive: "Google Drive", quickbooks: "QuickBooks", stripe: "Stripe", mailchimp: "Mailchimp", zoom: "Zoom", microsoftteams: "Teams" };
+const SLOT_TK = { google_profile: "google" };
+function brandsOf(x, st) {
+  const tkOf = (c) => (c && typeof c === "object" ? c.toolkit : c) || null;
+  const picked = tkOf(x.choice) || (x.toolkit && !x.slot ? x.toolkit : null) || (st === "ok" && x.choices && x.choices.length === 1 ? tkOf(x.choices[0]) : null);
+  const list = picked ? [picked] : (x.choices || []).map(tkOf).filter(Boolean).slice(0, 3);
+  if (!list.length && SLOT_TK[x.slot]) list.push(SLOT_TK[x.slot]);
+  const name = list.length === 1 ? BRAND[list[0]] || (x.choices || []).map((c) => c && c.label).find(Boolean) || null : null;
+  return { logos: list.map((k) => (LOGOS.has(k) ? k : "~" + (BRAND[k] || k))), name: name || shortTool(x.label || x.name || x.toolkit || "Tool") };
+}
 function firstToday() { const k = new Date().toDateString(); let seen = null; try { seen = localStorage.getItem("pip-portal:arrived"); localStorage.setItem("pip-portal:arrived", k); } catch (e) { /* private mode */ } return seen !== k; }
 
 // "Let go": the confirm card is real, the action is not wired yet. Pressing "Let go" does nothing on purpose.
@@ -2941,13 +3097,13 @@ function renderFloor(opts = {}) {
     pov = h("section", { class: "fl-pov" + (office3d ? " on3d" : ""), "aria-label": "At " + name + "'s desk" },
       h("div", { class: "fl-pov-top" },
         h("button", { class: "btn ghost glass", type: "button", "data-k": "fl-back", onclick: closeMate }, icon("back"), "The floor"),
-        isOwner() ? h("button", { class: "btn ghost glass fl-letgo-btn", type: "button", "data-k": "fl-letgo", onclick: () => { S.letGo = a.spec_id; render({ keepFocus: "lg-keep" }); } }, h("span", { class: "lg-long" }, "Let " + name + " go"), h("span", { class: "lg-short", "aria-hidden": "true" }, "Let go")) : null,
+        isOwner() && !office3d ? h("button", { class: "btn ghost glass fl-letgo-btn", type: "button", "data-k": "fl-letgo", onclick: () => { S.letGo = a.spec_id; render({ keepFocus: "lg-keep" }); } }, h("span", { class: "lg-long" }, "Let " + name + " go"), h("span", { class: "lg-short", "aria-hidden": "true" }, "Let go")) : null,
         h("p", { class: "fl-who glass" }, avatar(a), h("b", {}, name), a.role ? h("span", { class: "role" }, a.role) : null, h("span", { class: "st k-" + L.kind }, h("i", { "aria-hidden": "true" }), L.kind === "needs" ? "Needs you" : L.kind === "live" ? "Working" : L.kind === "build" ? (AGENT[a.status] || ["Being built"])[0] : L.kind === "paused" ? "Paused" : "Ready")),
         ag.length > 1 ? h("div", { class: "fl-walk" },
           h("button", { class: "btn ghost glass", type: "button", "data-k": "fl-prev", "aria-label": "Previous desk: " + mateName(prev), onclick: () => walk(-1) }, h("span", { "aria-hidden": "true" }, "‹"), avatar(prev), h("span", { class: "lbl" }, mateName(prev))),
           h("button", { class: "btn ghost glass", type: "button", "data-k": "fl-next", "aria-label": "Next desk: " + mateName(next), onclick: () => walk(1) }, avatar(next), h("span", { class: "lbl" }, mateName(next)), h("span", { "aria-hidden": "true" }, "›"))) : null),
       h("div", { class: "fl-scr-host", id: "fl-scr-host" }, office3d ? null : screenEl),
-      h("div", { class: "fl-folders glass", role: "group", "aria-label": "Folders on " + name + "'s desk" }, h("p", { class: "lab" }, "On " + name + "'s desk"),
+      office3d ? null : h("div", { class: "fl-folders glass", role: "group", "aria-label": "Folders on " + name + "'s desk" }, h("p", { class: "lab" }, "On " + name + "'s desk"),
         h("div", { class: "row" }, FOLDERS.map((f, k) => h("button", { class: "fl-folder", type: "button", "data-k": "fl-f-" + k, style: { "--c": hexOf(a) }, onclick: () => openPaper(a.spec_id, k), onpointerenter: () => FLOOR.office && FLOOR.office.hoverFolder(a.spec_id, k), onpointerleave: () => FLOOR.office && FLOOR.office.hoverFolder(a.spec_id, -1), onfocus: () => FLOOR.office && FLOOR.office.hoverFolder(a.spec_id, k), onblur: () => FLOOR.office && FLOOR.office.hoverFolder(a.spec_id, -1) }, h("span", { class: "fi", "aria-hidden": "true" }), f)))),
       h("p", { class: "fl-keys glass", "aria-hidden": "true" }, h("kbd", {}, "Esc"), "back to the floor", h("kbd", {}, "←"), h("kbd", {}, "→"), "next desk"),
       S.letGo === a.spec_id ? letGoCard(a) : null);

@@ -119,6 +119,7 @@ function createPipEngine(THREE, opts) {
     const handSkin = pearl(0.8, look); handSkin.envMap = env;
     const hands = [-1, 1].map(() => { const g = new THREE.Mesh(new THREE.SphereGeometry(0.24, seg[0] / 2, seg[1] / 2), handSkin); root.add(g); return g; });
     if (look.acc) accessory(look.acc, head, face, hands, env, look.core || C.aqua);
+    const clip = look.pm ? clipboard(hands[0], env) : null; // the floor manager's clipboard, in his left hand
     const shadowTex = radial([[0, "rgba(40,36,70,.55)"], [0.45, "rgba(40,36,70,.22)"], [1, "rgba(40,36,70,0)"]]);
     const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
     shadow.rotation.x = -Math.PI / 2; shadow.renderOrder = -4;
@@ -151,6 +152,7 @@ function createPipEngine(THREE, opts) {
       bulb.position.copy(tip); halo.position.copy(tip);
       halo.quaternion.copy(camera.quaternion).premultiply(q.copy(head.getWorldQuaternion(new THREE.Quaternion())).invert());
       hands.forEach((h, i) => { h.position.copy(Y.hands[i]); h.scale.setScalar(Y.handS[i]); h.visible = Y.handS[i] > 0.02; });
+      if (clip) { clip.g.rotation.set(Y.clipR.x, Y.clipR.y, Y.clipR.z); clip.tick.scale.setScalar(Math.max(0.001, Y.tick)); clip.tick.visible = Y.tick > 0.02; }
       const lift = Math.max(0, Y.pos.y - 1);
       shadow.position.set(Y.pos.x, 0.003, Y.pos.z); shadow.scale.setScalar(2.3 + lift * 0.9); shadow.material.opacity = 0.62 / (1 + lift * 1.25);
       hands.forEach((h, i) => {
@@ -160,6 +162,31 @@ function createPipEngine(THREE, opts) {
       floorGlow.position.set(Y.pos.x, 0.004, Y.pos.z); floorGlow.scale.setScalar(4.8 + lift * 1.2); floorGlow.material.color.set(Y.core); floorGlow.material.opacity = Y.floorGlow;
     }
     return { root, head, face, apply, shadow, handShadows, floorGlow, hands, body, skin };
+  }
+
+  // ----- Pip's clipboard: oak board, a steel clip, today's list with two ticks and one to go -----
+  function clipboard(hand, env) {
+    const g = new THREE.Group(); hand.add(g);
+    const inner = new THREE.Group(); inner.position.set(0.2, -0.34, 0.06); g.add(inner); // his hand grips the board's top corner
+    const add = (geo, mat, p, r) => { const m = new THREE.Mesh(geo, mat); m.position.set(...p); if (r) m.rotation.set(...r); inner.add(m); return m; };
+    const rr = (w, h, r) => { const sh = new THREE.Shape(), x = -w / 2, y = -h / 2; sh.moveTo(x + r, y); sh.lineTo(x + w - r, y); sh.quadraticCurveTo(x + w, y, x + w, y + r); sh.lineTo(x + w, y + h - r); sh.quadraticCurveTo(x + w, y + h, x + w - r, y + h); sh.lineTo(x + r, y + h); sh.quadraticCurveTo(x, y + h, x, y + h - r); sh.lineTo(x, y + r); sh.quadraticCurveTo(x, y, x + r, y); return sh; };
+    const board = new THREE.ExtrudeGeometry(rr(0.6, 0.8, 0.07), { depth: 0.03, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 3, curveSegments: 10 }); board.translate(0, 0, -0.015);
+    add(board, gloss("#e3c08f", { envMap: env, roughness: 0.45, clearcoat: 0.6 }), [0, 0, 0]);
+    add(new THREE.ShapeGeometry(rr(0.5, 0.6, 0.025), 6), gloss("#ffffff", { envMap: env, roughness: 0.9 }), [0, -0.06, 0.03]);
+    const line = new THREE.MeshBasicMaterial({ color: "#d3d6e2" }), done = new THREE.MeshBasicMaterial({ color: "#2fc4b2" }), todo = new THREE.MeshBasicMaterial({ color: "#c3c6d4" });
+    [0.12, -0.05, -0.22].forEach((y, i) => {
+      add(new THREE.ShapeGeometry(rr(0.075, 0.075, 0.016), 4), i < 2 ? done : todo, [-0.165, y, 0.033]);
+      if (i === 2) add(new THREE.ShapeGeometry(rr(0.05, 0.05, 0.01), 4), new THREE.MeshBasicMaterial({ color: "#ffffff" }), [-0.165, y, 0.034]);
+      add(new THREE.PlaneGeometry(0.24 - i * 0.04, 0.022), line, [0.04 - i * 0.02, y, 0.033]);
+    });
+    const tick = new THREE.Group(); tick.position.set(-0.165, -0.22, 0.037); inner.add(tick); // the third item, ticked off while he reads
+    const tm = new THREE.MeshBasicMaterial({ color: "#14a08d" });
+    const a = new THREE.Mesh(new THREE.PlaneGeometry(0.048, 0.016), tm); a.position.set(-0.018, -0.006, 0); a.rotation.z = -0.8; tick.add(a);
+    const b = new THREE.Mesh(new THREE.PlaneGeometry(0.085, 0.016), tm); b.position.set(0.016, 0.012, 0); b.rotation.z = 0.95; tick.add(b);
+    const steel = gloss("#cfd2dc", { envMap: env, roughness: 0.22, metalness: 0.6 });
+    add(new THREE.BoxGeometry(0.24, 0.085, 0.05), steel, [0, 0.39, 0.03]);
+    add(new THREE.TorusGeometry(0.035, 0.012, 8, 20), steel, [0, 0.44, 0.03]);
+    return { g, tick };
   }
 
   // ----- a teammate's one accessory: the same eight the Marketplace's teammates carry -----
@@ -220,7 +247,7 @@ function createPipEngine(THREE, opts) {
 
   function pose(t) {
     const Y = { pos: posAt(t), sx: 1, sy: 1, yaw: 0, pitch: 0, roll: 0, lookX: 0, lookY: 0, lookAt: null, eyeL: "open", eyeR: "open", blink: 0, mouth: 0.45, mouthW: 0,
-      core: o.core || C.aqua, coreK: 0.5, bulb: o.core || C.aqua, bulbK: 0.7, ant: V(), hands: [V(-1.32, -0.32, 0.25), V(1.32, -0.32, 0.25)], handS: [1, 1], floorGlow: 0.1 };
+      core: o.core || C.aqua, coreK: 0.5, bulb: o.core || C.aqua, bulbK: 0.7, ant: V(), hands: [V(-1.32, -0.32, 0.25), V(1.32, -0.32, 0.25)], handS: [1, 1], floorGlow: 0.1, clipR: V(0.08, -0.45, 0.12), tick: 0 };
     const pos = Y.pos, hand = (j, to, k) => { Y.hands[j] = Y.hands[j].clone().lerp(to, clamp(k)); };
     const look = A.look && t < A.lookUntil ? A.look : null;
     Y.lookAt = look;
@@ -270,8 +297,16 @@ function createPipEngine(THREE, opts) {
         if (q > 0.5 && s > 0.3) Y.eyeL = Y.eyeR = "happy"; Y.mouth = lerp(Y.mouth, 0.55, s * q); Y.pitch -= 0.08 * s * q;
       } else if (b.k === "turn") {
         const a = smoother(ramp(x, 0.2, 1.2)) * Math.PI * 2;
-        Y.yaw += a; Y.hands = Y.hands.map((h) => h.clone().applyAxisAngle(V(0, 1, 0), a)); Y.coreK += pulse(x, 1.25, 0.12) * 0.9;
+        Y.yaw += a; Y.hands = Y.hands.map((h) => h.clone().applyAxisAngle(V(0, 1, 0), a)); Y.clipR.y += a; Y.coreK += pulse(x, 1.25, 0.12) * 0.9;
         if (x > 1.15 && x < 1.6) Y.eyeL = Y.eyeR = "happy";
+      } else if (b.k === "clip") { // checks his clipboard: lifts it, reads, ticks the next thing off, a little nod
+        const up = q * smoother(ramp(x, 0, 0.5));
+        hand(0, V(-0.36, -0.42, 1.25), up); Y.clipR.lerp(V(-1.05, 0.42, 0.12), up);
+        Y.pitch += 0.2 * up; Y.lookAt = pos.clone().add(V(-0.3, -1.7, 3)); if (up > 0.5) Y.eyeL = Y.eyeR = x > 2 && x < 2.6 ? "happy" : "open";
+        const tap = x > 1 && x < 1.9 ? Math.max(0, Math.sin(x * 18)) * 0.05 : 0;
+        hand(1, V(0.08, -0.32 + tap, 1.45), up * smoother(ramp(x, 0.5, 0.9)) * (1 - ramp(x, 2.1, 2.5)));
+        Y.tick = back(ramp(x, 1.8, 2.1)) * (1 - ramp(x, d - 0.35, d)); Y.mouth = lerp(Y.mouth, x > 2 && x < 2.6 ? 0.6 : 0.2, up);
+        Y.pitch += pulse(x, 2.25, 0.12) * 0.12;
       } else if (b.k === "hops") {
         hand(0, V(-1.4, 0.35, 0.5), q * 0.7); hand(1, V(1.4, 0.35, 0.5), q * 0.7); if (q > 0.5) Y.eyeL = Y.eyeR = "happy"; Y.mouth = lerp(Y.mouth, 0.7, q);
       }
@@ -293,6 +328,7 @@ function createPipEngine(THREE, opts) {
       const k = A.concern;
       Y.pitch += 0.1 * k; Y.roll += 0.1 * k; Y.mouth = lerp(Y.mouth, 0.1, k); Y.mouthW = lerp(Y.mouthW, 0.25, k);
       hand(0, V(-0.62, -0.3, 1.0).add(V(0, Math.sin(t * 2.4) * 0.03, 0)), k); hand(1, V(0.62, -0.3, 1.0).add(V(0, Math.sin(t * 2.4 + 1) * 0.03, 0)), k);
+      if (o.pm) Y.clipR.lerp(V(-0.12, 0.62, 0.04), k); // holds the clipboard to his chest
       Y.core = "#" + new THREE.Color(Y.core).lerp(new THREE.Color(C.pink), 0.6 * k).getHexString();
       Y.coreK = lerp(Y.coreK, 0.42, k); Y.bulb = "#" + new THREE.Color(Y.bulb).lerp(new THREE.Color(C.pink), 0.7 * k).getHexString(); Y.bulbK = lerp(Y.bulbK, 0.3, k);
       const since = t - A.moodAt;
@@ -303,7 +339,7 @@ function createPipEngine(THREE, opts) {
     // pointing at the next thing to do (the Marketplace's point: a hand reaches toward it, eyes follow)
     if (A.pointTo && A.pointK > 0.01) {
       const P = A.pointTo.clone(), dir = P.clone().sub(pos); dir.z = Math.max(dir.z, 0.4); dir.normalize();
-      const j = dir.x < -0.15 ? 0 : 1, reach = dir.clone().multiplyScalar(1.45).add(V(0, -0.05, 0.25));
+      const j = o.pm ? 1 : dir.x < -0.15 ? 0 : 1, reach = dir.clone().multiplyScalar(1.45).add(V(0, -0.05, 0.25));
       reach.y += Math.sin(t * 3.2) * 0.03;
       hand(j, reach, A.pointK);
       Y.lookAt = P; Y.yaw += clamp((P.x - pos.x) * 0.08, -0.35, 0.35) * A.pointK;
@@ -351,6 +387,17 @@ function createPipEngine(THREE, opts) {
       }
     }
 
+    // "this way": a quick come-along with his free hand, turned toward where you're going, before he sets off
+    if (A.beckonAt != null) {
+      const x = t - A.beckonAt, w = ramp(x, 0, 0.25) * (1 - ramp(x, 1.0, 1.35));
+      if (w > 0) {
+        const side = A.beckonSide || 1;
+        hand(1, V(1.15, 0.28 + Math.sin(x * 15) * 0.09, 0.75 + Math.cos(x * 15) * 0.08), smoother(w));
+        Y.yaw += side * 0.32 * w; Y.roll -= side * 0.05 * w; if (w > 0.5) Y.eyeL = Y.eyeR = "happy"; Y.mouth = Math.max(Y.mouth, 0.55 * w);
+        if (A.beckonTo) Y.lookAt = A.beckonTo;
+      } else if (x > 1.4) A.beckonAt = null;
+    }
+
     // celebrating: two happy hops, hands up, a flash, then a full spin (go-live, accepted price, a tool connected)
     if (A.partyAt != null) {
       const x = t - A.partyAt;
@@ -360,7 +407,7 @@ function createPipEngine(THREE, opts) {
         Y.eyeL = Y.eyeR = x < 2.6 ? "happy" : Y.eyeL; Y.mouth = lerp(Y.mouth, 0.75, q);
         Y.sy -= (pulse(x, 0.12, 0.06) + pulse(x, 0.78, 0.06)) * 0.1; Y.sx = 1 + (1 - Y.sy) * 0.55;
         const sp = smoother(ramp(x, 1.45, 2.4));
-        if (sp > 0 && sp < 1) { Y.yaw += sp * Math.PI * 2; Y.hands = Y.hands.map((h) => h.clone().applyAxisAngle(V(0, 1, 0), sp * Math.PI * 2)); }
+        if (sp > 0 && sp < 1) { Y.yaw += sp * Math.PI * 2; Y.hands = Y.hands.map((h) => h.clone().applyAxisAngle(V(0, 1, 0), sp * Math.PI * 2)); Y.clipR.y += sp * Math.PI * 2; }
         Y.coreK += pulse(x, 0.35, 0.2) * 1.1 + pulse(x, 2.45, 0.2) * 0.8; if (pulse(x, 0.35, 0.2) > 0.3) Y.core = "#bff8ef";
         Y.floorGlow = 0.1 + 0.3 * pulse(x, 2.45, 0.35) + 0.12 * q;
         Y.ant.y += Math.sin(x * 15) * 0.1 * Math.exp(-x * 1.6);
@@ -427,11 +474,11 @@ function createPipEngine(THREE, opts) {
     if (!A.pointTo && A.pointK < 0.02) A.pointTarget = null;
     // the next idle beat
     if (!o.still && !A.task && A.mood === "calm" && !A.beat && !A.pointTo && t > A.nextBeat && (A.wakeAt == null || wakeP(t) > 4)) {
-      const pool = [["chin", 3, 2.8], ["sweep", 2, 3], ["stretch", 2, 2.4], ["turn", 0.6, 1.8], ["hops", 0.8, 1.8]];
+      const pool = o.pm ? [["clip", 4, 3.2], ["sweep", 2.2, 3], ["chin", 1.4, 2.8], ["stretch", 1, 2.4], ["turn", 0.7, 1.8], ["hops", 0.9, 1.8]] : [["chin", 3, 2.8], ["sweep", 2, 3], ["stretch", 2, 2.4], ["turn", 0.6, 1.8], ["hops", 0.8, 1.8]];
       let r = Math.random() * pool.reduce((s, x) => s + x[1], 0), pick = pool[0];
       for (const p of pool) { if (r < p[1]) { pick = p; break; } r -= p[1]; }
       A.beat = { k: pick[0], at: t, d: pick[2], q: 0 };
-      A.nextBeat = t + pick[2] + 7 + Math.random() * 7;
+      A.nextBeat = t + pick[2] + (o.pm ? 3.5 + Math.random() * 4.5 : 7 + Math.random() * 7);
     }
     let J = pose(t);
     if (!noSmooth) J = smooth(J);
@@ -458,6 +505,8 @@ function createPipEngine(THREE, opts) {
     awake() { return A.wakeAt == null || wakeP(now() - T0) > 3.4; },
     lookAt(world, sec = 1.2) { A.look = world ? toLocal(world.clone()) : null; A.lookUntil = now() - T0 + sec; },
     point(world) { A.pointTo = world ? toLocal(world.clone()) : null; },
+    beckon(world) { A.beckonAt = now() - T0; A.beat = null; A.beckonTo = world ? toLocal(world.clone()) : null; A.beckonSide = A.beckonTo && A.beckonTo.x < 0 ? -1 : 1; },
+    present(world, sec = 1.6) { A.pointTo = world ? toLocal(world.clone()) : null; A.happyUntil = now() - T0 + 0.9; A.nodAt = now() - T0 + 0.15; clearTimeout(A.presentT); A.presentT = setTimeout(() => { A.pointTo = null; }, sec * 1000); },
     };
     return { step, A, acts, wakeP, T0, now, get t() { return now() - T0; } };
   }
