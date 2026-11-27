@@ -71,4 +71,15 @@ written from the facts alone.
 
 ## What is proven
 
-See the rollback document's row for this change; filled in here after the live run.
+Run live on November 27, 2026. Details and tables: `docs/novelty-rounds-2-3.md`.
+
+- **Critic:** ran on ten real scans, 14 to 19 seconds each as its own step. It swapped one or two ideas in six of the
+  ten, with reasons that cite the evidence. Round 2 showed it does not notice the same idea twice, so a check in code
+  now does (`dedupe`), and round 3 had no repeated idea in any final team.
+- **Forge repair:** five teammates failed tests on the first build and were repaired from the failing transcript,
+  seven repairs in all. All five passed afterwards.
+- **Forge piece lane:** one "compose" part was drafted, sandbox-tested and staged as a piece with no hand on it.
+- **Forge Shelf need:** not seen live. No part was routed to "provider" in these rounds. Unit-tested only.
+- **Weekly notes:** two notes written for TEST Fork and shown in the real Portal. Neither carried a proposal, so the
+  owner's two buttons are proven in the browser check with a faked server, not with a real note. One of the two notes
+  fell back to the plain facts wording because the model's version failed the check.

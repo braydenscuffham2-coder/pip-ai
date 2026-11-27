@@ -69,7 +69,7 @@ function field(f) {
   else if (f.type === "choice") input = h("select", common, h("option", { value: "" }, "Choose one"), (f.options || []).map((o) => h("option", { value: o }, o)));
   else if (f.type === "yes") return h("label", { class: "check", for: id }, h("input", Object.assign({ type: "checkbox" }, common)), h("span", {}, f.label));
   else input = h("input", Object.assign({ type: { email: "email", phone: "tel", number: "number", date: "date" }[f.type] || "text", maxlength: "200", step: f.type === "number" ? "any" : null, autocomplete: { email: "email", phone: "tel" }[f.type] || "off", inputmode: f.type === "number" ? "decimal" : null }, common));
-  return h("label", { for: id }, f.label, f.required ? null : h("span", { class: "opt" }, " (optional)"), input);
+  return h("label", { for: id }, f.label, f.required || /\(optional\)/i.test(String(f.label)) ? null : h("span", { class: "opt" }, " (optional)"), input);
 }
 
 function pageView(page) {
