@@ -2,7 +2,7 @@
 //   node --test supabase/functions/_shared/work/screen.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { allowScreenAction, type ElementInfo, onScreens, readAction, sameForm, type ScreenAction, type ScreenCtx, type ScreenPlan, screenStep } from "./screen.ts";
+import { allowScreenAction, type ElementInfo, fillIn, onScreens, readAction, sameForm, templateTrace, type TraceStep, type ScreenAction, type ScreenCtx, type ScreenPlan, screenStep } from "./screen.ts";
 import type { Identity, Out, WorkDeps, WorkJob } from "./engine.ts";
 import type { Page } from "../setup/engine.ts";
 
@@ -80,16 +80,18 @@ test("an approval covers exactly the values the owner saw", () => {
 });
 
 // ---------- the steps, with a fake page and a scripted model ----------
-function world(o: { plan?: Partial<ScreenPlan>; script: ScreenAction[]; urls?: string[]; under?: (x: number, y: number) => ElementInfo | null; form?: Record<string, string>; mask?: any; take?: string | null }) {
+function world(o: { plan?: Partial<ScreenPlan>; script: ScreenAction[]; urls?: string[]; under?: (x: number, y: number) => ElementInfo | null; form?: Record<string, string>; mask?: any; take?: string | null; find?: (want: any) => { x: number; y: number } | null }) {
   const plan: ScreenPlan = { goal: "Add a refill request for Biscuit: Carprofen 75mg, quantity 30.", level: "add", screens: SCREENS, start_url: `${BASE}/refills`, inputs: { medication: "Carprofen 75mg", quantity: "30" }, ...o.plan };
   const job: WorkJob = { id: "job-1", business_id: "biz-1", spec_id: null, identity_id: "id-1", kind: "screen", title: "Add a refill request", plan: plan as any, status: "running", state: "work", step: 0, max_steps: 30, cost_usd: 0, cost_cap_usd: 1, browser_session_id: "sess-1" };
   const id: Identity = { id: "id-1", business_id: "biz-1", tool: "Practice Tool", tool_key: "practice-tool", login_url: `${BASE}/login`, site: SITE, browser_context_id: "ctx", vault_item_id: null, totp: false, state: "signed_in", silent_signins: 0 };
-  const did: string[] = [], pressed: string[] = [], went: string[] = [], typed: string[] = [];
+  const did: string[] = [], pressed: string[] = [], went: string[] = [], typed: string[] = [], found: string[] = [], selected: string[] = [];
   let url = "about:blank", n = 0, u = 0, closed = 0;
   const page = {
     goto: async (to: string) => { went.push(to); url = to; },
     evaluate: async (js: string) => {
       if (js.includes("__pipMaskObserver")) { if (o.urls && u < o.urls.length) url = o.urls[u++]; return o.mask ?? { masked: 0, exposed: 0, captcha: false, url }; }
+      if (js.includes("scrollIntoView")) { const want = JSON.parse(/const want = (\{.*?\});/.exec(js)![1]); found.push(want.text || want.name); return o.find ? o.find(want) : { x: 300, y: 640 }; }
+      if (js.includes("el.dispatchEvent")) { selected.push(/const want = "(.*?)"/.exec(js)![1]); return { ok: true, chosen: "x" }; }
       if (js.includes("savingForm")) return { search: false, savingForm: true };
       if (js.includes("const out = {}")) return o.form ?? { patient: "Biscuit", medication: "Carprofen 75mg", quantity: "30" };
       if (js.includes("document.elementFromPoint")) { const m = /elementFromPoint\((\d+), (\d+)\)/.exec(js)!; return o.under ? o.under(+m[1], +m[2]) : saveButton; }
@@ -105,7 +107,7 @@ function world(o: { plan?: Partial<ScreenPlan>; script: ScreenAction[]; urls?: s
   const deps = { log: async (_j: WorkJob, d: string) => { did.push(d); }, browser: { close: async () => { closed++; } } } as unknown as WorkDeps;
   const sd = { model: async () => ({ action: o.script[Math.min(n++, o.script.length - 1)], usage: { input_tokens: 1000, output_tokens: 50 } }), take: async () => o.take ?? null };
   const run = async (max = 20): Promise<Out> => { for (let i = 0; i < max; i++) { const out = await screenStep(job, id, page, deps, sd); Object.assign(job, out.patch); if (out.next !== "again") return out; } throw new Error("did not settle"); };
-  return { job, did, pressed, went, typed, run, closed: () => closed, modelCalls: () => n };
+  return { job, did, pressed, went, typed, found, selected, run, closed: () => closed, modelCalls: () => n };
 }
 const DONE: ScreenAction = { type: "done", summary: "Added a refill request for Biscuit: Carprofen 75mg, quantity 30." };
 
@@ -219,4 +221,86 @@ test("a model answer is one readable action or nothing: an error or stray prose 
   assert.deepEqual(readAction('Here is my action:\n{"type":"done","summary":"Read it."}'), { type: "done", summary: "Read it." });
   assert.deepEqual(readAction('{"type":"click","x":120,"y":560,"label":"Save {patient}"}\nI chose this because the form is {complete}.'), { type: "click", x: 120, y: 560, label: "Save {patient}" }, "words after the action, even with braces, do not spoil it");
   for (const bad of ["", "I cannot help with that.", "{not json}", '{"type":"delete_everything"}', '["click"]', '{"x":1}']) assert.equal(readAction(bad), null, bad);
+});
+
+// ---------- recorded skills ----------
+const SKILL: TraceStep[] = [
+  { do: "select", url: "", el: { tag: "select", type: "", text: "", name: "patient", id: "" }, input: "patient" },
+  { do: "click", url: "", el: { tag: "input", type: "text", text: "", name: "medication", id: "" } },
+  { do: "type", url: "", input: "medication" },
+  { do: "click", url: "", el: { tag: "button", type: "submit", text: "Add refill request", name: "", id: "" }, write: true },
+];
+const field = (name: string) => el({ tag: name === "patient" ? "select" : "input", type: "text", name, method: "post" });
+const skillWorld = (plan: Partial<ScreenPlan> = {}, extra: any = {}) => world({ script: [DONE], plan: { inputs: { patient: "Pickle", medication: "Heartgard Plus" }, replay: { steps: SKILL, i: 0 }, ...plan },
+  find: (want) => (want.name === "patient" ? { x: 100, y: 100 } : want.name === "medication" ? { x: 100, y: 200 } : { x: 300, y: 640 }),
+  under: (_x, y) => (y === 100 ? field("patient") : y === 200 ? field("medication") : saveButton), form: { patient: "Pickle", medication: "Heartgard Plus" }, ...extra });
+
+test("a job's own values become names when its steps are recorded, and are put back when they are replayed", () => {
+  const trace: TraceStep[] = [
+    { do: "click", url: "https://x.test/patients", el: { tag: "a", type: "", text: "Open Biscuit", name: "", id: "" } },
+    { do: "select", url: "https://x.test/p/1", el: { tag: "select", type: "", text: "active deceased", name: "status", id: "" }, text: "deceased" },
+    { do: "type", url: "https://x.test/p/1", text: "Biscuit" },
+    { do: "click", url: "https://x.test/p/1", el: { tag: "button", type: "submit", text: "Save patient", name: "", id: "" }, write: true },
+  ];
+  const t = templateTrace(trace, { pet: "Biscuit", status: "deceased" });
+  assert.equal(t[0].el!.text, "Open {{pet}}");
+  assert.deepEqual([t[1].input, t[1].text, t[1].el!.text], ["status", undefined, ""], "a drop-down is found by its name, and its choice is the job's value");
+  assert.deepEqual([t[2].input, t[2].text], ["pet", undefined]);
+  assert.equal(t[3].el!.text, "Save patient");
+  assert.ok(t.every((st) => st.url === ""), "addresses with record ids are not kept");
+  assert.equal(fillIn("Open {{pet}}", { pet: "Juniper" }), "Open Juniper");
+  assert.equal(fillIn("Open {{pet}}", {}), "Open ");
+});
+
+test("a trusted task with learned steps is replayed without the model, then the model looks once at the result", async () => {
+  const w = skillWorld();
+  const out = await w.run();
+  assert.equal(out.next, "done");
+  assert.equal(w.modelCalls(), 1, "one look at the end, instead of one per step");
+  assert.deepEqual(w.selected, ["Pickle"]);
+  assert.deepEqual(w.typed, ["Heartgard Plus"]);
+  assert.deepEqual(w.pressed, ["100,200", "300,640"]);
+  assert.equal((w.job.plan as ScreenPlan).writes, 1);
+  assert.deepEqual(w.did, ["opened_screen", "replay_select", "replay_click", "replay_type", "saved", "skill_replayed", "done"]);
+});
+
+test("a replayed save still waits for the owner's yes when the task has not earned trust", async () => {
+  const w = skillWorld({ require_approval: true });
+  const out = await w.run();
+  assert.equal(out.next, "approval");
+  assert.deepEqual(w.pressed, ["100,200"], "the field was clicked; the save was not");
+  assert.equal((w.job.plan as ScreenPlan).replay!.i, 0, "after the yes it replays from the top");
+  assert.equal(w.modelCalls(), 0);
+});
+
+test("when a learned step no longer fits the screen, the job starts again with the model, once, and says it is repairing", async () => {
+  const w = skillWorld({}, { find: (want: any) => (want.name === "patient" ? null : { x: 300, y: 640 }) });
+  const out = await w.run();
+  assert.equal(out.next, "done");
+  const p = w.job.plan as ScreenPlan;
+  assert.equal(p.repairing, true);
+  assert.equal(p.replay!.missed, true);
+  assert.ok(w.did.includes("skill_miss"));
+  assert.deepEqual(w.went, [`${BASE}/refills`, `${BASE}/refills`], "it went back to the first page to start over");
+  assert.equal(w.modelCalls(), 1);
+});
+
+test("a replayed step obeys the same limits: a control that now deletes is never pressed", async () => {
+  const w = skillWorld({}, { under: (_x: number, y: number) => (y === 100 ? field("patient") : y === 200 ? field("medication") : el({ text: "Delete patient", type: "submit", submit: true, method: "post", action: `${BASE}/patients/1/delete` })) });
+  await w.run();
+  assert.deepEqual(w.pressed, ["100,200"], "only the field was clicked");
+  assert.ok(w.did.includes("skill_miss"));
+});
+
+test("a check-only run finds every control, types nothing, saves nothing, and says the steps still match", async () => {
+  const w = skillWorld({ replay: { steps: SKILL, i: 0, dry: true } });
+  const out = await w.run();
+  assert.equal(out.next, "done"); assert.equal(out.outcome, "ok");
+  assert.match(out.summary!, /still match/);
+  assert.deepEqual(w.typed, []); assert.deepEqual(w.selected, []);
+  assert.deepEqual(w.pressed, ["100,200"], "an ordinary click is made to move through the screens; the save is not");
+  assert.equal(w.modelCalls(), 0);
+  const changed = skillWorld({ replay: { steps: SKILL, i: 0, dry: true } }, { find: () => null });
+  const out2 = await changed.run();
+  assert.equal(out2.outcome, "nothing_to_do"); assert.match(out2.summary!, /screens have changed/);
 });
