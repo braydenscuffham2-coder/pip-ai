@@ -32,6 +32,7 @@ import { clean, redact } from "../_shared/redact.ts";
 import { type ExecResult, runJob, type State, type Tool } from "../_shared/job-engine.ts";
 import { localDay } from "../_shared/schedule.ts";
 import { EMAIL_OPT_OUT_LINE, isStopRequest } from "../_shared/optout.ts";
+import { sendOut } from "../_shared/edges.ts";
 import { isOperatorRun, operatorSend } from "../_shared/operate-run.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!, SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -234,7 +235,16 @@ const BUILTIN: Record<string, { description: string; props: Record<string, strin
   request_booking: { description: "Ask the owner to confirm a time. You do not confirm it yourself.", props: { when: "What they asked for", need: "", contact: "" }, required: ["when"], approval: "owner" },
   handoff: { description: "Hand this conversation to a person.", props: { reason: "" }, required: ["reason"], approval: "none" },
   draft_for_approval: { description: "Write a draft for the owner to approve before anything is sent.", props: { what: "", text: "" }, required: ["what", "text"], approval: "owner" },
+  post_out: { description: "Post information to one of the owner's own systems, through an outbound door the owner set up. You cannot choose the address: give only the door's name, exactly as this job names it.", props: { door: "The door's name", fields: 'The fields to send, as a JSON object, for example {"name":"Dana","need":"refill"}' }, required: ["door", "fields"], approval: "none" },
 };
+/** A teammate posts to an outbound door (pip-edge). The address and the signing key stay in the database and in this call; the model sees neither. */
+async function postOut(business: string, key: string, args: J, meta: Record<string, string>) {
+  return await sendOut({
+    take: async (name, k, data) => (await db.rpc("edge_out_take", { p_business: business, p_name: name, p_key: k, p_data: data })).data ?? { ok: false },
+    post: async (url, headers, body) => { const r = await fetch(url, { method: "POST", headers, body, redirect: "manual", signal: AbortSignal.timeout(10000) }); await r.body?.cancel(); return { status: r.status }; },
+    done: async (ev, status, note) => { await db.rpc("edge_done", { p_event: ev, p_started: 0, p_status: status, p_note: note }); },
+  }, { name: args?.door, key, fields: args?.fields, meta });
+}
 
 function classicSystem(spec: J, business: string): string {
   return `${spec.agent?.persona ?? ""}
@@ -461,6 +471,12 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
       actions.push({ tool: name, status: "blocked" });
       await db.rpc("portal_log", { p_spec: id, p_summary: refusal(c!.teammate, name.slice(0, 80), v.say), p_outcome: "skipped", p_job: `job:${job!.id}`, p_kind: "error" });
       return { text: `Not allowed: ${v.say}`, error: true };
+    }
+    if (meta.builtin && name === "post_out") {
+      if (!real || !c!.biz?.id) { actions.push({ tool: name, status: "test" }); return { text: "Test mode: nothing was sent." }; }
+      const r = await postOut(c!.biz.id, `c:${conv}:${crypto.randomUUID().slice(0, 12)}`, input, { business: String(c!.name ?? ""), teammate: String(c!.teammate ?? ""), job: job!.id });
+      actions.push({ tool: name, status: r.ok ? "done" : "failed" });
+      return { text: r.text, ...(r.ok ? {} : { error: true }) };
     }
     if (meta.builtin) {
       const approval = c!.classic ? (c!.s.spec.actions?.find((a: J) => a.tool === name)?.approval ?? BUILTIN[name].approval) : BUILTIN[name].approval;
@@ -727,6 +743,11 @@ async function jobRun(body: J) {
 
     const exec = async (t: Tool, args: J): Promise<ExecResult> => {
       const m = how.get(t.name);
+      if (m?.builtin && t.name === "post_out") {
+        if (!real) return { outcome: "test", text: "Test mode: nothing was sent." };
+        const r = await postOut(c.biz.id, `r:${runId}:${(await sha256(JSON.stringify(args ?? {}))).slice(0, 24)}`, args, { business: String(c.name ?? ""), teammate: String(c.teammate ?? ""), job: job.id });
+        return { outcome: r.ok ? "ok" : "failed", text: r.text };
+      }
       if (m?.builtin) {
         await db.from("notifications").insert({ spec_id: run.spec_id, kind: t.name.slice(0, 40), body: { args: Object.fromEntries(Object.entries(args ?? {}).map(([k, v]) => [k, cut(v, 300)])), approval: m.builtin.approval, run: runId, job: job.id, business: c.name } });
         return { outcome: "ok", text: m.builtin.approval === "owner" ? "Sent to the owner. It is not confirmed until the owner says so." : "Done." };

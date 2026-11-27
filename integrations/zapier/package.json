@@ -1,0 +1,14 @@
+{
+  "name": "pip-zapier",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pip for Zapier: start a Pip teammate's job from any Zap, and start a Zap from what a Pip teammate produced.",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "zapier-platform-core": "^19.0.0"
+  }
+}

@@ -47,7 +47,9 @@ test("the three published inboxes are the ones the public pages print", () => {
 test("the function trusts only what it fetched itself, and announces each message once", () => {
   const src = readFileSync(fileURLToPath(new URL("../pip-mail-in/index.ts", import.meta.url)), "utf8");
   assert.match(src, /api\.resend\.com\/emails\/receiving\/\$\{encodeURIComponent\(id\)\}/);
-  assert.match(src, /noticeFor\(await r\.json\(\)\)/, "the notice is built from the fetched message, not from the event");
+  assert.match(src, /const mail = await r\.json\(\);/); assert.match(src, /noticeFor\(mail\)/, "the notice is built from the fetched message, not from the event");
+  assert.match(src, /doorAddress\(mail\)/, "a business's door is read from the fetched message too, never from the event");
+  assert.ok(src.indexOf("doorAddress(mail)") < src.indexOf("noticeFor(mail)"), "door mail goes to pip-edge before any founder notice is considered");
   assert.ok(!/noticeFor\(ev/.test(src));
   assert.ok(src.indexOf('eq("kind", "mail_in")') < src.indexOf('rpc("portal_notify"'), "checks for an earlier notice before sending one");
 });

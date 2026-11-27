@@ -222,8 +222,46 @@ async function business(u: User, bid: string) {
     vault_open: false, connect_on: !!(Deno.env.get("COMPOSIO_API_KEY") ?? "").trim(), fresh: u.fresh,
     setup_on: (await setupGate(r.admin, bid)).open,
     work: r.role === "staff" ? [] : await workList(bid),
+    doors: r.role === "staff" ? [] : await doorList(bid),
     setups: r.role === "staff" ? [] : ((await db.from("setup_sessions").select("id,tool,state,reason,result,created_at").eq("business_id", bid).order("created_at", { ascending: false }).limit(10)).data || []),
   });
+}
+// Doors (pip-edge): the ways this business's own world starts a teammate's job, and where a teammate may post out.
+// The list never carries a secret. The owner reads a webhook's secret (a new one each time, the old one stops) or an
+// out door's signing key with a fresh sign-in, once, and Pip keeps only what it must.
+const EDGE_FN = `${Deno.env.get("SUPABASE_URL")}/functions/v1/pip-edge`;
+async function doorList(bid: string) {
+  const { data } = await db.from("edges").select("id,kind,name,label,address,url,enabled,last_at").eq("business_id", bid).order("created_at", { ascending: true }).limit(40);
+  return ((data as any[]) || []).map((d) => ({
+    id: d.id, kind: d.kind, name: d.name, label: d.label, enabled: d.enabled, last_at: d.last_at,
+    ...(d.kind === "email" ? { address: `${d.address}@hirepip.com` } : {}),
+    ...(d.kind === "form" ? { page: `https://www.hirepip.com/form.html?f=${d.id}` } : {}),
+    ...(d.kind === "webhook" || d.kind === "zapier" ? { post_to: `${EDGE_FN}/hook/${d.id}` } : {}),
+    ...(d.kind === "out" ? { host: (() => { try { return new URL(d.url).hostname; } catch { return ""; } })() } : {}),
+  }));
+}
+async function doorAction(u: User, bid: string, body: any) {
+  const r = await access(u, bid); need(r, "owner"); needFresh(u);
+  const id = cut(body.door, 40), action = cut(body.action, 20);
+  if (!UUID.test(id)) throw new Fail(400, "bad_request");
+  const { data: d } = await db.from("edges").select("id,kind,label,sign_key,enabled").eq("id", id).eq("business_id", bid).maybeSingle();
+  if (!d) throw new Fail(404, "not_found");
+  if (action === "secret") {
+    if ((d as any).kind === "webhook" || (d as any).kind === "zapier") {
+      const { data } = await db.rpc("edge_rotate", { p_edge: id });
+      if (!(data as any)?.ok) throw new Fail(409, "not_now");
+      await log(bid, "owner", `${(d as any).label}: a new secret was made for this door. The old one stopped working.`, { actor: u.email });
+      return json({ ok: true, secret: (data as any).secret, header: "x-pip-secret" });
+    }
+    if ((d as any).kind === "out") return json({ ok: true, secret: (d as any).sign_key, header: "x-pip-signature" });
+    throw new Fail(400, "bad_request");
+  }
+  if (action === "open" || action === "close") {
+    await db.from("edges").update({ enabled: action === "open" }).eq("id", id).eq("business_id", bid);
+    await log(bid, "owner", `${(d as any).label}: this door was ${action === "open" ? "opened" : "closed"}.`, { actor: u.email });
+    return json({ ok: true });
+  }
+  throw new Fail(400, "bad_request");
 }
 async function activity(u: User, bid: string, url: URL) {
   await access(u, bid);
@@ -970,6 +1008,7 @@ Deno.serve(async (req) => {
       if (a === "vault") return await vault(u, bid, body);
       if (a === "setup") return await setupAction(u, bid, body);
       if (a === "work") return await workAction(u, bid, body);
+      if (a === "door") return await doorAction(u, bid, body);
       if (a === "unsupported") return await unsupported(u, bid, body);
       if (a === "issue") return await issue(u, bid, body);
       if (a === "people") return await addPerson(u, bid, body);

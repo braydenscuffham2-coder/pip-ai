@@ -19,6 +19,8 @@ const TOOLS = [
   "pricing_quote",
   // Added November 23, 2026: the only way a Claude chat starts a Brain scan now that scan-run refuses plain web requests.
   "brain_scan",
+  // Added November 27, 2026: Pip's doors (pip-edge) and the integration ladder's written decision.
+  "door_make", "door_list", "ladder_pick",
 ];
 
 test("every tool the live connector offers is still offered", async () => {
