@@ -107,7 +107,7 @@ const deps: Deps = {
   },
   async done(row, ok) {
     if (row.plan?.connection_id) await db(`business_connections?id=eq.${row.plan.connection_id}`, { method: "PATCH", body: JSON.stringify({ status: ok ? "active" : "failed", checked_at: new Date().toISOString(), updated_at: new Date().toISOString() }) }).then((r) => r.body?.cancel());
-    await db("activity_log", { method: "POST", headers: { prefer: "return=minimal" }, body: JSON.stringify({ business_id: row.business_id, kind: "setup", summary: ok ? `${row.tool} is connected and its test passed.` : `${row.tool} could not be connected. Pip will tell you what it needs.`, outcome: ok ? "ok" : "needs_owner", actor: "pip" }) }).then((r) => r.body?.cancel());
+    await db("activity_log", { method: "POST", headers: { prefer: "return=minimal" }, body: JSON.stringify({ business_id: row.business_id, kind: "connection", summary: ok ? `${row.tool} is connected and its test passed.` : `${row.tool} could not be connected. Pip will tell you what it needs.`, outcome: ok ? "ok" : "failed", actor: "pip" }) }).then((r) => r.body?.cancel());
   },
   async reSignIn(row) {
     const owners = await rows(`members?business_id=eq.${row.business_id}&role=eq.owner&status=neq.removed&select=email`);
