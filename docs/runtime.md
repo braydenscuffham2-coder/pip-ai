@@ -114,14 +114,28 @@ What that breaks today, and what it does not:
 | The Setup Agent (the owner signs in while watching) | **No.** Broke at step one on the first live run | Each step is its own request and its own connection. The holder added in PR #109 keeps one connection open, but the next step's connection closing still ends the browser. |
 | A silent re-sign-in from the vault (`vault-writer /fill`, `/code`) | **No, never run live** | The worker holds one connection and the vault writer needs its own to type the login. |
 
-Two ways forward (Brayden's decision, parked as the last step on Nov 27):
+**Decided Nov 27: stay on Free.** Built the same day (PR #127). The table above is how it was before; this is how it is now.
 
-1. Browserbase Developer, $20 a month: set `keepAlive: true` when a session is made and everything above works as
-   **Ready as a switch (Nov 27):** `forge_settings.browser_keep_alive` (false). After the plan is upgraded, set it to true. No deploy is needed. Then run the probe (`setup-run /probe`); it reports `keep_alive: true` and should show `running_after_second_left: true`. On the Free plan the switch must stay false, or Browserbase refuses to open a browser. Every session still ends at its time limit, kept alive or not.
-   built. It also gives 100 browser hours instead of 1.
-2. Stay on Free: rebuild sign-in so one request holds the only connection and does everything, with the owner's page
-   talking to that one request over a live socket, and the vault writer doing a whole sign-in in a browser of its own.
-   A sign-in attempt is then limited to about five minutes (the longest one request may live).
+#### How sign-in works on one connection
+
+- **The runner.** When `browser_keep_alive` is false, `setup-run /step` no longer does a step. For a setup that is in the browser it only makes sure one request, the runner, is alive (`runSolo` in `_shared/setup/solo.ts`). The runner connects once, does every step itself, waits while the owner has control (reading the setup's row once a second, so the owner's "I'm signed in" tap is picked up without a new connection), and lets go when the setup is over.
+- **Its time.** A runner lives 5 minutes 30 seconds. If the setup is not finished it asks the browser to end cleanly (so the browser's saved state keeps the sign-in), sets the setup to `paused` with "The secure browser can stay open for about five minutes at a time. Your place was kept. Tap Open it again to carry on.", and stops.
+- **One runner per setup.** `setup_sessions.runner_id` and `runner_beat` (migration `20261127_19`). A runner says it is alive every 5 seconds; a new one may take over only after 20 seconds of silence.
+- **A stop wins.** The runner writes a step's result only if the setup is still in the state the step started from, so an owner's Stop is never written over.
+- **The password.** Still typed by `vault-writer` and nobody else. It joins the browser as a second connection, types, and then **stays connected, doing nothing, until the browser is gone** (`linger`, at most 6 minutes 30 seconds). Joining does not end a browser; leaving does. A lingerer always starts after its runner and outlives it, so the runner always ends the browser first. The password does not pass through `setup-run`.
+- **Background work.** `pip-work` already used one connection per worker turn. It gets the same vault change, and each turn now has its own connections, so another request to `pip-work` finishing can no longer close a working job's connection (it could before).
+
+What this costs: a sign-in has to fit in about five minutes of browser time, or be carried on with "Open it again". If a function is restarted mid-setup its connection drops and the browser ends; the owner sees the same pause message.
+
+Checks: `_shared/setup/solo.test.ts` (runner and lingerer on a fake clock), `tests/setup-one-connection.test.mjs` (reads the three functions' source: no shared socket list, vault-writer never just disconnects, only vault-writer reaches the vault, setup-run never types a login). Live probes: `setup-run /probe {"mode":"stay"}` (a second connection joins and stays) and `{"mode":"linger"}` (what the owner's live view does to the browser).
+
+#### When the $20 plan is bought (Browserbase Developer)
+
+1. Upgrade the plan at Browserbase.
+2. Set `forge_settings.browser_keep_alive` to true. No deploy is needed.
+3. Run `setup-run /probe`. It should report `keep_alive: true` and `running_after_second_left: true`.
+
+With the switch on, sessions are made with `keepAlive: true`, `/step` goes back to one request per step with the holder, and `vault-writer` disconnects as soon as it has typed. The five-minute limit goes away and the plan gives 100 browser hours instead of 1. On the Free plan the switch must stay false, or Browserbase refuses to open a browser. Every session still ends at its time limit, kept alive or not.
 
 ## The Forge Board is optional
 

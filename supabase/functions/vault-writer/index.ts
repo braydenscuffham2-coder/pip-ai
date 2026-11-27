@@ -11,6 +11,11 @@
 // vault_items, types the two values into the login form the setup tagged, and answers with a code. Nothing it receives
 // is logged, stored in Pip's database, sent back, or shown to a model. The logic is in ../_shared/setup/keybox.ts.
 //
+// One connection rule (Nov 27, 2026): on Browserbase's Free plan a browser ends when ANY connection leaves it. So when
+// forge_settings 'browser_keep_alive' is not true, this function does not disconnect after it has typed. It stays
+// connected, doing nothing and never looking at the page again, until the browser is gone (linger in
+// ../_shared/setup/solo.ts). The setup's runner always ends the browser before this function's own time is up.
+//
 // Secrets: OP_SERVICE_ACCOUNT_TOKEN (a 1Password Service Account created with --can-create-vaults), BROWSERBASE_API_KEY,
 // optional BROWSERBASE_PROJECT_ID.
 import { keybox, type KeyboxDeps } from "../_shared/setup/keybox.ts";
@@ -18,6 +23,9 @@ import { Cdp, fillCode, fillLogin, openPage } from "../_shared/setup/cdp.ts";
 import { fillSaved, type KeyfillDeps } from "../_shared/setup/keyfill.ts";
 import { browserbase, onePassword, type Vault } from "../_shared/setup/vendors.ts";
 import { sliceHashes } from "../_shared/setup/guards.ts";
+import { linger } from "../_shared/setup/solo.ts";
+
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
 const SB_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -33,9 +41,20 @@ const rows = async (path: string) => { const r = await db(path); return r.ok ? a
 const setting = async (k: string) => (await rows(`forge_settings?key=eq.${k}&select=value`))?.[0]?.value;
 
 let vault: Vault | null = null;
-const sockets: Cdp[] = [];
+// Each request has its own connections, so one request ending can never close a connection another is using.
+type Held = { conn: Cdp; sessionId: string }[];
+/** After the work is done: disconnect, or (when a leaving connection would end the browser) stay until it is gone. */
+async function letGo(held: Held) {
+  const mine = held.splice(0);
+  if (!mine.length) return;
+  const stay = (await setting("browser_keep_alive").catch(() => false)) !== true;
+  for (const h of mine) {
+    if (!stay) { h.conn.close(); continue; }
+    EdgeRuntime.waitUntil(linger({ running: async () => !!(await bb.connectUrl(h.sessionId)), close: () => h.conn.close(), sleep: (ms) => new Promise<void>((r) => setTimeout(r, ms)), now: () => Date.now() }).catch(() => h.conn.close()));
+  }
+}
 
-const deps: KeyboxDeps = {
+const depsFor = (held: Held): KeyboxDeps => ({
   async ticket(hash) { return (await rows(`setup_tickets?hash=eq.${hash}&select=setup_id,expires_at,used_at`))?.[0] ?? null; },
   async useTicket(hash) {
     const r = await db(`setup_tickets?hash=eq.${hash}&used_at=is.null`, { method: "PATCH", headers: { prefer: "return=representation" }, body: JSON.stringify({ used_at: new Date().toISOString() }) });
@@ -45,7 +64,7 @@ const deps: KeyboxDeps = {
   async vault() { if (!OP) return null; vault ??= await onePassword(OP); return vault; },
   async page(sessionId) {
     const url = await bb.connectUrl(sessionId); if (!url) return null;
-    const c = await Cdp.connect(url); sockets.push(c);
+    const c = await Cdp.connect(url); held.push({ conn: c, sessionId });
     return await openPage(c);
   },
   fill: fillLogin,
@@ -75,9 +94,9 @@ const deps: KeyboxDeps = {
     const hashes = [...new Set((await Promise.all(secrets.filter((x) => x.length >= 8).map(sliceHashes))).flat())];
     await db("setup_canaries?on_conflict=setup_id", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ setup_id: setupId, hashes }) }).then((x) => x.body?.cancel());
   },
-};
+});
 
-const fillDeps: KeyfillDeps = {
+const fillDepsFor = (deps: KeyboxDeps): KeyfillDeps => ({
   async identity(id) { return (await rows(`tool_identities?id=eq.${id}&state=neq.retired&select=id,login_url,signin_hosts,vault_item_id,totp`))?.[0] ?? null; },
   async vaultRef(item) { return (await rows(`vault_items?id=eq.${item}&vault_provider=eq.1password&select=vault_ref`))?.[0]?.vault_ref ?? null; },
   vault: () => deps.vault(),
@@ -85,12 +104,14 @@ const fillDeps: KeyfillDeps = {
   fill: fillLogin,
   fillCode,
   async used(item, ok) { const t = new Date().toISOString(); await db(`vault_items?id=eq.${item}`, { method: "PATCH", body: JSON.stringify(ok ? { last_used_at: t, last_ok_at: t } : { last_used_at: t }) }).then((x) => x.body?.cancel()); },
-};
+});
 const same = (a: string, b: string) => { if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; };
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors(req) });
   const route = new URL(req.url).pathname.replace(/^.*\/vault-writer/, "");
+  const held: Held = [];
+  const deps = depsFor(held), fillDeps = fillDepsFor(deps);
   if (req.method === "POST" && (route === "/fill" || route === "/code")) {
     // Pip's own background worker only. Never reachable from a page: it needs the service key.
     const bearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
@@ -102,7 +123,7 @@ Deno.serve(async (req) => {
       // Deliberately nothing logged: this call handled a password.
       return json(req, { ok: false, code: "vault_failed" }, 500);
     } finally {
-      for (const c of sockets.splice(0)) c.close();
+      await letGo(held);
     }
   }
   if (req.method !== "POST" || route !== "/keys") return json(req, { ok: false, code: "not_found" }, 404);
@@ -116,6 +137,6 @@ Deno.serve(async (req) => {
     // Deliberately nothing logged: the request held a password.
     return json(req, { ok: false, code: "server" }, 500);
   } finally {
-    for (const c of sockets.splice(0)) c.close();
+    await letGo(held);
   }
 });
