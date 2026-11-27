@@ -10,7 +10,7 @@
 import { type Deps, type SetupRow, step } from "../_shared/setup/engine.ts";
 import { Cdp, openPage } from "../_shared/setup/cdp.ts";
 import { browserbase } from "../_shared/setup/vendors.ts";
-import { type Action, leaks } from "../_shared/setup/guards.ts";
+import { type Action, leaks, sessionMinutes } from "../_shared/setup/guards.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 const SB_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -91,7 +91,7 @@ const deps: Deps = {
   browser: {
     async open(row) {
       const contextId = row.browser_context_id || await bb.context();
-      const s = await bb.session(contextId);
+      const s = await bb.session(contextId, sessionMinutes(await setting("setup_session_minutes")));
       return { sessionId: s.id, contextId };
     },
     page: pageOf,
