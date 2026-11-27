@@ -1,7 +1,11 @@
 // vault-writer: the only code that holds the 1Password token, and the only place a client's password passes through.
 // No model runs here. The Setup Agent page (setup.html) sends a one-time ticket, a username and a password:
 //
-//   POST /vault-writer/keys  { ticket, username, password }  ->  { ok, code }
+//   POST /vault-writer/keys  { ticket, username, password, authenticator? }  ->  { ok, code }
+//   POST /vault-writer/fill  { identity_id, session_id }   internal (service key): type a saved login into the tool's
+//                            own sign-in page, for a background job that found Pip signed out
+//   POST /vault-writer/code  { identity_id, session_id }   internal (service key): type the current authenticator code,
+//                            only where the owner set one up for a separate "Pip" login
 //
 // It saves the login to the client's own 1Password vault (one vault per client), keeps only the op:// reference in
 // vault_items, types the two values into the login form the setup tagged, and answers with a code. Nothing it receives
@@ -10,7 +14,8 @@
 // Secrets: OP_SERVICE_ACCOUNT_TOKEN (a 1Password Service Account created with --can-create-vaults), BROWSERBASE_API_KEY,
 // optional BROWSERBASE_PROJECT_ID.
 import { keybox, type KeyboxDeps } from "../_shared/setup/keybox.ts";
-import { Cdp, fillLogin, openPage } from "../_shared/setup/cdp.ts";
+import { Cdp, fillCode, fillLogin, openPage } from "../_shared/setup/cdp.ts";
+import { fillSaved, type KeyfillDeps } from "../_shared/setup/keyfill.ts";
 import { browserbase, onePassword, type Vault } from "../_shared/setup/vendors.ts";
 import { sliceHashes } from "../_shared/setup/guards.ts";
 
@@ -45,11 +50,17 @@ const deps: KeyboxDeps = {
   },
   fill: fillLogin,
   async saveRef(r) {
-    const res = await db("vault_items", { method: "POST", headers: { prefer: "return=representation" }, body: JSON.stringify({ business_id: r.business_id, tool_name: r.tool_name.slice(0, 120), login_url: r.login_url, vault_provider: "1password", vault_ref: r.vault_ref, username_hint: r.username_hint, status: "stored", created_by: "setup-agent" }) });
+    const res = await db("vault_items", { method: "POST", headers: { prefer: "return=representation" }, body: JSON.stringify({ business_id: r.business_id, tool_name: r.tool_name.slice(0, 120), login_url: r.login_url, vault_provider: "1password", vault_ref: r.vault_ref, username_hint: r.username_hint, has_authenticator: !!r.has_authenticator, status: "stored", created_by: "setup-agent" }) });
     const id = res.ok ? ((await res.json()) as any[])?.[0]?.id ?? null : null;
     if (id) await db(`setup_sessions?id=eq.${r.setup_id}`, { method: "PATCH", body: JSON.stringify({ vault_item_id: id, updated_at: new Date().toISOString() }) }).then((x) => x.body?.cancel());
     return id;
   },
+  async signedInOn(setupId, host) {
+    const cur = (await rows(`setup_sessions?id=eq.${setupId}&select=plan`))?.[0]?.plan ?? {};
+    const hosts = [...new Set([...(Array.isArray(cur.signin_hosts) ? cur.signin_hosts : []), host])].slice(0, 6);
+    await db(`setup_sessions?id=eq.${setupId}`, { method: "PATCH", body: JSON.stringify({ plan: { ...cur, signin_hosts: hosts }, updated_at: new Date().toISOString() }) }).then((x) => x.body?.cancel());
+  },
+  async terms(key) { return (await rows(`tool_terms?tool_key=eq.${encodeURIComponent(key)}&select=automation`))?.[0]?.automation ?? "unknown"; },
   async note(setupId, what) {
     const s = (await rows(`setup_sessions?id=eq.${setupId}&select=log,owner_taps`))?.[0];
     const log = [...(s?.log ?? []).slice(-150), { at: new Date().toISOString(), ...what }];
@@ -66,9 +77,35 @@ const deps: KeyboxDeps = {
   },
 };
 
+const fillDeps: KeyfillDeps = {
+  async identity(id) { return (await rows(`tool_identities?id=eq.${id}&state=neq.retired&select=id,login_url,signin_hosts,vault_item_id,totp`))?.[0] ?? null; },
+  async vaultRef(item) { return (await rows(`vault_items?id=eq.${item}&vault_provider=eq.1password&select=vault_ref`))?.[0]?.vault_ref ?? null; },
+  vault: () => deps.vault(),
+  page: (sessionId) => deps.page(sessionId),
+  fill: fillLogin,
+  fillCode,
+  async used(item, ok) { const t = new Date().toISOString(); await db(`vault_items?id=eq.${item}`, { method: "PATCH", body: JSON.stringify(ok ? { last_used_at: t, last_ok_at: t } : { last_used_at: t }) }).then((x) => x.body?.cancel()); },
+};
+const same = (a: string, b: string) => { if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; };
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors(req) });
-  if (req.method !== "POST" || !new URL(req.url).pathname.endsWith("/keys")) return json(req, { ok: false, code: "not_found" }, 404);
+  const route = new URL(req.url).pathname.replace(/^.*\/vault-writer/, "");
+  if (req.method === "POST" && (route === "/fill" || route === "/code")) {
+    // Pip's own background worker only. Never reachable from a page: it needs the service key.
+    const bearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+    if (!SB_KEY || !same(bearer, SB_KEY)) return json(req, { ok: false, code: "forbidden" }, 403);
+    try {
+      const r = await fillSaved(await req.json().catch(() => null), route === "/fill" ? "login" : "code", fillDeps);
+      return json(req, { ok: r.status === 200, code: r.code }, r.status);
+    } catch {
+      // Deliberately nothing logged: this call handled a password.
+      return json(req, { ok: false, code: "vault_failed" }, 500);
+    } finally {
+      for (const c of sockets.splice(0)) c.close();
+    }
+  }
+  if (req.method !== "POST" || route !== "/keys") return json(req, { ok: false, code: "not_found" }, 404);
   const text = await req.text().catch(() => "");
   if (text.length > 4000) return json(req, { ok: false, code: "bad_input" }, 400);
   let body: unknown = null; try { body = JSON.parse(text); } catch { /* bad json */ }

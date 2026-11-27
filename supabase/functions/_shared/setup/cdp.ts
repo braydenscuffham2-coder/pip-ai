@@ -93,3 +93,23 @@ export async function fillLogin(page: Page, username: string, password: string):
     if (b) { b.click(); return true; } const f = p && p.form; if (f) { f.requestSubmit ? f.requestSubmit() : f.submit(); return true; } return false; })()`);
   return { user, pass, submitted };
 }
+
+/**
+ * Types a one-time code into the code field the page shows, marks it so later screenshots blur it, and submits.
+ * The field is found by the page's own markup. The code goes straight into the browser; it is not logged or returned.
+ */
+export async function fillCode(page: Page, code: string): Promise<{ field: boolean; submitted: boolean }> {
+  const field = await page.evaluate<boolean>(`(() => {
+    const vis = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none"; };
+    const CODE = /(otp|one[-_ ]?time|2fa|mfa|totp|verification|security[-_ ]?code|auth(enticator)?[-_ ]?code|passcode)/i;
+    const el = [...document.querySelectorAll("input")].find((el) => vis(el) && el.type !== "password" && (/one-time-code/i.test(el.autocomplete || "") || CODE.test((el.name || "") + " " + (el.id || "") + " " + (el.getAttribute("aria-label") || "") + " " + (el.placeholder || ""))));
+    if (!el) return false;
+    el.setAttribute("data-pip-code", "1"); el.dataset.pipFilled = "1"; el.style.setProperty("filter", "blur(10px)", "important"); el.focus(); el.value = "";
+    return true; })()`);
+  if (!field) return { field: false, submitted: false };
+  await page.type(code);
+  const submitted = await page.evaluate<boolean>(`(() => { const el = document.querySelector("[data-pip-code]"); const f = el && el.form;
+    const b = f && [...f.querySelectorAll("button, input[type=submit]")].find((x) => x.type === "submit" || /(verify|continue|submit|sign ?in|log ?in|next)/i.test(x.innerText || x.value || ""));
+    if (b) { b.click(); return true; } if (f) { f.requestSubmit ? f.requestSubmit() : f.submit(); return true; } return false; })()`);
+  return { field: true, submitted };
+}

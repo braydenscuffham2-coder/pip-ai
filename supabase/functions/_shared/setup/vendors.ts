@@ -45,7 +45,16 @@ export interface Vault {
   /** The client's own vault, made the first time ("Pip · <business id>"). One vault per client. */
   vaultFor(businessId: string, name: string): Promise<string>;
   /** Saves a login. Returns its reference (op://vault/item), which is all Pip's database ever holds. */
-  putLogin(vaultId: string, item: { title: string; url: string; username: string; password: string }): Promise<{ itemId: string; ref: string }>;
+  putLogin(vaultId: string, item: { title: string; url: string; username: string; password: string; authenticator?: string }): Promise<{ itemId: string; ref: string }>;
+  /** Reads a saved login back by its reference, for vault-writer to type into the tool's own sign-in page. `code` is the
+   *  current authenticator code when the item has one. Nothing this returns may be logged, stored or shown to a model. */
+  getLogin(ref: string): Promise<{ username: string; password: string; code: string | null }>;
+}
+
+/** The two ids inside a reference Pip stores (op://<vault id>/<item id>). Null for anything else. */
+export function parseRef(ref: string): { vaultId: string; itemId: string } | null {
+  const m = /^op:\/\/([a-z0-9]{10,40})\/([a-z0-9]{10,40})$/i.exec(ref || "");
+  return m ? { vaultId: m[1], itemId: m[2] } : null;
 }
 
 /** 1Password through a Service Account created with --can-create-vaults. The token lives only in vault-writer. */
@@ -67,11 +76,21 @@ export async function onePassword(token: string): Promise<Vault> {
         fields: [
           { id: "username", title: "username", fieldType: sdk.ItemFieldType.Text, value: it.username },
           { id: "password", title: "password", fieldType: sdk.ItemFieldType.Concealed, value: it.password },
+          ...(it.authenticator ? [{ id: "onetimepassword", title: "one-time password", sectionId: "pipsignin", fieldType: sdk.ItemFieldType.Totp, value: it.authenticator }] : []),
         ],
+        ...(it.authenticator ? { sections: [{ id: "pipsignin", title: "Pip sign-in" }] } : {}),
         websites: [{ url: it.url, label: "sign-in page", autofillBehavior: sdk.AutofillBehavior.AnywhereOnWebsite }],
         tags: ["pip"],
       });
       return { itemId: made.id, ref: `op://${vaultId}/${made.id}` };
+    },
+    async getLogin(ref) {
+      const ids = parseRef(ref);
+      if (!ids) throw new Error("bad vault reference");
+      const item = await client.items.get(ids.vaultId, ids.itemId);
+      const field = (id: string) => String((item.fields || []).find((f: any) => f.id === id)?.value ?? "");
+      const otp = (item.fields || []).find((f: any) => f.fieldType === sdk.ItemFieldType.Totp) as any;
+      return { username: field("username"), password: field("password"), code: otp?.details?.content?.code ?? null };
     },
   };
 }
