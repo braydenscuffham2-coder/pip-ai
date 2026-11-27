@@ -769,8 +769,8 @@ dialog.sheet::backdrop{background:rgba(246,246,251,.6);-webkit-backdrop-filter:b
       <p class="say left" aria-hidden="true"><span class="b"><span class="who"><i></i>Pip</span><span class="t">One moment. I'm pulling up your Portal.</span></span></p>
     </div>
   </section>
-<footer style="max-width:1180px;margin:0 auto;padding:0 20px 28px;text-align:center"><p class="legal" style="margin:14px 0 0;font-size:12px;line-height:1.5;opacity:.75"><a href="/privacy" style="color:inherit">Privacy</a> · <a href="/terms" style="color:inherit">Terms</a></p></footer>
 </main>
+<footer id="legal" style="max-width:1180px;margin:calc(-40px - var(--dock-h)) auto 0;padding:0 20px calc(12px + var(--dock-h) + env(safe-area-inset-bottom,0px));text-align:center"><p class="legal" style="margin:0;font-size:12px;line-height:1.5;opacity:.75"><a href="/privacy" style="color:inherit">Privacy</a> · <a href="/terms" style="color:inherit">Terms</a></p></footer>
 <nav class="dock" id="dock" hidden></nav>
 <div class="toasts" id="toasts"></div>
 <p class="sr-only" id="sr-status" role="status" aria-live="polite"></p>
@@ -1979,7 +1979,7 @@ function notesCard() {
     h("div", { class: "row", style: { alignItems: "baseline", gap: "8px", flexWrap: "wrap" } }, h("b", {}, n.teammate), h("span", { class: "fine" }, week(n.week_start))),
     h("p", { class: "small", style: { marginTop: "6px" } }, n.did),
     n.wrong ? h("p", { class: "small", style: { marginTop: "6px" } }, h("b", {}, "What went wrong: "), n.wrong) : null,
-    n.proposal ? h("div", { class: "note", style: { marginTop: "10px" } },
+    n.proposal ? h("div", { class: "note", style: { marginTop: "10px", display: "block" } },
       h("p", { class: "small" }, h("b", {}, "One suggestion: "), n.proposal.change), h("p", { class: "small", style: { marginTop: "4px" } }, n.proposal.why),
       n.decision ? h("p", { class: "fine", style: { marginTop: "8px" } }, "You said: " + (n.decision === "good_idea" ? "good idea" : "no thanks") + ". Nothing changes by itself.")
         : h("div", {}, h("div", { class: "btns", style: { marginTop: "8px" } },
