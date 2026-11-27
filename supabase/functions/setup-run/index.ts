@@ -5,7 +5,7 @@
 //   POST /setup-run/hold  { setup_id }   internal: connect to this setup's browser and stay connected until the setup
 //                                        lets go. On the free Browserbase plan a browser closes the moment the last
 //                                        connection drops, and each step is its own request (see _shared/setup/hold.ts).
-//   POST /setup-run/probe {}             internal: opens a throwaway browser for a few seconds and reports whether a
+//   POST /setup-run/probe {}             internal, or a founder test ticket: opens a throwaway browser for a few seconds and reports whether a
 //                                        second connection can come and go without closing it. No page is opened.
 //   POST /setup-run/stop  { setup_id }   internal (service key): close the browser and stop
 //
@@ -175,6 +175,13 @@ async function probe() {
   if (sid) await bb.release(sid).catch(() => {});
   return out;
 }
+async function ticketOk(ticket: string | null): Promise<boolean> {
+  if (!ticket || ticket.length < 24 || ticket.length > 200) return false;
+  const v = await setting("run_ticket");
+  if (!v?.hash || !v.expires || new Date(v.expires).getTime() <= Date.now()) return false;
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ticket));
+  return same([...new Uint8Array(d)].map((x) => x.toString(16).padStart(2, "0")).join(""), String(v.hash));
+}
 function chain(id: string) {
   EdgeRuntime.waitUntil(fetch(`${SELF}/step`, { method: "POST", headers: { authorization: `Bearer ${SB_KEY}`, "content-type": "application/json" }, body: JSON.stringify({ setup_id: id }) }).then((r) => r.body?.cancel()).catch(() => {}));
 }
@@ -182,10 +189,13 @@ function chain(id: string) {
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "not_found" }, 404);
   const bearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
-  if (!SB_KEY || !same(bearer, SB_KEY)) return json({ error: "forbidden" }, 403);
   const path = new URL(req.url).pathname.replace(/^.*\/setup-run/, "") || "/";
+  // The probe opens no page and touches no business, so a founder's short-lived test ticket may run it too (the same
+  // ticket pip-jobs accepts: only its hash is stored, in forge_settings 'run_ticket', with an expiry).
+  const internal = !!SB_KEY && same(bearer, SB_KEY);
+  if (path === "/probe" && (internal || await ticketOk(req.headers.get("x-pip-ticket")))) return json(BBKEY ? await probe() : { ok: false, error: "not_configured" });
+  if (!internal) return json({ error: "forbidden" }, 403);
   const body = await req.json().catch(() => ({}));
-  if (path === "/probe") return json(BBKEY ? await probe() : { ok: false, error: "not_configured" });
   const id = typeof body?.setup_id === "string" && /^[0-9a-f-]{36}$/i.test(body.setup_id) ? body.setup_id : "";
   if (!id) return json({ error: "bad_request" }, 400);
   const row = await load(id);
