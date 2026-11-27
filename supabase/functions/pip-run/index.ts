@@ -10,6 +10,7 @@
 // It never stores a phone number in the clear: contacts are kept as one-way codes plus their last four digits.
 // Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY. Optional: STRIPE_SECRET_KEY, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN.
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { gate as outboundGate } from "../_shared/outbound.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!, SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const db = createClient(SB_URL, SERVICE, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -192,6 +193,9 @@ async function answerText(line: any, r: any, from: string, to: string, text: str
   // The first reply to a texter says it is an AI (pip-turn guarantees that line) and how to opt out.
   if (r.first) reply += " Reply STOP to opt out.";
   reply = reply.slice(0, 1200);
+  // The one outbound gate has the last word, even on a reply (STOP, a paused platform, a business that left).
+  const allowed = await outboundGate((f, a) => db.rpc(f, a), { business: line.business, spec: line.spec, channel: "sms", to: from });
+  if (!allowed.allowed) return;
   if (await sendText(to, from, reply)) {
     // One call counts the segments for billing and writes the "sent" record that cites the consent_ledger row relied on.
     // The texter's number goes in only so the database can hash it; it is never stored.

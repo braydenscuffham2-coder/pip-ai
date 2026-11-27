@@ -33,6 +33,7 @@ import { type ExecResult, runJob, type State, type Tool } from "../_shared/job-e
 import { localDay } from "../_shared/schedule.ts";
 import { EMAIL_OPT_OUT_LINE, isStopRequest } from "../_shared/optout.ts";
 import { sendOut } from "../_shared/edges.ts";
+import { firstText, gate as outboundGate, phone, refusal as sendRefusal } from "../_shared/outbound.ts";
 import { isOperatorRun, operatorSend } from "../_shared/operate-run.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!, SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -235,15 +236,40 @@ const BUILTIN: Record<string, { description: string; props: Record<string, strin
   request_booking: { description: "Ask the owner to confirm a time. You do not confirm it yourself.", props: { when: "What they asked for", need: "", contact: "" }, required: ["when"], approval: "owner" },
   handoff: { description: "Hand this conversation to a person.", props: { reason: "" }, required: ["reason"], approval: "none" },
   draft_for_approval: { description: "Write a draft for the owner to approve before anything is sent.", props: { what: "", text: "" }, required: ["what", "text"], approval: "owner" },
+  send_text: { description: "Send one short text message to a customer who has agreed to get texts from this business. Use it only when this job says to text someone first. You cannot send to a number the job did not give you.", props: { to: "The customer's mobile number", message: "The text, in plain words, under 300 characters" }, required: ["to", "message"], approval: "none" },
   post_out: { description: "Post information to one of the owner's own systems, through an outbound door the owner set up. You cannot choose the address: give only the door's name, exactly as this job names it.", props: { door: "The door's name", fields: 'The fields to send, as a JSON object, for example {"name":"Dana","need":"refill"}' }, required: ["door", "fields"], approval: "none" },
 };
 /** A teammate posts to an outbound door (pip-edge). The address and the signing key stay in the database and in this call; the model sees neither. */
 async function postOut(business: string, key: string, args: J, meta: Record<string, string>) {
+  const ok = await outboundGate((f, a) => db.rpc(f, a), { business, channel: "post" });
+  if (!ok.allowed) return { ok: false, text: sendRefusal(ok.reason, "post") };
   return await sendOut({
     take: async (name, k, data) => (await db.rpc("edge_out_take", { p_business: business, p_name: name, p_key: k, p_data: data })).data ?? { ok: false },
     post: async (url, headers, body) => { const r = await fetch(url, { method: "POST", headers, body, redirect: "manual", signal: AbortSignal.timeout(10000) }); await r.body?.cancel(); return { status: r.status }; },
     done: async (ev, status, note) => { await db.rpc("edge_done", { p_event: ev, p_started: 0, p_status: status, p_note: note }); },
   }, { name: args?.door, key, fields: args?.fields, meta });
+}
+
+/**
+ * A teammate texts a customer first (not a reply). The one outbound gate decides: texting first must be switched on,
+ * the person must have agreed, it must be inside the allowed hours and under the daily cap. The text always carries
+ * the AI line and STOP. The number is used for the send and for the record's hash; it is never stored or logged.
+ */
+async function sendFirstText(business: string, spec: string, args: J, teammate: string, name: string): Promise<{ ok: boolean; text: string }> {
+  const to = phone(args?.to), body = firstText(args?.message, teammate, String(name ?? "").replace(/\s*[(\[][^)\]]*[)\]]/g, "").trim());
+  if (!to || !body) return { ok: false, text: "That did not work: a text needs a mobile number and a message. Nothing was sent." };
+  const g = await outboundGate((f, a) => db.rpc(f, a), { business, spec, channel: "sms", to, first: true });
+  if (!g.allowed) return { ok: false, text: sendRefusal(g.reason, "sms") };
+  const { data: line } = await db.from("phone_lines").select("pip_number,status").eq("business_id", business).maybeSingle();
+  const sid = (Deno.env.get("TWILIO_ACCOUNT_SID") ?? "").trim(), token = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
+  if (!line?.pip_number || line.status !== "active" || !sid || !token) return { ok: false, text: "This business does not have a working texting number yet. Nothing was sent. Tell the owner instead." };
+  try {
+    const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, { method: "POST", headers: { authorization: `Basic ${btoa(`${sid}:${token}`)}`, "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ From: line.pip_number, To: to, Body: body }).toString(), signal: AbortSignal.timeout(15000) });
+    await r.body?.cancel();
+    if (!r.ok) return { ok: false, text: "The text did not go through. Do not say it was sent." };
+  } catch { return { ok: false, text: "The text did not go through. Do not say it was sent." }; }
+  await db.rpc("portal_sms_out", { p_business: business, p_spec: spec, p_segments: Math.ceil(body.length / 153), p_to: to, p_ai_disclosed: true, p_opt_out_offered: true });
+  return { ok: true, text: "The text was sent." };
 }
 
 function classicSystem(spec: J, business: string): string {
@@ -472,6 +498,13 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
       await db.rpc("portal_log", { p_spec: id, p_summary: refusal(c!.teammate, name.slice(0, 80), v.say), p_outcome: "skipped", p_job: `job:${job!.id}`, p_kind: "error" });
       return { text: `Not allowed: ${v.say}`, error: true };
     }
+    if (meta.builtin && name === "send_text") {
+      if (!real || !c!.biz?.id) { actions.push({ tool: name, status: "test" }); return { text: "Test mode: nothing was sent." }; }
+      const r = await sendFirstText(c!.biz.id, id, input, String(c!.teammate ?? ""), String(c!.name ?? ""));
+      actions.push({ tool: name, status: r.ok ? "done" : "blocked" });
+      await log(r.ok ? `${c!.teammate} texted a customer` : `${c!.teammate} did not text a customer: ${r.text.replace(/^Blocked: /, "").split(". ")[0]}`, r.ok ? "ok" : "skipped", job!.id);
+      return { text: r.text, ...(r.ok ? {} : { error: true }) };
+    }
     if (meta.builtin && name === "post_out") {
       if (!real || !c!.biz?.id) { actions.push({ tool: name, status: "test" }); return { text: "Test mode: nothing was sent." }; }
       const r = await postOut(c!.biz.id, `c:${conv}:${crypto.randomUUID().slice(0, 12)}`, input, { business: String(c!.name ?? ""), teammate: String(c!.teammate ?? ""), job: job!.id });
@@ -504,7 +537,7 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
       // An address the customer typed in this chat is recorded as consent (web_form) the first time.
       const to = [args.recipient_email, args.to].find((v) => typeof v === "string" && EMAIL_ONE.test(v.trim()));
       if (to && c!.biz?.id) {
-        const { data: gate } = await db.rpc("portal_email_gate", { p_business: c!.biz.id, p_spec: id, p_to: String(to).trim(), p_given_in_chat: seen.has(String(to).trim().toLowerCase()) });
+        const gate = await outboundGate((f, a) => db.rpc(f, a), { business: c!.biz.id, spec: id, channel: "email", to: String(to).trim(), givenInChat: seen.has(String(to).trim().toLowerCase()) });
         if (gate?.allowed !== true) {
           actions.push({ tool: name, status: "blocked" });
           await log(`${c!.teammate} did not email a customer: ${gate?.reason === "opted_out" ? "they opted out of email" : "email permission could not be confirmed"}`, "skipped", meta.job);
@@ -743,6 +776,11 @@ async function jobRun(body: J) {
 
     const exec = async (t: Tool, args: J): Promise<ExecResult> => {
       const m = how.get(t.name);
+      if (m?.builtin && t.name === "send_text") {
+        if (!real) return { outcome: "test", text: "Test mode: nothing was sent." };
+        const r = await sendFirstText(c.biz.id, run.spec_id, args, String(c.teammate ?? ""), String(c.name ?? ""));
+        return { outcome: r.ok ? "ok" : "failed", text: r.text };
+      }
       if (m?.builtin && t.name === "post_out") {
         if (!real) return { outcome: "test", text: "Test mode: nothing was sent." };
         const r = await postOut(c.biz.id, `r:${runId}:${(await sha256(JSON.stringify(args ?? {}))).slice(0, 24)}`, args, { business: String(c.name ?? ""), teammate: String(c.teammate ?? ""), job: job.id });
@@ -767,7 +805,7 @@ async function jobRun(body: J) {
             caseId: async (spec, key) => { const { data } = await db.from("operator_cases").select("id").eq("spec_id", spec).eq("case_key", key).maybeSingle(); return data?.id ?? null; },
             reserve: async (id, touch) => { const { data } = await db.rpc("operator_case_touch", { p_case: id, p_touch: touch, p_from: "08:00", p_to: "20:00", p_tz: c.biz.timezone || "America/Boise" }); return { ok: data?.ok === true, why: data?.why }; },
             check: async (spec, key, channel, touch, to) => { const { data } = await db.rpc("operator_send_check", { p_spec: spec, p_case_key: key, p_channel: channel, p_touch: touch, p_recipient: to }); return { ok: data?.ok === true, why: data?.why, purpose: data?.purpose }; },
-            gate: async (to) => { const { data } = await db.rpc("portal_email_gate", { p_business: c.biz.id, p_spec: run.spec_id, p_to: to, p_given_in_chat: false }); return { allowed: data?.allowed === true, reason: data?.reason }; },
+            gate: async (to) => { const g = await outboundGate((f, a) => db.rpc(f, a), { business: c.biz.id, spec: run.spec_id, channel: "email", to }); return { allowed: g.allowed, reason: g.reason ?? undefined }; },
           }, { spec: run.spec_id, input: run.input, channel: "email", args: input, teammate: c.teammate, business: c.name });
           if (!sent.ok) {
             await db.rpc("portal_log", { p_spec: run.spec_id, p_summary: `${c.teammate} did not email a customer: ${sent.text.replace(/^Blocked: /, "").split(". ")[0]}`, p_outcome: "skipped", p_job: label });

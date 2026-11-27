@@ -83,6 +83,14 @@ function fakeDb(world) {
     rpc: async (name, args) => {
       world.writes.push({ op: "rpc", name, args: clone(args) });
       if (name === "pip_ok") return { data: args.p_secret === SITE_SECRET, error: null };
+      // The one outbound gate, as the database does it: email goes on to the email gate, with the same arguments.
+      if (name === "outbound_gate" && !world.rpc.outbound_gate) {
+        if (world.rpc.outbound_paused) return { data: { allowed: false, reason: "paused" }, error: null };
+        if (args.p_channel !== "email") return { data: world.rpc.outbound_other ? world.rpc.outbound_other(args, world) : { allowed: true }, error: null };
+        const inner = { p_business: args.p_business, p_spec: args.p_spec, p_to: args.p_to, p_given_in_chat: args.p_given_in_chat };
+        world.writes.push({ op: "rpc", name: "portal_email_gate", args: clone(inner) });
+        return { data: world.rpc.portal_email_gate(inner, world), error: null };
+      }
       if (world.rpc[name]) return { data: world.rpc[name](args, world), error: null };
       return { data: null, error: null };
     },
