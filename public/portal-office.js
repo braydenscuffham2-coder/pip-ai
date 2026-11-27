@@ -432,8 +432,10 @@ function createOffice(THREE, X, opts) {
       const hand = pip.rig.hands[1].getWorldPosition(V()), vis = place(hand, orb, 0, 0);
       orb.classList.toggle("hl-hide", !vis || !still);
     }
+    // on a big team: the three nearest who need you, and whoever you point at
+    const near3 = mates.size <= 5 ? null : new Set([...mates.values()].filter((m) => m.data.kind === "needs").sort((a, b) => a.desk.seat.distanceTo(camera.position) - b.desk.seat.distanceTo(camera.position)).slice(0, 3).map((m) => m.id));
     for (const [id, el] of model.tags || []) { const m = mates.get(id); if (!m || el.parentElement !== pins) continue;
-      const show = mates.size <= 5 || m.data.kind === "needs" || (hovered && (hovered.id === id || (hovered.d && hovered.d.mate === m)));
+      const show = !near3 || near3.has(id) || (hovered && (hovered.id === id || (hovered.d && hovered.d.mate === m)));
       const vis = place(m.desk.seat.clone().add(V(0, 0.36, 0)), el, 0, 0); el.classList.toggle("hl-hide", !vis || !show || mode !== "floor" || !!travel || entering); }
   }
 
