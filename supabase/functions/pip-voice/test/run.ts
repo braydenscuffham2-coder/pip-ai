@@ -13,7 +13,7 @@ const world: any = {};
 function reset() {
   Object.assign(world, {
     lines: { "+12085550100": { ok: true, business: "b1", name: "TEST Fork & <Co> (end-to-end check)", spec: "3b5b8524-c712-4cee-82ec-97e1565f33ff", teammate: "Hallie", spec_status: "sandbox", state: "ID", health: false, ai_notice: "law", voice: null }, "+12085550101": { ok: true, business: "b2", name: "TEST Empty", spec: null } },
-    calls: {} as Record<string, any>, alerts: [] as any[], said: [] as any[], usage: [] as any[], turns: [] as any[], registered: [] as any[],
+    calls: {} as Record<string, any>, alerts: [] as any[], said: [] as any[], usage: [] as any[], turns: [] as any[], registered: [] as any[], notes: [] as any[],
     el: "ok", turn: { delay: 0, reply: "We are open until nine tonight.", actions: [], fail: false }, handoff: { allowed: false }, twilioCalls: {} as Record<string, any>,
     agent: "agent_test0000000000",
     rules: [{ state: "US", call_ai_notice: "always", call_notes_notice: true }, { state: "ME", call_ai_notice: "always", call_ai_from: "2025-09-24", call_notes_notice: false },
@@ -74,7 +74,7 @@ Deno.serve({ port: MOCK, hostname: "127.0.0.1", onListen() {} }, async (req) => 
   if (p === "/rest/v1/jurisdiction_rules") return world.rules ? j(world.rules) : j({ message: "down" }, 500);
   if (p === "/rest/v1/forge_settings") return j(u.searchParams.get("key") === "eq.voice" && world.agent ? { value: { agent_id: world.agent } } : null);
   if (p === "/rest/v1/voice_calls") {
-    if (req.method === "GET") { const c = world.calls[(u.searchParams.get("call_sid") ?? "").replace("eq.", "")]; return j(c ? { id: c.id, contact_hint: c.hint } : null); }
+    if (req.method === "GET") { const c = world.calls[(u.searchParams.get("call_sid") ?? "").replace("eq.", "")]; return j(c ? { id: c.id, contact_hint: c.hint, spec_id: c.spec, conversation_id: c.conversation, turns: c.turns } : null); }
     const c = byId((u.searchParams.get("id") ?? "").replace("eq.", "")); if (c) Object.assign(c, await req.json()); return new Response(null, { status: 204 });
   }
   if (p === "/functions/v1/pip-turn/turn") {
@@ -83,6 +83,10 @@ Deno.serve({ port: MOCK, hostname: "127.0.0.1", onListen() {} }, async (req) => 
     if (world.turn.delay) await new Promise((r) => setTimeout(r, world.turn.delay));
     if (world.turn.fail) return j({ error: "server" }, 500);
     return j({ conversation: b.conversation, reply: world.turn.reply, actions: world.turn.actions, live: true });
+  }
+  if (p === "/functions/v1/pip-turn/call-note") {
+    if (req.headers.get("authorization") !== `Bearer ${SERVICE}`) return j({ error: "forbidden" }, 403);
+    world.notes.push(await req.json()); return j({ ok: true });
   }
   if (p === "/v1/convai/twilio/register-call") {
     world.registered.push({ key: req.headers.get("xi-api-key"), body: await req.json() });
@@ -380,6 +384,26 @@ await test("Billing", async () => {
   await ring(29); world.calls[SID(29)].old = true; world.twilioCalls[SID(29)] = { status: "in-progress", duration: null };
   const s = await (await fetch(`http://127.0.0.1:${FN}/functions/v1/pip-voice/hooks/sweep`, { method: "POST" })).json();
   ok("the sweep bills a finished call from Twilio's record (125 s is 3 minutes) and leaves an open one", s.settled === 1 && s.still_open === 1 && world.usage.find((x: any) => x.sid === SID(28))?.qty === 3 && !world.calls[SID(29)].billed, JSON.stringify(s));
+});
+
+await test("A note for the owner after a call", async () => {
+  const settle = () => new Promise((r) => setTimeout(r, 250));
+  const { pass: p } = await ring(41);
+  await speak(p, "what time do you open");
+  await twilio("/twilio/status", { CallSid: SID(41), CallStatus: "completed", CallDuration: "95" }); await settle();
+  const n = world.notes.filter((x: any) => x.conversation === world.calls[SID(41)].conversation);
+  ok("when a call ends, pip-turn is asked once for the owner's note", n.length === 1, JSON.stringify(world.notes));
+  ok("it is told which teammate, which conversation, how long, and only the caller's last four digits", n[0]?.skill === world.calls[SID(41)].spec && n[0]?.seconds === 95 && /^\d{4}$/.test(n[0]?.caller) && !JSON.stringify(n[0]).includes("+1208"), JSON.stringify(n[0]));
+  await twilio("/twilio/status", { CallSid: SID(41), CallStatus: "completed", CallDuration: "95" }); await settle();
+  ok("Twilio telling us again asks for no second note", world.notes.filter((x: any) => x.conversation === world.calls[SID(41)].conversation).length === 1);
+  await ring(42);
+  await twilio("/twilio/status", { CallSid: SID(42), CallStatus: "completed", CallDuration: "4" }); await settle();
+  ok("a call where the caller never spoke gets no note", !world.notes.some((x: any) => x.conversation === world.calls[SID(42)].conversation));
+  const before = world.notes.length;
+  const { pass: q } = await ring(43); await speak(q, "hello");
+  world.calls[SID(43)].old = true; world.twilioCalls[SID(43)] = { status: "completed", duration: "70" };
+  await fetch(`http://127.0.0.1:${FN}/functions/v1/pip-voice/hooks/sweep`, { method: "POST" }); await settle();
+  ok("a call settled by the sweep gets its note too", world.notes.length === before + 1 && world.notes.at(-1).seconds === 70, JSON.stringify(world.notes.at(-1)));
 });
 
 await test("Founder check", async () => {

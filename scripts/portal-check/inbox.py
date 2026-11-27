@@ -19,6 +19,7 @@ INBOX = [
   {"id": 41, "kind": "notify_owner", "at": iso(120), "teammate": "Hallie", "channel": "voice", "said": {"summary": HOSTILE}, "urgent": False, "waiting": False, "seen": False},
   {"id": 40, "kind": "capture_lead", "at": iso(4000), "teammate": "Hallie", "channel": "web_chat", "said": {"name": "Sam Rivera", "phone": "208-555-0188", "email": "sam@customer.example", "need": "Rehearsal dinner for 30 on June 14 " + "x" * 60}, "urgent": False, "waiting": False, "seen": False},
   {"id": 39, "kind": "request_booking", "at": iso(90000), "teammate": "Hallie", "channel": "sms", "said": {"when": "Saturday at 7", "need": "Table for six", "contact": "208-555-0101"}, "urgent": True, "waiting": True, "seen": False},
+  {"id": 37, "kind": "call_note", "at": iso(300000), "teammate": "Hallie", "channel": "voice", "said": {"summary": "A caller asked what time you open on Friday. Hallie told them five.", "caller": "a number ending in 4417", "length": "2 min", "did": "saved a lead"}, "urgent": False, "waiting": False, "seen": True},
   {"id": 38, "kind": "draft_for_approval", "at": iso(200000), "teammate": "Hallie", "channel": "email", "said": {"what": "Reply to Priya about the tasting", "text": "Hi Priya,\nWe would love to host your tasting."}, "urgent": False, "waiting": True, "seen": True},
 ]
 problems = []
@@ -69,6 +70,10 @@ with sync_playwright() as p:
         check("Sam Rivera" in t and "208-555-0188" in t and "in website chat" in t, tag + "owner: a lead shows the name, the number and what they want")
         check("Hallie did not confirm this. It is yours to confirm with the customer." in t and "Urgent" in t, tag + "owner: a booking request says plainly that it was not confirmed")
         check(card.locator('[data-k="inbox-old"]').count() == 1 and not card.locator('[data-k="inbox-38"]').is_visible(), tag + "owner: one already seen is folded under Earlier")
+        pg.locator(sel + ' [data-k="inbox-old"] summary').click(); pg.wait_for_timeout(300)
+        t2 = pg.locator(sel).inner_text()
+        check("Call" in t2 and "A caller asked what time you open on Friday." in t2 and "From a number ending in 4417 · 2 min · Hallie saved a lead" in t2, tag + "owner: a call note shows the two sentences and the facts beside them")
+        pg.locator(sel + ' [data-k="inbox-old"] summary').click(); pg.wait_for_timeout(200)
         check(fits(pg), tag + "owner: the page fits the width")
         lay = pg.evaluate("""(sel)=>{const c=document.querySelector(sel), cr=c.getBoundingClientRect(); let out=0, small=0; c.querySelectorAll('p,dd,dt,button,span').forEach(e=>{const r=e.getBoundingClientRect(); if(r.width&&(r.left<cr.left-1||r.right>cr.right+1)) out++;}); c.querySelectorAll('button').forEach(e=>{const r=e.getBoundingClientRect(); if(r.width&&r.height<40) small++;}); return {out, small};}""", sel)
         check(lay["out"] == 0, tag + "owner: nothing spills outside the card, even a long unbroken line")
@@ -78,11 +83,19 @@ with sync_playwright() as p:
         check(len(sent) == 1 and sent[0][2] == {"id": 41, "seen": True}, tag + "owner: Got it sends one mark for that message and nothing else")
         check(not any(c[0] == "DELETE" for c in calls), tag + "owner: nothing is deleted")
         t = pg.locator(sel).inner_text()
-        check("2 NEW" in t.upper() and "Earlier (2)" in t, tag + "owner: after Got it the message moves under Earlier")
+        check("2 NEW" in t.upper() and "Earlier (3)" in t, tag + "owner: after Got it the message moves under Earlier")
         pg.locator(sel + ' [data-k="inbox-all"]').click(); pg.wait_for_timeout(2200)
         t = pg.locator(sel).inner_text()
-        check("ALL CAUGHT UP" in t.upper() and "Earlier (4)" in t, tag + "owner: Mark all as seen clears the new list")
+        check("ALL CAUGHT UP" in t.upper() and "Earlier (5)" in t, tag + "owner: Mark all as seen clears the new list")
         check(not errs, tag + f"owner: console clean {errs[:2]}"); ctx.close()
+
+        # a backlog: only the first few new ones are listed, the rest fold away
+        state["inbox"] = [{"id": 100 + i, "kind": "notify_owner", "at": iso(60 * i + 30), "teammate": "Hallie", "channel": "voice", "said": {"summary": f"Backlog message {i}"}, "urgent": False, "waiting": False, "seen": False} for i in range(20)]
+        ctx, pg, errs = page(f"{BASE}/portal.html?b={BIZ}")
+        card = pg.locator(sel)
+        shown = sum(1 for i in range(20) if card.locator(f'[data-k="inbox-{100 + i}"]').is_visible())
+        check("20 NEW" in card.inner_text().upper() and shown == 8 and "12 more new" in card.inner_text(), tag + f"owner: with 20 new, 8 are listed and 12 fold away (listed {shown})")
+        ctx.close()
 
         state["role"] = "staff"; calls.clear()
         ctx, pg, errs = page(f"{BASE}/portal.html?b={BIZ}")

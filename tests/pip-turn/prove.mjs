@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const src = readFileSync(fileURLToPath(new URL("../../supabase/functions/pip-turn/index.ts", import.meta.url)), "utf8");
 const suite = fileURLToPath(new URL("./limits.test.mjs", import.meta.url));
+const notes = fileURLToPath(new URL("./call-note.test.mjs", import.meta.url)); // the after-call note has its own file
 
 // The one permission check on a turn, and the same line with the check taken out.
 const ASK = "const v = allows(job!, ask, PASSED);", NO_ASK = "const v: Verdict = { ok: true };";
@@ -40,6 +41,10 @@ const BREAKS = [
   ["no AI line on outgoing email", 'if (meta.row.guard === "email") {', "if (false) {"],
   ["a draft teammate answers", '!["live", "approved", "sandbox"].includes(c.s.status)', "false"],
   ["the owner's basics never reach the teammate", "const ownerSays = basicsText(c.biz?.basics);", 'const ownerSays = "";'],
+  ["a call gets a second note", "if ((had ?? []).some((n: J) => n.body?.conversation === conv)) return json({ ok: true, already: true });", ""],
+  ["the website can ask for a call note", 'if (path === "/call-note" && who !== "site") return await callNote(body);', 'if (path === "/call-note") return await callNote(body);'],
+  ["a note is written for a chat, or for another teammate's call", 'if (!own || own.channel !== "voice") return json({ error: "not_found" }, 404);', ""],
+  ["any text from the model can mark a note as needing the owner", "needs_owner: j?.needs_owner === true }", "needs_owner: !!j?.needs_owner }"],
   ["a phone reply is spent on thinking", "...(quiet ? { thinking: quiet } : {}), ", ""],
   ["a reply cut off mid-sentence is said anyway", 'if (r.stop_reason === "max_tokens") text = wholeSentences(text);', ""],
   ["any model name in a setting is used on a call", 'typeof asked === "string" && Object.hasOwn(PRICE, asked) ? asked : MODEL', 'typeof asked === "string" ? asked : MODEL'],
@@ -84,7 +89,7 @@ for (const [what, from, to] of BREAKS) {
   if (edits.some(([a]) => !src.includes(a))) { console.log(`STALE  ${what}: that line is no longer in pip-turn. Update tests/pip-turn/prove.mjs.`); holes++; continue; }
   const file = join(dir, `broken-${BREAKS.findIndex((b) => b[0] === what)}.ts`);
   writeFileSync(file, edits.reduce((code, [a, b]) => code.replace(a, b), src));
-  const r = spawnSync(process.execPath, ["--test", suite], { env: { ...process.env, PIP_TURN_SRC: file }, encoding: "utf8" });
+  const r = spawnSync(process.execPath, ["--test", suite, notes], { env: { ...process.env, PIP_TURN_SRC: file }, encoding: "utf8" });
   if (r.status === 0) { console.log(`HOLE   ${what}: the tests still passed`); holes++; } else console.log(`caught ${what}`);
 }
 console.log(holes ? `\n${holes} problem(s). The suite would miss these.` : `\nAll ${BREAKS.length} planted breaks were caught.`);
