@@ -1423,7 +1423,12 @@ async function api(path, body, base) {
   return j;
 }
 const rpc = (name, args) => api("/rpc/" + name, { business: S.bid, args: args || {} }, OPS);
-const freshMail = async (e) => { if (e.code === "fresh_sign_in" && S.me) { try { await fetch(FN + "/signin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: S.me.email }) }); } catch (x) { /* shown to the user */ } } };
+// Where the owner was when a fresh sign-in was asked for, kept on this device for an hour, so the emailed link
+// brings them back to the same business and tab instead of the front of the Portal.
+const PLACE = "pip.return";
+const rememberPlace = () => { try { if (S.bid) localStorage.setItem(PLACE, JSON.stringify({ b: S.bid, tab: S.tab, at: Date.now() })); } catch (e) { /* private mode: they pick the business again */ } };
+const takePlace = () => { try { const p = JSON.parse(localStorage.getItem(PLACE) || "null"); localStorage.removeItem(PLACE); return p && /^[0-9a-f-]{36}$/i.test(p.b) && Date.now() - p.at < 3600e3 ? p : null; } catch (e) { return null; } };
+const freshMail = async (e) => { if (e.code === "fresh_sign_in" && S.me) { rememberPlace(); try { await fetch(FN + "/signin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: S.me.email }) }); } catch (x) { /* shown to the user */ } } };
 const WORDS = {
   sign_in: "Please sign in again.", fresh_sign_in: "For your security, sign in again to do this. We just emailed you a new link.",
   owner_only: "Only an owner can do this.", setup_locked: "Setup unlocks when you accept your price.", connect_off: "Tool sign-ins are not switched on yet. Pip will let you know.",
@@ -1442,7 +1447,7 @@ async function run(fn, okText, react) {
   try { await fn(); if (okText) say(okText, "ok"); }
   catch (e) {
     failed = e;
-    if (e.code === "fresh_sign_in" && S.me) { try { await fetch(FN + "/signin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: S.me.email }) }); } catch (x) { /* shown below */ } }
+    if (e.code === "fresh_sign_in" && S.me) { rememberPlace(); try { await fetch(FN + "/signin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: S.me.email }) }); } catch (x) { /* shown below */ } }
     if (e.code === "sign_in") { await sb.auth.signOut(); S.me = null; }
     say(e.message, "err");
   }
@@ -2443,8 +2448,10 @@ async function boot() {
   const { data } = await sb.auth.getSession();
   if (!data.session) { signInView(q.get("e") || "", !!q.get("e") && !th); return; }
   try { S.me = await api("/me"); } catch (e) { await sb.auth.signOut(); signInView(q.get("e") || ""); return; }
-  const want = q.get("b"), mine = S.me.businesses || [];
+  const back = th && !q.get("b") ? takePlace() : null;
+  const want = q.get("b") || (back && back.b), mine = S.me.businesses || [];
   S.bid = want || (!S.me.founder && mine.length === 1 ? mine[0].id : null);
+  if (back && S.bid === back.b) { if (["team", "setup", "activity", "people", "settings"].includes(back.tab)) S.tab = back.tab; history.replaceState(null, "", "?b=" + S.bid); }
   const cameBack = !!(q.get("connected") && S.bid);
   if (cameBack) { S.tab = "setup"; try { await api("/business/" + S.bid + "/refresh", {}); } catch (e) { /* shown on load */ } history.replaceState(null, "", "?b=" + S.bid); }
   let cardNote = null;
