@@ -123,6 +123,17 @@ export const SIGNED_IN_JS = String.raw`(() => {
   return { url: location.href, passwordShowing: pass };
 })()`;
 
+/**
+ * How long a browser session may stay open, in minutes. Browserbase's Free plan closes a session at 15 minutes, so that
+ * is the default; forge_settings.setup_session_minutes raises it once the plan allows longer. Anything that is not a
+ * sensible number falls back to 15.
+ */
+export function sessionMinutes(setting: unknown): number {
+  const n = typeof setting === "number" ? setting : typeof setting === "string" && setting.trim() !== "" ? Number(setting) : NaN;
+  if (!Number.isFinite(n)) return 15;
+  return Math.max(5, Math.min(Math.floor(n), 360));
+}
+
 /** Model prices per million tokens, for the per-setup cap. Sonnet 5.5 list prices (Nov 2026). */
 export const MODEL_PRICE = { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 };
 export function costOf(u: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }): number {

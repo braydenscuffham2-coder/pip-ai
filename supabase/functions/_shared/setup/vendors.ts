@@ -18,11 +18,11 @@ export const browserbase = (cfg: BrowserbaseCfg) => ({
    * A new session. Captcha solving and recording are ON by default at Browserbase, so both are turned off here on
    * purpose: Pip never defeats a captcha, and no recording of a sign-in is kept anywhere.
    */
-  async session(contextId: string, minutes = 20): Promise<{ id: string; connectUrl: string }> {
+  async session(contextId: string, minutes = 15): Promise<{ id: string; connectUrl: string }> {
     const j = await bb(cfg, "/sessions", { method: "POST", body: JSON.stringify({
       ...(cfg.projectId ? { projectId: cfg.projectId } : {}),
       browserSettings: { context: { id: contextId, persist: true }, solveCaptchas: false, recordSession: false, viewport: { width: 1280, height: 800 } },
-      timeout: Math.max(60, Math.min(minutes * 60, 3600)), region: "us-west-2",
+      timeout: Math.max(60, Math.min(minutes * 60, 21600)), region: "us-west-2",
     }) });
     return { id: j.id, connectUrl: j.connectUrl };
   },

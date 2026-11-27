@@ -2,7 +2,7 @@
 //   node --test supabase/functions/_shared/setup/guards.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { allowAction, canScreenshot, costOf, isCaptchaUrl, isSecretField, leaks, sliceHashes, siteOf } from "./guards.ts";
+import { allowAction, canScreenshot, costOf, isCaptchaUrl, isSecretField, leaks, sessionMinutes, sliceHashes, siteOf } from "./guards.ts";
 
 test("the model sees the page only in its own states, never while the owner has control", () => {
   for (const s of ["find_login", "verify", "configuring", "testing"]) assert.equal(canScreenshot(s), true, s);
@@ -68,4 +68,12 @@ test("the leak check finds a secret's 8-character slices in text without knowing
   assert.ok((await leaks("the log says Tr0ub4dor&3 here", hashes)) > 0);
   assert.ok((await leaks("…correct-horse…", hashes)) > 0, "a fragment of 8 or more characters is still found");
   assert.equal(await leaks("nothing to see, password [removed]", hashes), 0);
+});
+
+test("a browser session defaults to 15 minutes (the Free plan's limit) and only a sensible setting changes it", () => {
+  for (const v of [undefined, null, "", "soon", {}, NaN, true]) assert.equal(sessionMinutes(v), 15, String(v));
+  assert.equal(sessionMinutes(30), 30);
+  assert.equal(sessionMinutes("45"), 45);
+  assert.equal(sessionMinutes(1), 5, "never under 5 minutes");
+  assert.equal(sessionMinutes(100000), 360, "never over 6 hours");
 });
