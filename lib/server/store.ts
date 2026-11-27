@@ -42,3 +42,7 @@ export const gate = (kind: string, visitor: string, units = 1) =>
   rpc<{ ok: boolean; why?: string }>('pip_gate', { p_kind: kind, p_visitor: visitor, p_units: units });
 export const logEvent = (kind: string, domain: string | null, detail: Record<string, unknown> = {}) =>
   rpc<null>('pip_event', { p_kind: kind, p_domain: domain, p_detail: detail });
+
+/** The practice tool's one database call (app/practice). Returns null when the store is off or the call failed. */
+export const practiceCall = (op: string, args: Record<string, unknown>) =>
+  rpc<{ ok: boolean; error?: string } & Record<string, unknown>>('practice_call', { p_op: op, p_args: args });
