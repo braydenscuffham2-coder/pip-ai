@@ -37,11 +37,16 @@ function createOffice(THREE, X, opts) {
 
   // the Marketplace's light for everything drawn live, carried with the camera so Pip and the team always look like Pip
   const kit = createPipEngine(THREE, { kit: true });
-  const pmrem = new THREE.PMREMGenerator(renderer), env = pmrem.fromScene(kit.room(), 0.04).texture; pmrem.dispose();
-  scene.add(new THREE.HemisphereLight("#ffffff", "#d9dce8", 0.7));
+  // the Marketplace's key and fill ride with the camera (so Pip always reads like Pip), softened, plus the room's own light:
+  // sky from above, warm floor bounce from below, and the sun through the window wall
+  let env = kit.room && pmremOf(kit.room());
+  function pmremOf(sc) { const pm = new THREE.PMREMGenerator(renderer), t = pm.fromScene(sc, 0.04).texture; pm.dispose(); return t; }
+  const hemi = new THREE.HemisphereLight("#f2f6ff", "#eadfce", 0.85); scene.add(hemi);
   const keyT = new THREE.Object3D(); keyT.position.set(0, 0, -6); camera.add(keyT);
-  const key = new THREE.DirectionalLight("#ffffff", 2); key.position.set(-4, 7, 5); key.target = keyT; camera.add(key);
-  const fill = new THREE.DirectionalLight("#dfe8ff", 1); fill.position.set(5, 3, -4); fill.target = keyT; camera.add(fill);
+  const key = new THREE.DirectionalLight("#ffffff", 1.55); key.position.set(-4, 7, 5); key.target = keyT; camera.add(key);
+  const fill = new THREE.DirectionalLight("#dfe8ff", 0.75); fill.position.set(5, 3, -4); fill.target = keyT; camera.add(fill);
+  const sun = new THREE.DirectionalLight("#fff0d8", 0.9); sun.position.set(-7.3, 5.6, 3.9); sun.target.position.set(0, 0, 0); scene.add(sun, sun.target);
+  for (const l of [hemi, key, fill, sun]) l.layers.enableAll();
 
   // ---------- the office file: a .glb read directly (no loader to download) ----------
   const marks = {}, parts = {}, hits = [];
@@ -54,17 +59,30 @@ function createOffice(THREE, X, opts) {
       off += 8 + len;
     }
     const TY = { 5120: Int8Array, 5121: Uint8Array, 5122: Int16Array, 5123: Uint16Array, 5125: Uint32Array, 5126: Float32Array }, N = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
-    const attr = (i) => { const a = json.accessors[i], bv = json.bufferViews[a.bufferView], T = TY[a.componentType], n = N[a.type];
+    const attr = (i) => { const a = json.accessors[i], bv = json.bufferViews[a.bufferView], T = TY[a.componentType], n = N[a.type], es = T.BYTES_PER_ELEMENT;
+      if (bv.byteStride && bv.byteStride !== es * n) { // padded/interleaved (compressed files align each vertex to 4 bytes)
+        const ib = new THREE.InterleavedBuffer(new T(bin, bv.byteOffset || 0, bv.byteLength / es), bv.byteStride / es);
+        return new THREE.InterleavedBufferAttribute(ib, n, (a.byteOffset || 0) / es, !!a.normalized);
+      }
       return new THREE.BufferAttribute(new T(bin, (bv.byteOffset || 0) + (a.byteOffset || 0), a.count * n), n, !!a.normalized); };
+    const images = await Promise.all((json.images || []).map(async (im) => {
+      const bv = json.bufferViews[im.bufferView], blob = new Blob([new Uint8Array(bin, bv.byteOffset || 0, bv.byteLength)], { type: im.mimeType || "image/jpeg" });
+      const bmp = await createImageBitmap(blob);
+      const t = new THREE.Texture(bmp); t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.needsUpdate = true; return t; }));
+    const texOfIdx = (i) => (i == null ? null : images[json.textures[i].source] || null);
+    // a compressed (quantised) file stores small integers; the scene wants plain numbers before it's moved into place
+    const GET = ["getX", "getY", "getZ", "getW"];
+    const floats = (a) => { if (!a.isInterleavedBufferAttribute && a.array instanceof Float32Array) return a; const n = a.itemSize, f = new Float32Array(a.count * n);
+      for (let i = 0; i < a.count; i++) for (let j = 0; j < n; j++) f[i * n + j] = a[GET[j]](i); return new THREE.BufferAttribute(f, n); };
     const mats = (json.materials || []).map((m) => { const p = m.pbrMetallicRoughness || {}, e = m.emissiveFactor || [0, 0, 0], k = (m.extensions && m.extensions.KHR_materials_emissive_strength && m.extensions.KHR_materials_emissive_strength.emissiveStrength) || 1;
-      return { name: m.name, base: p.baseColorFactor || [1, 1, 1, 1], emit: e.map((v) => v * k) }; });
+      return { name: m.name, base: p.baseColorFactor || [1, 1, 1, 1], emit: e.map((v) => v * k), map: texOfIdx(p.baseColorTexture && p.baseColorTexture.index) }; });
     const walk = (ni, parent) => {
       const nd = json.nodes[ni], m = new THREE.Matrix4();
       if (nd.matrix) m.fromArray(nd.matrix); else m.compose(V(...(nd.translation || [0, 0, 0])), new THREE.Quaternion(...(nd.rotation || [0, 0, 0, 1])), V(...(nd.scale || [1, 1, 1])));
       const w = parent.clone().multiply(m), name = nd.name.replace(/\.\d+$/, "");
       if (nd.mesh != null) for (const pr of json.meshes[nd.mesh].primitives) {
         const g = new THREE.BufferGeometry();
-        for (const [k, i] of Object.entries(pr.attributes)) { const nm = { POSITION: "position", NORMAL: "normal", COLOR_0: "color", TEXCOORD_0: "uv" }[k]; if (nm) g.setAttribute(nm, attr(i)); }
+        for (const [k, i] of Object.entries(pr.attributes)) { const nm = { POSITION: "position", NORMAL: "normal", COLOR_0: "color", TEXCOORD_0: "uv" }[k]; if (nm) g.setAttribute(nm, nm === "color" ? attr(i) : floats(attr(i))); }
         if (pr.indices != null) g.setIndex(attr(pr.indices));
         g.applyMatrix4(w); g.computeBoundingSphere(); g.computeBoundingBox();
         parts[name] = { g, mt: mats[pr.material] || { base: [1, 1, 1, 1], emit: [0, 0, 0] } };
@@ -75,7 +93,9 @@ function createOffice(THREE, X, opts) {
   }
   const lin = (c) => new THREE.Color().setRGB(c[0], c[1], c[2], THREE.LinearSRGBColorSpace);
   const BAKE = 4 * 0.97; // the bake is stored at a quarter; this brings it back, a touch brighter for the Marketplace's airy white
-  const baked = () => new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(BAKE, BAKE, BAKE) });
+  // the light as Blender baked it: a texture (stored as light/2 in sRGB) or, in older files, the vertices' colours
+  const LMK = 2 * 1.06;
+  const baked = (name) => { const mt = parts[name] && parts[name].mt; return mt && mt.map ? new THREE.MeshBasicMaterial({ map: mt.map, color: new THREE.Color(LMK, LMK, LMK) }) : new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(BAKE, BAKE, BAKE) }); };
   const glowMat = (hex, k = 1) => new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(k), toneMapped: false });
   function mesh(name, mat, parent = scene) { const p = parts[name]; if (!p) return null; const m = new THREE.Mesh(p.g, mat); m.name = name; parent.add(m); return m; }
 
@@ -150,7 +170,9 @@ function createOffice(THREE, X, opts) {
     const rig = kit.buildPip(env, look);
     a.add(rig.root, rig.shadow, rig.floorGlow, ...rig.handShadows);
     const actor = kit.makeActor(rig, camera, { base, core: look.core, local: (v) => a.worldToLocal(v), world: (v) => a.localToWorld(v) });
-    return { a, rig, actor };
+    a.traverse((o) => o.layers.enable(1));
+    for (const o of [rig.shadow, rig.floorGlow, ...rig.handShadows]) o.traverse((x) => x.layers.disable(1));
+    return { a, rig, actor, last: V(), vel: V() };
   }
   const shade = (hex, k) => "#" + new THREE.Color(hex).lerp(new THREE.Color("#ffffff"), k).getHexString();
   const pip = cast({}, SCALE_PIP, PIP_BASE);
@@ -180,13 +202,15 @@ function createOffice(THREE, X, opts) {
     const nrm = V().fromBufferAttribute(sg.attributes.normal, 0).applyMatrix3(new THREE.Matrix3().getNormalMatrix(g.matrixWorld)).normalize();
     const monN = nrm.dot(seat.clone().sub(monC)) < 0 ? nrm.negate() : nrm; // the way the glass faces: towards the seat
     note.position.copy(monC).add(monN.clone().multiplyScalar(0.02)).add(V(0, 0.16, 0)); note.lookAt(note.position.clone().add(monN)); note.visible = false; scene.add(note);
-    const d = { i, g, side, screen, tex, cv, lamp, note, seat, monC, monN, mate: null, typed: 0, wi: 0, lastPaint: 0 };
+    const lampAt = V(); lamp.geometry.boundingBox.getCenter(lampAt); g.localToWorld(lampAt);
+    const lampGlow = glow(lampAt.clone().add(V(0, -0.06, 0)), "#ffd9a0", 0.55, 0.35), screenGlow = glow(monC.clone().add(monN.clone().multiplyScalar(0.06)), "#eaf4ff", 0.9, 0.1);
+    const d = { i, g, side, screen, tex, cv, lamp, note, seat, monC, monN, mate: null, typed: 0, wi: 0, lastPaint: 0, lampGlow, screenGlow };
     hits.push({ obj: g, kind: "desk", d });
     return d;
   }
   function layoutDesks(n) {
     while (desks.length < n) desks.push(deskAt(desks.length));
-    desks.forEach((d, i) => { d.g.visible = i < n; d.note.visible = d.note.visible && i < n; });
+    desks.forEach((d, i) => { d.g.visible = i < n; d.note.visible = d.note.visible && i < n; d.lampGlow.visible = d.screenGlow.visible = i < n; });
   }
 
   // ---------- the tool wall: a white device in a slot for each tool, its light showing how it is ----------
@@ -208,7 +232,7 @@ function createOffice(THREE, X, opts) {
   const EYE = 1.62;
   const STOPS = {
     arrive: () => ({ pos: B(0, -1.5, EYE), look: B(0, 6, 1.5) }),
-    floor: () => (TALL() ? { pos: B(0, 1.2, 2.05), look: B(0, 20, 1.05) } : { pos: B(0, 4.1, EYE), look: B(0, 20, 1.36) }),
+    floor: () => (TALL() ? { pos: B(0, 1.2, 2.05), look: B(0, 20, 1.05) } : { pos: B(0, 3.5, 1.8), look: B(0, 18, 0.98) }),
     tools: () => (TALL() ? { pos: B(0, 15.2, 1.8), look: B(0, 24.4, 1.55) } : { pos: B(0, 18.4, 1.62), look: B(0, 24.4, 1.58) }),
     front: () => ({ pos: B(1.4, 7.6, 1.66), look: B(4.6, 3.4, 1.05) }),
     meter: () => ({ pos: B(4.4, 9.2, 1.75), look: B(8, 8.2, 2.0) }),
@@ -220,7 +244,7 @@ function createOffice(THREE, X, opts) {
     // over the teammate's shoulder (the side away from the monitor), then into the monitor until it fills the frame
     // in the desk's own frame: the teammate faces +z, their monitor stands to their left (+x); we come round the other end
     const shoulder = { pos: d.g.localToWorld(V(-0.72, 1.55, -1.5)), look: d.monC.clone() }, corner = d.g.localToWorld(V(-1.95, 1.9, 0.5)), side = d.g.localToWorld(V(-1.5, 1.78, -1.25));
-    const w = 0.62, h = 0.36, tanH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    const w = 0.62, h = 0.36, tanH = Math.tan(THREE.MathUtils.degToRad((baseFov - (TALL() ? 0 : PUSH)) / 2));
     let near;
     if (TALL()) { // a phone: the monitor spans the width, up top, above the sheet that holds its controls
       const dist = w / (2 * tanH * camera.aspect), lift = V(0, 2 * dist * tanH * 0.24, 0);
@@ -247,7 +271,7 @@ function createOffice(THREE, X, opts) {
     pts.push(to.pos.clone());
     const curve = new THREE.CatmullRomCurve3(pts, false, "centripetal");
     const len = curve.getLength(), dur = RM() ? 1 : opt.ms || clamp(1100 + len * 120, 1300, 3000);
-    travel = { curve, from, to, t0: performance.now() + (opt.delay ?? 140), dur, looks: opt.looks || null };
+    travel = { curve, from, to, t0: performance.now() + (opt.delay ?? 140), dur, looks: opt.looks || null, fov0: camera.fov, fov1: opt.fov ?? baseFov };
     return new Promise((res) => (travel.done = res));
   }
   function stepCamera(now, dt) {
@@ -260,6 +284,8 @@ function createOffice(THREE, X, opts) {
         const settle = ease(clamp((k - 0.45) / 0.55)), lead = Math.sin(Math.min(1, k * 2.2) * Math.PI / 2) * (1 - settle);
         cur.look.copy(travel.from.look).lerp(ahead, lead * 0.6).lerp(travel.to.look, settle);
       }
+      if (RM()) camera.fov = travel.fov1; else camera.fov = travel.fov0 + (travel.fov1 - travel.fov0) * ease(clamp((k - 0.35) / 0.65));
+      camera.updateProjectionMatrix();
       if (k >= 1) { const d = travel.done; travel = null; d && d(); }
     }
     // critically damped spring: no hard starts, a soft settle
@@ -271,27 +297,31 @@ function createOffice(THREE, X, opts) {
     const t = now / 1000, idle = mode === "desk" ? 0.25 : 1, px = RM() ? 0 : par.x * idle, py = RM() ? 0 : par.y * idle;
     camera.position.copy(view.pos).add(V(Math.sin(t * 0.21) * 0.025 * idle + px * 0.12, Math.sin(t * 0.17 + 1) * 0.015 * idle - py * 0.05, 0));
     camera.lookAt(view.look.clone().add(V(px * 0.16, -py * 0.08, 0)));
+    { const f = view.look.clone().sub(view.pos).setY(0), yaw = Math.atan2(f.x, f.z), dy = Math.atan2(Math.sin(yaw - (lastYaw ?? yaw)), Math.cos(yaw - (lastYaw ?? yaw)));
+      lastYaw = yaw; bank += (clamp(-dy * (1000 / Math.max(1, dt)) * 0.03, -0.035, 0.035) - bank) * 0.08; if (!RM()) camera.rotateZ(bank); }
     if (panel && !PHONE() && mode !== "desk") camera.setViewOffset(innerWidth, innerHeight, Math.min(620, innerWidth * 0.42) / 2, 0, innerWidth, innerHeight); else camera.clearViewOffset();
   }
   // resolves once the soft follow has caught up, so nothing is glued on while the view is still moving
   function settled() { return new Promise((res) => { const t = () => (view.pos.distanceTo(cur.pos) < 0.012 && view.v.length() < 0.05 ? res() : requestAnimationFrame(t)); t(); }); }
+  let lastYaw = null, bank = 0, baseFov = 48; const PUSH = 4;
   function snap(stop) { cur.pos.copy(stop.pos); cur.look.copy(stop.look); view.pos.copy(stop.pos); view.look.copy(stop.look); view.v.set(0, 0, 0); view.lv.set(0, 0, 0); }
 
   // ---------- Pip leads: he moves first, drifts in an arc, and turns back to check you're following ----------
   let pipTo = V(), pipTravel = null, pipSide = -1;
-  function pipSpot(stop, side = pipSide, dist = 3.0) { // left or right third, a couple of metres ahead of where the camera will stand
+  function pipSpot(stop, side = pipSide, dist = TALL() ? 4.3 : 3.0) { // on a phone he stands further off, above the sheet // left or right third, a couple of metres ahead of where the camera will stand
     const f = stop.look.clone().sub(stop.pos).setY(0).normalize(), r = V(-f.z, 0, f.x);
     return stop.pos.clone().add(f.multiplyScalar(dist)).add(r.multiplyScalar(side * (PHONE() ? 0.38 : 1.02))).setY(0);
   }
   function pipGo(to, dur) {
-    pipTravel = { start: pip.a.position.clone(), end: to.clone(), t0: performance.now(), dur: RM() ? 1 : dur };
+    const far = to.distanceTo(pip.a.position) > 0.6; if (far && !RM()) pip.actor.acts.crouch && pip.actor.acts.crouch();
+    pipTravel = { start: pip.a.position.clone(), end: to.clone(), t0: performance.now() + (far && !RM() ? 150 : 0), dur: RM() ? 1 : dur };
     pipTo = to.clone();
   }
   const lerpAngle = (a, b, k) => { let d = b - a; d = Math.atan2(Math.sin(d), Math.cos(d)); return a + d * k; };
   function stepPip(now) {
     const toCam = (p) => Math.atan2(camera.position.x - p.x, camera.position.z - p.z);
     if (pipTravel) {
-      const k = clamp((now - pipTravel.t0) / pipTravel.dur), e = ease(k), d = pipTravel.end.clone().sub(pipTravel.start);
+      const k = clamp((now - pipTravel.t0) / pipTravel.dur), e = k <= 0 ? 0 : ease(k), d = pipTravel.end.clone().sub(pipTravel.start);
       const side = V(-d.z, 0, d.x).normalize().multiplyScalar(Math.min(0.5, d.length() * 0.08) * Math.sin(e * Math.PI));
       const p = pipTravel.start.clone().lerp(pipTravel.end, e).add(side); p.y = Math.sin(e * Math.PI) * 0.1 * Math.min(1, d.length() / 4);
       pip.a.position.copy(p);
@@ -362,7 +392,9 @@ function createOffice(THREE, X, opts) {
         m = Object.assign(cast(lk, SCALE_MATE, 1.12 / SCALE_MATE), { key: k, id: a.id }); mates.set(a.id, m);
         hits.push({ obj: m.rig.body, kind: "mate", id: a.id });
       }
-      m.desk = d; d.mate = m; m.data = a;
+      if (m.prevKind === "needs" && a.kind !== "needs" && m.desk === d) setTimeout(() => peel(d), 250); // fixed: the note comes off
+      if (!avatars.has(a.id) || m.shotKind !== a.kind) { m.shotKind = a.kind; shotQ.push(m); }
+      m.prevKind = a.kind; m.desk = d; d.mate = m; m.data = a;
       // square to the desk (so from the aisle you see them three-quarters on), eyes on their monitor
       const fr = d.g.localToWorld(V(0, 0, 1)).sub(d.g.position); m.a.position.copy(d.seat).setY(0);
       m.front = Math.atan2(fr.x, fr.z); m.toMon = Math.atan2(d.monC.x - d.seat.x, d.monC.z - d.seat.z); if (m.yaw == null) m.a.rotation.y = m.yaw = m.front;
@@ -371,6 +403,8 @@ function createOffice(THREE, X, opts) {
       m.rig.skin.transparent = a.kind === "build"; m.rig.skin.opacity = a.kind === "build" ? 0.55 : 1;
       d.note.visible = a.kind === "needs"; const ns = a.sticky || a.line || ""; if (a.kind === "needs" && d.noteSig !== ns) { d.noteSig = ns; paintNote(d.note.material.map, ns); }
       d.lamp.material.color.set(a.kind === "paused" ? "#d9dbe0" : a.kind === "needs" ? "#ffb84d" : "#ffe2b0").multiplyScalar(a.kind === "paused" ? 0.9 : 1.1);
+      d.lampGlow.material.color.set(a.kind === "needs" ? "#ffc06a" : "#ffd9a0"); d.lampGlow.userData.k = a.kind === "paused" ? 0 : a.kind === "needs" ? 0.5 : 0.32;
+      d.screenGlow.userData.k = a.kind === "paused" ? 0.03 : 0.1;
       const wk = (a.work && a.work.length ? a.work : [a.line]).filter(Boolean), sig = a.kind + "|" + a.name + "|" + wk.join("|");
       d.data = a; if (d.sig !== sig) { d.sig = sig; d.work = wk; d.typed = 0; d.wi = 0; d.doneAt = 0; paintScreen(d, a, a.kind === "live" ? "" : null, 0); }
     });
@@ -394,7 +428,11 @@ function createOffice(THREE, X, opts) {
       if (now - d.lastPaint < 70) continue; d.lastPaint = now;
       const line = d.work[d.wi % d.work.length] || "";
       if (now > (d.eyesAt || 0) && !(mode === "desk" && focusId === d.mate.id)) { d.eyesAt = now + 3000 + Math.random() * 3200; d.mate.actor.acts.lookAt(d.monC.clone().add(V(0, 0.03, 0)), 2.5); }
-      if (d.typed < line.length) { d.typed = Math.min(line.length, d.typed + 1 + (Math.random() < 0.3 ? 1 : 0)); d.mate.actor.A.task = "type"; }
+      if (now < (d.thinkUntil || 0)) { d.mate.actor.A.task = null; }
+      else if (d.typed < line.length) {
+        d.typed = Math.min(line.length, d.typed + 1 + (Math.random() < 0.3 ? 1 : 0)); d.mate.actor.A.task = "type";
+        if (line[d.typed - 1] === " " && Math.random() < 0.09) d.thinkUntil = now + 420 + Math.random() * 700; // a beat to think, hands off the keys
+      }
       else if (!d.doneAt) { d.doneAt = now; d.mate.actor.A.task = null; if (Math.random() < 0.5) d.mate.actor.acts.nod(); }
       else if (now - d.doneAt > 2600) { d.doneAt = 0; d.typed = 0; d.wi++; }
       paintScreen(d, d.data, line.slice(0, d.typed), t);
@@ -419,8 +457,13 @@ function createOffice(THREE, X, opts) {
     }
     for (const [id, el] of model.tags || []) if (mates.has(id)) { el.classList.add("hl-pin", "hl-tag"); pins.append(el); }
     pins.classList.toggle("hl-wait", !root.classList.contains("ready"));
-    stack.replaceChildren();
+    const had = stack.childElementCount; stack.replaceChildren();
     for (const c of (mode === "station" && model.cards && model.cards[stationId]) || []) if (c.kind !== "label" && c.kind !== "hot") stack.append(c.el);
+    if (stack.childElementCount && !had && PLACE[stationId] && !RM()) requestAnimationFrame(() => {
+      const r = stack.getBoundingClientRect(), q = PLACE[stationId].clone().project(camera), x = (q.x * 0.5 + 0.5) * innerWidth - r.left, y = (-q.y * 0.5 + 0.5) * innerHeight - r.top;
+      stack.style.transformOrigin = x + "px " + y + "px";
+      stack.animate([{ opacity: 0, transform: "scale(.5)" }, { opacity: 1, transform: "scale(1)" }], { duration: 620, easing: "cubic-bezier(.2,1.25,.35,1)" });
+    });
   }
   function stepPins() {
     const b = model.bubble, still = mode === "floor" && !travel && !pipTravel && !entering;
@@ -563,6 +606,95 @@ function createOffice(THREE, X, opts) {
     }
   }
 
+  // ---------- quality: everything on a computer, the lean set on a phone or a struggling machine ----------
+  let lowQ = false; const HIGH = () => !PHONE() && !RM() && !lowQ;
+
+  // ---------- the floor's soft reflection of Pip and the team (the Marketplace's studio floor) ----------
+  const reflRT = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });
+  const reflCam = new THREE.PerspectiveCamera(); reflCam.layers.set(1);
+  const texM = new THREE.Matrix4(), rotM = new THREE.Matrix4();
+  const reflMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, toneMapped: false,
+    uniforms: { tex: { value: reflRT.texture }, texM: { value: texM }, k: { value: 0.26 }, eye: { value: V() } },
+    vertexShader: "uniform mat4 texM; varying vec4 vUv; varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; vUv = texM * w; gl_Position = projectionMatrix * viewMatrix * w; }",
+    fragmentShader: "uniform sampler2D tex; uniform float k; uniform vec3 eye; varying vec4 vUv; varying vec3 vW; void main(){ vec4 c = texture2DProj(tex, vUv); float d = length(vW - eye); float f = k * (1.0 - smoothstep(4.0, 16.0, d)); gl_FragColor = vec4(c.rgb, c.a * f); }",
+  });
+  const reflFloor = new THREE.Mesh(new THREE.PlaneGeometry(16, 30), reflMat); reflFloor.rotation.x = -Math.PI / 2; reflFloor.position.set(0, 0.004, -11); reflFloor.renderOrder = 2; scene.add(reflFloor);
+  function stepReflection() {
+    reflFloor.visible = HIGH(); if (!reflFloor.visible) return;
+    const w = Math.max(4, Math.round(innerWidth * dpr / 3)), h = Math.max(4, Math.round(innerHeight * dpr / 3)); // a third of the size: soft by nature
+    if (reflRT.width !== w || reflRT.height !== h) reflRT.setSize(w, h);
+    camera.updateMatrixWorld();
+    const cp = V().setFromMatrixPosition(camera.matrixWorld); rotM.extractRotation(camera.matrixWorld);
+    const look = V(0, 0, -1).applyMatrix4(rotM).add(cp), up = V(0, 1, 0).applyMatrix4(rotM);
+    reflCam.position.set(cp.x, -cp.y, cp.z); reflCam.up.set(up.x, -up.y, up.z); reflCam.lookAt(look.x, -look.y, look.z);
+    reflCam.projectionMatrix.copy(camera.projectionMatrix); reflCam.far = camera.far; reflCam.updateMatrixWorld(); reflCam.matrixWorldInverse.copy(reflCam.matrixWorld).invert();
+    texM.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1).multiply(reflCam.projectionMatrix).multiply(reflCam.matrixWorldInverse);
+    reflMat.uniforms.eye.value.copy(cp);
+    const bg = scene.fog; scene.fog = null; reflFloor.visible = false;
+    renderer.setRenderTarget(reflRT); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(scene, reflCam); renderer.setRenderTarget(null);
+    scene.fog = bg; reflFloor.visible = true;
+  }
+
+  // ---------- glows: lamps, screens, the elevator light and tool lights breathe a little light into the air ----------
+  const glowTex = (() => { const c = cvs(128, 128), g = c.getContext("2d"), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.35, "rgba(255,255,255,.35)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return texOf(c); })();
+  const glows = [];
+  function glow(pos, color, size, k = 0.5) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, transparent: true, opacity: k, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+    sp.position.copy(pos); sp.scale.setScalar(size); sp.renderOrder = 3; scene.add(sp); glows.push(sp); return sp;
+  }
+
+  // ---------- the moment a fix lands: the sticky note peels off and floats away, the lamp warms, they hop ----------
+  const peels = [];
+  function peel(d) {
+    const n = d.note.clone(); n.material = d.note.material.clone(); n.material.transparent = true; scene.add(n); n.visible = true;
+    peels.push({ n, t0: performance.now(), p0: n.position.clone(), spin: (Math.random() - 0.5) * 2 });
+    if (d.mate) { d.mate.actor.acts.hop(); d.mate.actor.acts.happy(1.6); d.mate.actor.acts.lookAt(camera.position.clone(), 1.6); }
+    d.lampFlash = performance.now(); if (mode === "floor") { pip.actor.acts.happy(1); pip.actor.acts.lookAt(d.seat.clone(), 1.4); }
+  }
+  function stepPeels(now) {
+    for (let i = peels.length - 1; i >= 0; i--) {
+      const p = peels[i], k = (now - p.t0) / 1600;
+      if (k >= 1) { scene.remove(p.n); peels.splice(i, 1); continue; }
+      p.n.position.copy(p.p0).add(V(Math.sin(k * 5) * 0.08, k * 0.9 - k * k * 0.3, k * 0.25)); p.n.rotation.z = p.spin * k * 2; p.n.material.opacity = 1 - ease(clamp((k - 0.5) / 0.5));
+    }
+  }
+
+  // ---------- pointing at a teammate or a tool: a soft halo behind it ----------
+  const halo = glow(V(0, -9, 0), "#bff3ec", 0.9, 0); let haloK = 0;
+  function stepHalo() {
+    let at = null;
+    if (hovered && mode === "floor" && !travel) {
+      if (hovered.kind === "mate" || (hovered.kind === "desk" && hovered.d.mate)) { const m = hovered.kind === "mate" ? mates.get(hovered.id) : hovered.d.mate; if (m) at = m.desk.seat.clone().add(V(0, 0.02, 0)); }
+      else if (hovered.kind === "device") at = devices[hovered.i].g.position.clone().add(V(0, 0.4, 0.1));
+    }
+    haloK += ((at ? 1 : 0) - haloK) * 0.12; if (at) halo.position.lerp(at, halo.material.opacity < 0.02 ? 1 : 0.3);
+    halo.material.opacity = haloK * 0.42; halo.scale.setScalar(0.85 + haloK * 0.25);
+  }
+
+  // ---------- each teammate's 3D head, as a picture for the dock and lists ----------
+  const avatars = new Map(); let shotQ = [];
+  const shotCam = new THREE.PerspectiveCamera(24, 1, 0.05, 10); shotCam.layers.set(2);
+  function takeShots() {
+    if (!shotQ.length) return;
+    const list = shotQ; shotQ = [];
+    const c = document.createElement("canvas"); c.width = c.height = 160; const g = c.getContext("2d");
+    for (const m of list) {
+      if (!m.desk || !mates.has(m.id)) continue;
+      const fr = V(Math.sin(m.yaw ?? 0), 0, Math.cos(m.yaw ?? 0));
+      shotCam.position.copy(m.desk.seat).add(fr.multiplyScalar(1.05)).add(V(0, 0.06, 0)); shotCam.lookAt(m.desk.seat.clone().add(V(0, 0.02, 0)));
+      m.a.traverse((o) => o.layers.enable(2));
+      renderer.setScissorTest(true); renderer.setViewport(0, 0, 80, 80); renderer.setScissor(0, 0, 80, 80); renderer.setClearColor(0x000000, 0); renderer.clear();
+      renderer.render(scene, shotCam); renderer.setScissorTest(false); renderer.setViewport(0, 0, innerWidth, innerHeight);
+      m.a.traverse((o) => o.layers.disable(2));
+      const cv = renderer.domElement; g.clearRect(0, 0, 160, 160); g.drawImage(cv, 0, cv.height - 80 * dpr, 80 * dpr, 80 * dpr, 0, 0, 160, 160);
+      avatars.set(m.id, c.toDataURL("image/png"));
+    }
+    opts.onAvatars && opts.onAvatars();
+  }
+  for (const l of [hemi, key, fill, sun]) l.layers.enable(2);
+
   // ---------- the frame loop ----------
   let meterSig = null, raf = 0, active = true, held = false, last = performance.now(), slow = 0, nextGlance = 0, zoomed = false, meterTex = null;
   const amber = new THREE.Color("#ffb84d"), aqua = new THREE.Color("#5fd6c8"), violet = new THREE.Color("#9b86ff");
@@ -570,10 +702,15 @@ function createOffice(THREE, X, opts) {
     raf = 0; if (!active || document.hidden) return;
     const dt = Math.min(64, now - last); last = now;
     if (dt > 24) slow++; else slow = Math.max(0, slow - 1);
-    if (slow > 45 && dpr > 1) { dpr = Math.max(1, dpr - 0.25); resize(); slow = 0; } // stays smooth on a smaller machine
+    if (slow > 45) { if (!lowQ) lowQ = true; else if (dpr > 1) { dpr = Math.max(1, dpr - 0.25); resize(); } slow = 0; } // stays smooth on a smaller machine: effects go first, then sharpness
     par.x += (par.tx - par.x) * 0.05; par.y += (par.ty - par.y) * 0.05;
     stepDoors(now); stepCamera(now, dt); stepPip(now); stepPlane(now); stepWork(now);
     const tS = now / 1000;
+    // how fast each character is really moving, so antennas trail and bodies lean into it
+    for (const c of [pip, ...mates.values()]) {
+      const p = c.a.position; if (dt > 0) c.vel.lerp(p.clone().sub(c.last).multiplyScalar(1000 / dt), 0.25); c.last.copy(p);
+      if (c.actor.A.ext) c.actor.A.ext.copy(c.vel).applyAxisAngle(V(0, 1, 0), -c.a.rotation.y).divideScalar(c.a.scale.x);
+    }
     pip.actor.step(tS);
     for (const m of mates.values()) { // when you sit with someone, they turn to their screen with you
       if (m.front != null) { m.yaw = lerpAngle(m.yaw, mode === "desk" && focusId === m.id ? m.toMon : m.front, 0.05); m.a.rotation.y = m.yaw; }
@@ -582,14 +719,18 @@ function createOffice(THREE, X, opts) {
     for (const v of devices) {
       const k = v.lift ? clamp(1 - (now - v.lift) / 900) : 0, st = v.tool ? v.tool.state : "none";
       v.g.position.y = marks["slot_" + v.i].y + Math.sin(k * Math.PI) * 0.05;
+      if (v.glow) { v.glow.material.color.copy(st === "ok" ? aqua : st === "pip" ? violet : amber); v.glow.material.opacity = st === "none" ? 0 : st === "you" ? 0.25 + 0.25 * Math.abs(Math.sin(tS * 2.6)) : 0.3; }
       if (st === "none") v.led.material.color.set("#d9dce2"); else v.led.material.color.copy(st === "ok" ? aqua : st === "pip" ? violet : amber).multiplyScalar(st === "you" ? 0.7 + 0.5 * Math.abs(Math.sin(tS * 2.6)) : 1.1);
     }
     if (mode === "desk" && zoomed && now > nextGlance) { nextGlance = now + 5200 + Math.random() * 3000; const m = mates.get(focusId); if (m && m.data.kind !== "paused") m.actor.acts.lookAt(m.desk.monC.clone().add(V(0, 0.3, 0)), 1.2); }
+    stepPeels(now); stepHalo(); takeShots();
+    for (const d of desks) { if (!d.g.visible) continue; const f = d.lampFlash ? clamp(1 - (now - d.lampFlash) / 1400) : 0;
+      d.lampGlow.material.opacity = (d.lampGlow.userData.k ?? 0.3) * (1 + f * 1.8) * (0.94 + 0.06 * Math.sin(tS * 1.3 + d.i)); d.screenGlow.material.opacity = d.screenGlow.userData.k ?? 0.1; }
     stepWebcam(now);
     { const m = mates.get(focusId), inScreen = !!m && camera.position.distanceTo(m.desk.monC) < 0.95;
       for (const x of mates.values()) x.a.visible = !(x === m && (inScreen || camera.position.distanceTo(m.desk.seat) < 0.78));
       pip.a.visible = !inScreen; if (m) m.desk.note.visible = m.data.kind === "needs" && !inScreen; } // inside the monitor, only the screen
-    if (!held) renderer.render(scene, camera);
+    if (!held) { stepReflection(); renderer.render(scene, camera); }
     stepPins(); stepScreen(dt);
     raf = requestAnimationFrame(loop);
   }
@@ -597,15 +738,17 @@ function createOffice(THREE, X, opts) {
   document.addEventListener("visibilitychange", kick);
   function resize() {
     renderer.setPixelRatio(dpr); renderer.setSize(innerWidth, innerHeight, false);
-    camera.aspect = innerWidth / innerHeight; camera.fov = camera.aspect < 0.8 ? 64 : camera.aspect < 1.2 ? 56 : 48; camera.updateProjectionMatrix();
+    camera.aspect = innerWidth / innerHeight; baseFov = camera.aspect < 0.8 ? 64 : camera.aspect < 1.2 ? 56 : 48;
+    camera.fov = mode === "desk" && zoomed ? baseFov - PUSH : baseFov; camera.updateProjectionMatrix();
   }
   addEventListener("resize", resize);
 
   // ---------- start ----------
   const ready = (async () => {
-    await loadRoom(opts.room || "/portal-art/office.glb");
-    tpl.desk = baked(); tpl.device = baked();
-    mesh("room", baked());
+    const url = opts.room || "/portal-art/office.glb";
+    await loadRoom(PHONE() || (navigator.deviceMemory && navigator.deviceMemory <= 4) ? (opts.roomLite || url.replace("office.glb", "office-lite.glb")) : url); // phones get half-size light
+    tpl.desk = baked("desk"); tpl.device = baked("device");
+    mesh("room", baked("room")); const skyM = mesh("sky", baked("sky")); if (skyM) skyM.material.fog = false;
     for (const s of ["door_l", "door_r"]) { const m = mesh(s, new THREE.MeshLambertMaterial({ color: "#e4e6ea", emissive: new THREE.Color("#e4e6ea").multiplyScalar(0.55) })); if (m) { m.geometry.translate(0, 0, 0); doorMeshes.push([m, s === "door_l" ? -1 : 1]); } }
     mesh("elight", glowMat("#5fd6c8", 1.2));
     const dial = mesh("meter_dial", null);
@@ -615,6 +758,13 @@ function createOffice(THREE, X, opts) {
       g.setAttribute("uv", new THREE.BufferAttribute(uv, 2)); meterTex = texOf(cvs(512, 512)); dial.material = new THREE.MeshBasicMaterial({ map: meterTex, toneMapped: false }); paintMeter(meterTex, null);
     }
     buildDevices(); layoutDesks(1);
+    // light the characters with the room itself: a snapshot of the office from the middle of the floor
+    { const rt = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType }), cc = new THREE.CubeCamera(0.1, 80, rt); cc.position.copy(B(0, 11, 1.3)); scene.add(cc);
+      pip.a.visible = false; for (const s of glows) s.visible = false; reflFloor.visible = false; cc.update(renderer, scene); pip.a.visible = true; for (const s of glows) s.visible = true; scene.remove(cc);
+      const pm = new THREE.PMREMGenerator(renderer), roomEnv = pm.fromCubemap(rt.texture).texture; pm.dispose(); rt.dispose();
+      pip.a.traverse((o) => { if (o.material && o.material.envMap) o.material.envMap = roomEnv; }); env = roomEnv; }
+    if (marks.cam_arrive) glow(B(0, 0.14, 3.25), "#7fe6da", 0.7, 0.35);
+    for (const v of devices) v.glow = glow(v.g.position.clone().add(V(0.3 * 1.45, 0.095 * 1.45, 0.25 * 1.45)), "#7fe6da", 0.28, 0.0);
     snap(STOPS.floor()); pip.a.position.copy(pipSpot(STOPS.floor())); pipTo = pip.a.position.clone();
     resize(); kick();
     setTimeout(() => root.classList.add("ready"), 1500); // in case nobody calls enter()
@@ -654,13 +804,13 @@ function createOffice(THREE, X, opts) {
         setTimeout(() => { m.actor.acts.lookAt(camera.position.clone(), 1.4); if (m.data.kind !== "paused") m.actor.acts.wave(); }, 900);
         const looks = [cur.look.clone(), d.seat.clone().add(V(0, 0.05, 0)), d.monC.clone(), d.monC.clone()];
         const looks2 = [cur.look.clone(), d.seat.clone().add(V(0, 0.05, 0)), d.seat.clone().add(V(0, 0.05, 0)), d.monC.clone(), st.near.look.clone()];
-        return go(st.near, { after: [st.corner, st.side, st.shoulder.pos], looks: looks2, ms: RM() ? 1 : 3200, delay: 180 }).then(() => settled()).then(() => { if (mode === "desk" && focusId === id) zoomed = true; });
+        return go(st.near, { after: [st.corner, st.side, st.shoulder.pos], looks: looks2, ms: RM() ? 1 : 3200, delay: 180, fov: baseFov - (TALL() ? 0 : PUSH) }).then(() => settled()).then(() => { if (mode === "desk" && focusId === id) zoomed = true; });
       });
     },
     letGo(id) { const m = mates.get(id); if (m) m.actor.acts.wave(); }, // the goodbye plays once "Let go" is wired
     letGoPreview(id, on) { const m = mates.get(id); if (!m) return; if (on) { m.actor.acts.mood("concerned"); m.actor.acts.lookAt(camera.position.clone(), 6); } else m.actor.acts.mood(m.data.kind === "needs" ? "concerned" : "calm"); },
     panel(on) { panel = !!on; },
-    mountScreen, hover,
+    mountScreen, hover, avatar(id) { return avatars.get(id) || null; },
     folderOut() { return Promise.resolve(); }, folderIn() {}, hoverFolder() {}, swapFolder() {},
     hold(on) { held = !!on; kick(); },
     setActive(on) { active = !!on; root.style.display = on ? "" : "none"; layer.style.display = on ? "" : "none"; if (on) kick(); },
@@ -677,7 +827,7 @@ function createOffice(THREE, X, opts) {
 }
 
 function CSS_TEXT() { return `
-.hl-root{position:fixed;inset:0;z-index:0;overflow:hidden;background:radial-gradient(120% 90% at 50% 40%,#ffffff 0%,#f4f5f8 60%,#eceef3 100%)}
+.hl-root{position:fixed;inset:0;z-index:0;overflow:hidden;background:url(/portal-art/office-poster.webp) 50% 50%/auto 100% no-repeat,#f2f3f6}
 .hl-gl{position:absolute;inset:0;width:100%;height:100%;display:block;opacity:0;transition:opacity .9s ease}
 .hl-root.ready .hl-gl{opacity:1}
 .hl-root.dim .hl-gl{filter:saturate(.6) brightness(.97)}
@@ -685,6 +835,14 @@ function CSS_TEXT() { return `
 .hl-root:not(.ready) .hl-pins{opacity:0}
 .hl-pins .hl-pin{position:absolute!important;left:0!important;top:0!important;will-change:transform;transition:opacity .4s ease}
 .hl-pins .hl-pin.hl-hide{opacity:0!important;pointer-events:none!important}
+.hl-pins .fl-say.hl-say{transform-origin:0 100%;transition:opacity .35s ease,scale .55s cubic-bezier(.2,1.5,.35,1)}
+.hl-pins .fl-say.hl-say.hl-l{transform-origin:100% 100%}
+.hl-pins .fl-say.hl-say.hl-hide{scale:.86}
+.hl-pins .fl-say.hl-say .say{position:relative}
+.hl-pins .fl-say.hl-say .say::before{content:"";position:absolute;left:-5px;bottom:14px;width:13px;height:13px;rotate:45deg;background:#fff;border-radius:2px;box-shadow:-1px 1px 0 rgba(16,20,40,.05)}
+.hl-pins .fl-say.hl-say.hl-l .say::before{left:auto;right:-5px}
+.hl-pins .btn.pri.hl-orb{transition:opacity .35s ease,scale .5s cubic-bezier(.2,1.5,.35,1)}
+.hl-pins .btn.pri.hl-orb.hl-hide{scale:.8}
 .hl-pins .tag.hl-tag{translate:-50% -100%;opacity:1;pointer-events:auto}
 .hl-pins .fl-say.hl-say{translate:0 -100%;width:300px;pointer-events:auto;display:block}
 .hl-pins .fl-say.hl-say.hl-l{translate:-100% -100%}

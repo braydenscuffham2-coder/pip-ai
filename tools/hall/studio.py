@@ -22,7 +22,7 @@ import bpy, bmesh, math, random, sys, os
 from mathutils import Vector
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import hall
-from hall import rbox, sphere, cyl, empty, put, finish, coll, hexc, densify
+from hall import rbox, sphere, cyl, torus, empty, put, finish, coll, hexc, densify
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BLEND = os.path.join(HERE, "studio.blend"); BAKED = os.path.join(HERE, "studio_baked.blend")
@@ -56,16 +56,34 @@ def materials():
     mat('screen', '#f7f8fa', 0.2, '#f2f4f8', 1.2); mat('glass', '#eef4f8', 0.05)
     sky_mat()
 
+def blob(name, size, loc, m, c, rot=(0, 0, 0), sub=3):
+    """A soft ellipsoid: leaves, cushions, the lamp's shade."""
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=14, radius=1, location=loc, rotation=rot)
+    o = bpy.context.object; o.name = name; o.scale = size; bpy.ops.object.transform_apply(scale=True)
+    return finish(o, m, c)
+
+def pot(name, x, y, r, h, c):
+    """A pearl pot: a softly rounded cylinder with a rolled lip."""
+    rbox(name, (2 * r, 2 * r, h), (x, y, h / 2), M['pot'], c, bevel=r * 0.92, segs=10)
+    torus(name + "_lip", r * 0.86, r * 0.1, (x, y, h - r * 0.06), M['pot'], c, seg=40, mseg=8)
+    cyl(name + "_soil", r * 0.78, 0.02, (x, y, h - r * 0.08), M['stem'], c, v=24)
+
 def plant(name, x, y, c, s=1.0, tall=False):
+    """A stylised fig: a few soft trunks and broad, drooping leaves radiating out, no balls on sticks."""
     rnd = random.Random(hash(name) & 0xffff)
-    cyl(name + "_pot", 0.26 * s, 0.5 * s, (x, y, 0.25 * s), M['pot'], c, v=32)
-    cyl(name + "_soil", 0.235 * s, 0.02 * s, (x, y, 0.5 * s), M['stem'], c, v=20)
-    h = (1.7 if tall else 1.05) * s
-    cyl(name + "_stem", 0.025 * s, h * 0.8, (x, y, 0.5 * s + h * 0.4), M['stem'], c, v=8)
-    for i in range(11 if tall else 7):
-        a = i * 2.39996; r = (0.16 + 0.06 * (i % 3)) * s; z = 0.5 * s + h * (0.55 + 0.45 * (i / (10 if tall else 6)))
-        sphere("%s_leaf%d" % (name, i), (0.17 + 0.05 * rnd.random()) * s, (x + math.cos(a) * r, y + math.sin(a) * r, z),
-               M['sage' if i % 2 else 'sage2'], c, sub=2, scale=(1, 1, 0.72))
+    pot(name + "_pot", x, y, 0.27 * s, 0.48 * s, c)
+    h = (1.75 if tall else 1.1) * s
+    for t in range(3 if tall else 2):
+        a = t * 2.1 + 0.4; lean = 0.06 * s
+        cyl("%s_trunk%d" % (name, t), 0.018 * s, h * 0.9, (x + math.cos(a) * lean, y + math.sin(a) * lean, 0.46 * s + h * 0.45), M['stem'], c,
+            rot=(math.sin(a) * 0.08, -math.cos(a) * 0.08, 0), v=8)
+    n = 22 if tall else 13
+    for i in range(n):
+        f = i / (n - 1); a = i * 2.39996 + rnd.uniform(-0.2, 0.2)
+        z = 0.46 * s + h * (0.42 + 0.58 * f); r = (0.12 + 0.2 * (1 - abs(f - 0.55))) * s
+        L = (0.2 + 0.06 * rnd.random()) * s
+        blob("%s_leaf%d" % (name, i), (L, L * 0.42, 0.012 * s + 0.006), (x + math.cos(a) * r, y + math.sin(a) * r, z), M['sage' if i % 3 else 'sage2'], c,
+             rot=(0, math.radians(18 + 22 * rnd.random()), a))
 
 def shell(room, live, marks):
     # floor, ceiling, walls
@@ -123,7 +141,7 @@ def shell(room, live, marks):
             empty("slot_%d" % slot, (x, TY + 0.36, z + 0.03), c=marks); slot += 1
     # reception counter (front desk) by the entrance, a long low bench and a sofa nook by the windows
     rx, ry = 4.6, 3.4
-    rbox("rec_body", (2.6, 0.75, 1.0), (rx, ry, 0.5), M['white'], room, bevel=0.2, rot=(0, 0, math.radians(-18)))
+    rbox("rec_body", (2.6, 0.75, 1.0), (rx, ry, 0.5), M['white'], room, bevel=0.36, segs=10, rot=(0, 0, math.radians(-18)))
     rbox("rec_top", (2.75, 0.9, 0.05), (rx, ry, 1.03), M['oak'], room, bevel=0.025, rot=(0, 0, math.radians(-18)))
     cyl("rec_bell", 0.07, 0.06, (rx - 0.6, ry - 0.15, 1.09), M['metal'], room, v=24)
     sphere("rec_bellcap", 0.07, (rx - 0.6, ry - 0.15, 1.11), M['metal'], room, sub=3, scale=(1, 1, 0.7))
@@ -131,8 +149,9 @@ def shell(room, live, marks):
     plant("rec_plant", rx + 1.6, ry + 0.9, room, 0.7)
     empty("front", (rx, ry, 1.1), c=marks)
     sx_, sy_ = -5.6, 3.2   # lounge by the windows
-    rbox("sofa_base", (2.2, 0.9, 0.42), (sx_, sy_, 0.21), M['fabric'], room, bevel=0.12, rot=(0, 0, math.radians(90)))
-    rbox("sofa_back", (2.2, 0.22, 0.45), (sx_ - 0.38, sy_, 0.6), M['fabric'], room, bevel=0.1, rot=(0, 0, math.radians(90)))
+    rbox("sofa_base", (2.2, 0.9, 0.42), (sx_, sy_, 0.21), M['fabric'], room, bevel=0.2, segs=8, rot=(0, 0, math.radians(90)))
+    rbox("sofa_back", (2.2, 0.26, 0.5), (sx_ - 0.36, sy_, 0.62), M['fabric'], room, bevel=0.12, segs=8, rot=(0, 0, math.radians(90)))
+    for k, dy in enumerate((-0.52, 0.52)): rbox("sofa_cush%d" % k, (1.0, 0.7, 0.16), (sx_ + 0.04, sy_ + dy, 0.48), M['fabric'], room, bevel=0.07, segs=6, rot=(0, 0, math.radians(90)))
     cyl("coffee", 0.42, 0.04, (sx_ + 1.05, sy_, 0.4), M['oak'], room, v=40); cyl("coffee_leg", 0.05, 0.38, (sx_ + 1.05, sy_, 0.19), M['white'], room, v=12)
     # comms nook on the right wall: mail cubbies, a phone shelf, a parcel bench
     cy = 15.0
@@ -165,7 +184,7 @@ def shell(room, live, marks):
     art("art_b", 19.4, 1.0, 1.4, [(0.0, 0.25, 0.7, 0.7, 'sage'), (-0.1, -0.3, 0.5, 0.5, 'peach')])
     # a coffee bar by the windows at the back: an island, stools, a machine, cups, two pendants
     bx, by = -5.5, 20.4
-    rbox("bar_body", (0.75, 2.6, 0.98), (bx, by, 0.49), M['white'], room, bevel=0.06)
+    rbox("bar_body", (0.75, 2.6, 0.98), (bx, by, 0.49), M['white'], room, bevel=0.3, segs=10)
     rbox("bar_top", (0.9, 2.75, 0.05), (bx, by, 1.0), M['oak'], room, bevel=0.02)
     rbox("bar_machine", (0.4, 0.32, 0.42), (bx - 0.08, by + 0.75, 1.235), M['white'], room, bevel=0.05)
     rbox("bar_machine_face", (0.02, 0.24, 0.16), (bx + 0.13, by + 0.75, 1.27), M['coffee'], room, bevel=0.01)
@@ -184,43 +203,49 @@ def shell(room, live, marks):
     empty("cam_arrive", (0, -1.5, 1.62), c=marks)
 
 def desk(dc, live, marks):
-    """One desk at the origin. The teammate floats behind it facing -y (towards you); the monitor stands to their left,
-    turned towards them, so from the aisle you see their face beside it."""
-    rbox("desk_top", (1.6, 0.8, 0.05), (0, 0, 0.74), M['oak'], dc, bevel=0.025)
-    for sx in (-1, 1): rbox("desk_leg%d" % (sx > 0), (0.05, 0.68, 0.72), (sx * 0.74, 0, 0.36), M['white'], dc, bevel=0.02)
-    rbox("desk_rail", (1.44, 0.04, 0.12), (0, 0.3, 0.62), M['white'], dc, bevel=0.01)
+    """One desk at the origin, in Pip's shape language: everything soft, rounded, pearl and oak. The teammate floats behind
+    it facing -y (towards you); the monitor stands to their left, turned in towards them."""
+    rbox("desk_top", (1.6, 0.78, 0.045), (0, 0, 0.745), M['oak'], dc, bevel=0.022, segs=6)
+    rbox("desk_lip", (1.56, 0.74, 0.02), (0, 0, 0.716), M['white'], dc, bevel=0.009, segs=4)
+    for sx in (-1, 1): rbox("desk_leg%d" % (sx > 0), (0.06, 0.62, 0.7), (sx * 0.71, 0, 0.36), M['white'], dc, bevel=0.029, segs=6)
+    rbox("desk_rail", (1.36, 0.035, 0.1), (0, 0.27, 0.64), M['white'], dc, bevel=0.017, segs=4)
     mx, my, rz = 0.34, 0.12, math.radians(24)  # turned in, towards the seat
-    rbox("mon_body", (0.66, 0.035, 0.40), (mx, my, 1.13), M['white'], dc, bevel=0.018, rot=(0, 0, rz))
-    cyl("mon_neck", 0.022, 0.30, (mx + 0.02, my - 0.04, 0.9), M['white'], dc, v=12)
-    rbox("mon_foot", (0.24, 0.16, 0.012), (mx + 0.02, my - 0.04, 0.772), M['white'], dc, bevel=0.005, rot=(0, 0, rz))
-    n = Vector((math.sin(-rz), math.cos(-rz), 0)) * -1  # the screen faces the seat
+    rbox("mon_body", (0.66, 0.028, 0.40), (mx, my, 1.13), M['white'], dc, bevel=0.014, segs=6, rot=(0, 0, rz))
     n = Vector((-math.sin(rz), math.cos(rz), 0))
-    bpy.ops.mesh.primitive_plane_add(size=1, location=(mx + n.x * 0.019, my + n.y * 0.019, 1.13), rotation=(math.pi / 2, 0, rz))
+    rbox("mon_back", (0.44, 0.05, 0.26), (mx - n.x * 0.03, my - n.y * 0.03, 1.1), M['white'], dc, bevel=0.024, segs=6, rot=(0, 0, rz))
+    cyl("mon_neck", 0.02, 0.32, (mx - n.x * 0.05, my - n.y * 0.05, 0.92), M['white'], dc, v=16)
+    rbox("mon_foot", (0.22, 0.22, 0.014), (mx - n.x * 0.05, my - n.y * 0.05, 0.775), M['white'], dc, bevel=0.1, segs=8)
+    bpy.ops.mesh.primitive_plane_add(size=1, location=(mx + n.x * 0.0155, my + n.y * 0.0155, 1.13), rotation=(math.pi / 2, 0, rz))
     sc = bpy.context.object; sc.name = "desk_screen"; sc.scale = (0.62, 0.36, 1); bpy.ops.object.transform_apply(scale=True); finish(sc, M['screen'], live, smooth=False)
-    rbox("kb", (0.42, 0.13, 0.016), (-0.02, 0.2, 0.772), M['white'], dc, bevel=0.006)
-    rbox("pad", (0.07, 0.1, 0.012), (0.3, 0.24, 0.772), M['soft'], dc, bevel=0.005)
-    cyl("mug", 0.045, 0.1, (-0.58, 0.12, 0.815), M['white'], dc, v=24)
-    rbox("book", (0.22, 0.28, 0.025), (-0.42, -0.12, 0.777), M['sage'], dc, bevel=0.006, rot=(0, 0, math.radians(12)))
-    cyl("lamp_base", 0.08, 0.02, (-0.66, -0.22, 0.775), M['white'], dc, v=24)
-    cyl("lamp_arm", 0.012, 0.42, (-0.66, -0.22, 0.98), M['white'], dc, v=8)
-    cyl("lamp_head", 0.08, 0.06, (-0.6, -0.12, 1.18), M['white'], dc, v=24, rot=(math.radians(-20), 0, 0))
-    cyl("lamp_glow", 0.07, 0.005, (-0.6, -0.11, 1.148), M['lampglow'], live, v=24, rot=(math.radians(-20), 0, 0))
-    # chair behind the desk
+    rbox("kb", (0.42, 0.13, 0.016), (-0.02, 0.2, 0.776), M['white'], dc, bevel=0.007, segs=4)
+    rbox("pad", (0.08, 0.11, 0.012), (0.3, 0.24, 0.774), M['soft'], dc, bevel=0.03, segs=6)
+    cyl("mug", 0.045, 0.1, (-0.58, 0.12, 0.818), M['white'], dc, v=32)
+    torus("mug_handle", 0.028, 0.008, (-0.535, 0.12, 0.82), M['white'], dc, rot=(math.pi / 2, 0, 0), seg=20, mseg=6)
+    rbox("book", (0.22, 0.28, 0.022), (-0.42, -0.12, 0.779), M['sage'], dc, bevel=0.008, segs=4, rot=(0, 0, math.radians(12)))
+    rbox("book2", (0.2, 0.26, 0.016), (-0.42, -0.11, 0.798), M['peach'], dc, bevel=0.006, segs=4, rot=(0, 0, math.radians(4)))
+    rbox("lamp_base", (0.16, 0.16, 0.022), (-0.66, -0.22, 0.778), M['white'], dc, bevel=0.075, segs=8)
+    cyl("lamp_arm", 0.011, 0.44, (-0.66, -0.2, 0.99), M['white'], dc, v=10, rot=(math.radians(-8), 0, 0))
+    blob("lamp_head", (0.095, 0.095, 0.06), (-0.62, -0.13, 1.19), M['white'], dc, rot=(math.radians(-24), 0, 0))
+    cyl("lamp_glow", 0.07, 0.004, (-0.62, -0.115, 1.142), M['lampglow'], live, v=32, rot=(math.radians(-24), 0, 0))
+    # a soft task chair: cushion and shell, one stem, five rounded feet
     cy = 0.68
-    rbox("chair_seat", (0.5, 0.48, 0.07), (0, cy, 0.47), M['fabric'], dc, bevel=0.03)
-    rbox("chair_back", (0.48, 0.06, 0.5), (0, cy + 0.27, 0.82), M['fabric'], dc, bevel=0.03, rot=(math.radians(-8), 0, 0))
-    cyl("chair_post", 0.03, 0.34, (0, cy, 0.27), M['metal'], dc, v=12)
+    rbox("chair_seat", (0.5, 0.48, 0.1), (0, cy, 0.48), M['fabric'], dc, bevel=0.045, segs=6)
+    rbox("chair_back", (0.48, 0.09, 0.48), (0, cy + 0.27, 0.84), M['fabric'], dc, bevel=0.043, segs=6, rot=(math.radians(-9), 0, 0))
+    rbox("chair_arm", (0.05, 0.05, 0.2), (0, cy + 0.24, 0.6), M['white'], dc, bevel=0.024, segs=4)
+    cyl("chair_post", 0.028, 0.3, (0, cy, 0.27), M['white'], dc, v=16)
     for k in range(5):
-        a = k * 2 * math.pi / 5
-        rbox("chair_leg%d" % k, (0.3, 0.035, 0.03), (math.cos(a) * 0.15, cy + math.sin(a) * 0.15, 0.06), M['metal'], dc, bevel=0.01, rot=(0, 0, a))
+        a = k * 2 * math.pi / 5 + 0.3
+        rbox("chair_leg%d" % k, (0.29, 0.045, 0.035), (math.cos(a) * 0.14, cy + math.sin(a) * 0.14, 0.07), M['white'], dc, bevel=0.017, segs=4, rot=(0, 0, a))
+        sphere("chair_wheel%d" % k, 0.028, (math.cos(a) * 0.28, cy + math.sin(a) * 0.28, 0.028), M['metal'], dc, sub=2)
     empty("desk_seat", (-0.04, 0.62, 1.12), c=marks)              # the teammate's head
-    empty("desk_mon", (mx + n.x * 0.019, my + n.y * 0.019, 1.13), rot=(math.pi / 2, 0, rz), c=marks)  # the screen's centre
     empty("desk_kb", (-0.02, 0.2, 0.79), c=marks)
 
 def device(dv, live):
-    rbox("dev_body", (0.86, 0.46, 0.5), (0, 0, 0.25), M['white'], dv, bevel=0.08, segs=5)
-    rbox("dev_face", (0.62, 0.02, 0.26), (0, -0.235, 0.29), M['soft'], dv, bevel=0.01)
-    cyl("dev_led", 0.032, 0.02, (0.3, -0.236, 0.09), M['aqua'], live, rot=(math.pi / 2, 0, 0), v=20)
+    """A tool, as a soft pearl pod with a little window for its name and a light that says how it is."""
+    rbox("dev_body", (0.86, 0.46, 0.5), (0, 0, 0.25), M['white'], dv, bevel=0.19, segs=8)
+    rbox("dev_face", (0.64, 0.03, 0.27), (0, -0.222, 0.29), M['soft'], dv, bevel=0.012, segs=4)
+    rbox("dev_foot", (0.6, 0.3, 0.02), (0, 0, 0.01), M['soft'], dv, bevel=0.009, segs=3)
+    cyl("dev_led", 0.03, 0.02, (0.3, -0.232, 0.095), M['aqua'], live, rot=(math.pi / 2, 0, 0), v=24)
 
 def lights(S):
     w = bpy.data.worlds.new("w"); S.world = w; w.use_nodes = True
@@ -243,6 +268,10 @@ def build():
     S = bpy.context.scene
     room = coll("room"); dc = coll("desk"); dv = coll("device"); live = coll("live"); marks = coll("marks")
     materials(); shell(room, live, marks); desk(dc, live, marks); device(dv, live); lights(S)
+    for o in bpy.data.objects:  # round faces (discs, cylinder caps) are flat: smoothing them across the rim bends their light black
+        if o.type == 'MESH':
+            for p in o.data.polygons:
+                if len(p.vertices) > 4: p.use_smooth = False
     # a stand-in team for previews only (removed before baking): two desks per row, turned 25 degrees toward you
     bpy.ops.wm.save_as_mainfile(filepath=BLEND); print("built", BLEND)
 
@@ -360,5 +389,118 @@ def export(scale=0.25):
                               export_cameras=False, export_lights=False)
     print("exported", OUT, os.path.getsize(OUT))
 
+# ---------- lightmaps: the light baked into textures (sharp contact shadows), not into vertices ----------
+LM = {"room": (4096, 64), "desk": (2048, 64), "device": (512, 128)}   # texture size, samples
+WEIGHT = {"sky": 0.03, "city": 0.06, "ceil": 0.5, "slot": 0.25, "wall": 0.75, "floor": 1.25, "rug": 1.0, "sage": 0.55, "sage2": 0.55, "stem": 0.5}
+
+def lm_uv(R):
+    import numpy as np
+    bpy.ops.object.select_all(action='DESELECT'); R.select_set(True); bpy.context.view_layer.objects.active = R
+    for u in list(R.data.uv_layers): R.data.uv_layers.remove(u)
+    uv = R.data.uv_layers.new(name="lm"); R.data.uv_layers.active = uv; uv.active_render = True
+    bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=0.003, area_weight=0.0, scale_to_bounds=False)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    me = R.data; luv = me.uv_layers["lm"].data; names = [m.name.split(".")[0] for m in me.materials]
+    co = np.empty(len(luv) * 2, np.float32); luv.foreach_get("uv", co); co = co.reshape(-1, 2)
+    mi = np.empty(len(me.polygons), np.int32); me.polygons.foreach_get("material_index", mi)
+    lt = np.empty(len(me.polygons), np.int32); me.polygons.foreach_get("loop_total", lt)
+    k = np.array([WEIGHT.get(n, 1.0) for n in names] + [1.0], np.float32)[np.minimum(mi, len(names))]
+    co *= np.repeat(k, lt)[:, None]; luv.foreach_set("uv", co.ravel())
+    bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.select_all(action='SELECT'); bpy.ops.uv.select_all(action='SELECT')
+    bpy.ops.uv.pack_islands(rotate=True, margin=0.003, scale=True)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+def lm_bake(R, size, samples):
+    import numpy as np, cv2
+    S = bpy.context.scene; img = bpy.data.images.new("lm_" + R.name, size, size, float_buffer=True)
+    for m in R.data.materials:  # every material bakes into the one atlas
+        nt = m.node_tree; t = nt.nodes.new("ShaderNodeTexImage"); t.image = img; t.select = True; nt.nodes.active = t
+    S.cycles.samples = samples; S.render.bake.target = 'IMAGE_TEXTURES'; S.render.bake.margin = 6; S.render.bake.use_clear = True
+    bpy.ops.object.select_all(action='DESELECT'); R.select_set(True); bpy.context.view_layer.objects.active = R
+    bpy.ops.object.bake(type='COMBINED', pass_filter={'EMIT', 'DIRECT', 'INDIRECT', 'DIFFUSE', 'TRANSMISSION'})
+    a = np.empty(size * size * 4, np.float32); img.pixels.foreach_get(a)   # raw floats from memory (Image.save would tone-map them)
+    L = a.reshape(size, size, 4)[::-1, :, :3]
+    enc = np.clip(np.power(np.clip(L / 2.0, 0, None), 1 / 2.2), 0, 1)       # stored as (light / 2) in sRGB: the page doubles it back
+    e8 = (enc * 255 + 0.5).astype(np.uint8)
+    e8 = cv2.fastNlMeansDenoisingColored(e8[..., ::-1], None, 6, 6, 5, 17)[..., ::-1]   # the bake's grain, gone; edges kept
+    out = os.path.join(HERE, "lm_%s.jpg" % R.name); cv2.imwrite(out, e8[..., ::-1], [cv2.IMWRITE_JPEG_QUALITY, 90])
+    print("baked", R.name, size, "->", out, os.path.getsize(out), flush=True)
+
+def lmbake(only=None):
+    bpy.ops.wm.open_mainfile(filepath=BLEND)
+    S = bpy.context.scene; S.cycles.use_denoising = False
+    for n in ("door_l", "door_r"): bpy.data.objects[n].hide_render = True
+    def join(objs, name):
+        bpy.ops.object.select_all(action='DESELECT')
+        for o in objs: o.select_set(True)
+        bpy.context.view_layer.objects.active = objs[0]; bpy.ops.object.convert(target='MESH'); bpy.ops.object.join()
+        R = bpy.context.object; R.name = name; return R
+    Mx = __import__('mathutils').Matrix
+    dobjs = [o for o in bpy.data.collections["desk"].objects if o.type == 'MESH']
+    for o in dobjs: o.matrix_world = Mx.Translation((-ROW_X, 13.6, 0)) @ Mx.Rotation(math.radians(65), 4, 'Z') @ o.matrix_world
+    D = join(dobjs, "desk")
+    vobjs = [o for o in bpy.data.collections["device"].objects if o.type == 'MESH']; sl = bpy.data.objects["slot_5"].location.copy()
+    for o in vobjs: o.location += sl
+    V = join(vobjs, "device")
+    R = join([o for o in bpy.data.collections["room"].objects if o.type == 'MESH'], "room")
+    for o in (R, D, V): lm_uv(o)
+    for o, others in ((D, ()), (V, ()), (R, (D, V))):
+        if only and o.name not in only: continue
+        for x in others: x.hide_render = True
+        lm_bake(o, *LM[o.name])
+        for x in others: x.hide_render = False
+    # back to where they're built: the page places the copies
+    D.matrix_world = Mx.Rotation(math.radians(-65), 4, 'Z') @ Mx.Translation((ROW_X, -13.6, 0)) @ D.matrix_world
+    bpy.ops.object.select_all(action='DESELECT'); D.select_set(True); bpy.context.view_layer.objects.active = D; bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    V.location -= sl; bpy.ops.object.select_all(action='DESELECT'); V.select_set(True); bpy.context.view_layer.objects.active = V; bpy.ops.object.transform_apply(location=True)
+    for n in ("door_l", "door_r"): bpy.data.objects[n].hide_render = False
+    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "studio_lm.blend")); print("LMDONE", flush=True)
+
+def lmexport(lite=False):
+    bpy.ops.wm.open_mainfile(filepath=os.path.join(HERE, "studio_lm.blend"))
+    # leaves are most of the vertices and the eye can't count them: thin them (UVs follow, the bake still fits)
+    R = bpy.data.objects["room"]; names = [m.name.split(".")[0] for m in R.data.materials]
+    vg = R.vertex_groups.new(name="leaves"); idx = set()
+    for p in R.data.polygons:
+        if names[p.material_index] in ("sage", "sage2") and p.center.x < W - 0.3: idx.update(p.vertices)  # leaves only, not the sage disc on the wall art
+    vg.add(list(idx), 1.0, 'REPLACE')
+    md = R.modifiers.new("thin", 'DECIMATE'); md.ratio = 0.3; md.vertex_group = "leaves"; md.delimit = {'UV'}
+    bpy.ops.object.select_all(action='DESELECT'); R.select_set(True); bpy.context.view_layer.objects.active = R; bpy.ops.object.modifier_apply(modifier="thin")
+    # the sky and the far towers go in their own piece: they're hundreds of metres across, and sharing a mesh with the
+    # room would make compression round the room to centimetres (the floor and the rug would fight)
+    bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.select_all(action='DESELECT'); bpy.ops.object.mode_set(mode='OBJECT')
+    for p in R.data.polygons: p.select = names[p.material_index] in ("sky", "city")
+    bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.separate(type='SELECTED'); bpy.ops.object.mode_set(mode='OBJECT')
+    sky = [o for o in bpy.context.selected_objects if o != R][0]; sky.name = "sky"
+    for name in ("room", "sky", "desk", "device"):
+        R = bpy.data.objects[name]
+        if lite and name == "room":  # phones: half the resolution, a quarter of the bytes
+            import cv2; im = cv2.imread(os.path.join(HERE, "lm_room.jpg")); cv2.imwrite(os.path.join(HERE, "lm_room_lite.jpg"), cv2.resize(im, (2048, 2048), interpolation=cv2.INTER_AREA), [cv2.IMWRITE_JPEG_QUALITY, 86])
+        m = bpy.data.materials.new(name + "_lm"); m.use_nodes = True; nt = m.node_tree
+        t = nt.nodes.new("ShaderNodeTexImage"); lmn = "room" if name == "sky" else name; t.image = bpy.data.images.load(os.path.join(HERE, "lm_%s%s.jpg" % (lmn, "_lite" if lite and lmn == "room" else "")), check_existing=True)
+        uvn = nt.nodes.new("ShaderNodeUVMap"); uvn.uv_map = "lm"; nt.links.new(uvn.outputs[0], t.inputs[0])
+        nt.links.new(t.outputs[0], nt.nodes["Principled BSDF"].inputs["Base Color"])
+        R.data.materials.clear(); R.data.materials.append(m)
+        for ca in list(R.data.color_attributes): R.data.color_attributes.remove(ca)
+    for o in list(bpy.data.objects):
+        if o.type in ('LIGHT', 'CAMERA'): bpy.data.objects.remove(o, do_unlink=True)
+    out = OUT.replace(".glb", "-lite.glb") if lite else OUT
+    bpy.ops.export_scene.gltf(filepath=out, export_format='GLB', export_extras=True, export_apply=True, export_vertex_color='NONE',
+                              export_image_format='AUTO', export_cameras=False, export_lights=False)
+    print("exported", out, os.path.getsize(out))
+
+def poster():
+    """The first thing you see: the closed elevator doors, from inside, shown at once while the live room loads."""
+    bpy.ops.wm.open_mainfile(filepath=BLEND); S = bpy.context.scene
+    c = bpy.data.cameras.new("c"); c.sensor_fit = 'VERTICAL'; c.angle_y = math.radians(48)
+    for n in ("desk", "device", "marks"):
+        for o in bpy.data.collections[n].objects: o.hide_render = True
+    for n in ("desk_screen", "lamp_glow", "dev_led"): bpy.data.objects[n].hide_render = True
+    cam = bpy.data.objects.new("cam", c); S.collection.objects.link(cam); S.camera = cam; hall.aim(cam, (0, -1.5, 1.62), (0, 6, 1.5))
+    S.cycles.samples = 64; S.cycles.use_denoising = True; S.render.resolution_x = 2400; S.render.resolution_y = 1000
+    S.render.filepath = os.path.join(HERE, "poster.png"); bpy.ops.render.render(write_still=True); print("poster")
+
 if __name__ == "__main__":
-    {"build": build, "view": view, "bake": lambda: bake(int(sys.argv[2]) if len(sys.argv) > 2 else 64), "export": export}[sys.argv[1]]()
+    {"build": build, "view": view, "bake": lambda: bake(int(sys.argv[2]) if len(sys.argv) > 2 else 64), "export": export,
+     "lmbake": lambda: lmbake(sys.argv[2:] or None), "lmexport": lambda: lmexport("lite" in sys.argv),  "poster": poster}[sys.argv[1]]()

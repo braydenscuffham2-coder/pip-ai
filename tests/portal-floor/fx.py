@@ -22,14 +22,21 @@ def business(scn: str, role: str):
     issues = []
     if scn == "building":
         b["status"] = "building"
-    if scn in ("priced", "setup", "live", "mixed"):
+    if scn in ("priced", "setup", "live", "mixed", "solo", "allpaused", "off", "big"):
         b["quote"] = QUOTE
         b["status"] = "priced"
-    if scn in ("setup", "live", "mixed"):
+    if scn in ("setup", "live", "mixed", "solo", "allpaused", "off", "big"):
         b["price_accepted_at"] = "2026-11-20T18:00:00+00:00"
         b["terms_version"] = "2026-11-19"
         b["terms_accepted_at"] = "2026-11-20T18:00:00+00:00"
         b["status"] = "setup"
+    if scn == "solo":  # one teammate
+        del agents[1:]; scn = "live"
+    if scn == "allpaused":  # everyone paused
+        for a in agents: a["pauses"] = [{"reason": "owner", "detail": None, "at": "2026-11-25T16:00:00+00:00", "job": None}]
+        scn = "live"
+    off = scn == "off"
+    if off: scn = "live"  # the business is disconnected (set below, after it goes live)
     if scn == "big":  # a full floor: twelve teammates, all live
         import uuid
         base = agents[:]; names = ["Nora", "Maya", "Ellie", "Theo", "Ruby", "Owen", "Iris", "Jude", "Lena"]
@@ -49,6 +56,7 @@ def business(scn: str, role: str):
         agents[1]["pauses"] = [{"reason": "owner", "detail": None, "at": "2026-11-25T16:00:00+00:00", "job": None}]
         cl[0]["status"] = "failed"; cl[0]["waiting_on"] = "you"
         issues = [{"id": 41, "body": "Cal sent a reply twice to one guest.", "status": "open", "created_at": "2026-11-26T15:00:00+00:00", "opened_by": "owner@example.test"}]
+    if off: b["status"] = "disconnected"
     for a in agents:
         a.setdefault("can", ["Answer private dining questions", "Hold a date on your calendar"])
         a.setdefault("cannot", ["Take deposits", "Change your menu or prices"])

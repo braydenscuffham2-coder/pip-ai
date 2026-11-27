@@ -193,7 +193,7 @@ function createPipEngine(THREE, opts) {
   // ----- what Pip is doing: the Marketplace's act vocabulary -----
   const A = { mood: "calm", moodAt: 0, concern: 0, think: 0, talkUntil: 0, happyUntil: 0, wideUntil: 0, hopAt: null, flashAt: null, nodAt: null,
     partyAt: null, waveAt: null, wakeAt: null, look: null, lookUntil: 0, pointTo: null, pointK: 0, nextBeat: 4 + Math.random() * 4, beat: null,
-      task: null, ph: Math.random() * 9, throwAt: null, catchAt: null }; // task: what a teammate is doing at their desk (type, sleep, needs, idle)
+      task: null, ph: Math.random() * 9, throwAt: null, catchAt: null, ext: V(), crouchAt: null }; // ext: how fast the page is carrying him (his own units/s) // task: what a teammate is doing at their desk (type, sleep, needs, idle)
   const now = () => (o.clock ? o.clock() : performance.now() / 1000);
   const T0 = now();
 
@@ -367,9 +367,13 @@ function createPipEngine(THREE, opts) {
       } else A.partyAt = null;
     }
 
-    // the antenna trails his motion (as in the Marketplace)
+    // the antenna trails his motion (as in the Marketplace), including being carried across the room
     const p0 = posAt(t), p1 = posAt(t - 0.12), p2 = posAt(t - 0.24), j = p0.clone().sub(p1), g = j.clone().sub(p1.clone().sub(p2));
     Y.ant.add(V(-j.x * 0.9 - g.x * 2 + Math.sin(t * 2.3) * 0.03, -Math.abs(j.y) * 0.4 - g.y * 2.2, -j.z * 0.5));
+    const ex = clamp(A.ext.x / 6, -1, 1), ez = clamp(A.ext.z / 6, -1, 1);
+    Y.ant.x -= ex * 0.22; Y.ant.z -= ez * 0.16; Y.roll -= ex * 0.09; Y.pitch += ez * 0.07; // leans into the move, the antenna streams behind
+    // a little crouch before he sets off
+    if (A.crouchAt != null) { const y = t - A.crouchAt; if (y > 0 && y < 0.6) { const c = pulse(y, 0.1, 0.09); Y.sy -= c * 0.1; Y.sx = Math.max(Y.sx, 1 + c * 0.055); Y.pos.y -= c * 0.12; } }
     if (A.concern > 0.01) { Y.ant.y -= 0.12 * A.concern; Y.ant.x += 0.1 * A.concern; }
     if (A.wakeAt != null) { const P = wakeP(t); if (P < 1.1) { Y.ant.y = -0.18; Y.ant.x = 0.14; } else if (P < 2.2) { Y.ant.y = lerp(-0.18, 0, back(ramp(P, 1.1, 1.5))); Y.ant.x = lerp(0.14, 0, ramp(P, 1.1, 1.5)); } }
     return Y;
@@ -446,6 +450,7 @@ function createPipEngine(THREE, opts) {
     wide(sec = 1) { A.wideUntil = now() - T0 + sec; },
     nod() { A.nodAt = now() - T0; },
     hop() { A.hopAt = now() - T0; },
+    crouch() { A.crouchAt = now() - T0; },
     flash() { A.flashAt = now() - T0; },
     wave() { A.waveAt = now() - T0; },
     party() { A.partyAt = now() - T0; A.flashAt = A.partyAt + 0.3; },
@@ -506,6 +511,7 @@ function createPipEngine(THREE, opts) {
     wide(sec = 1) { A.wideUntil = now() - T0 + sec; },
     nod() { A.nodAt = now() - T0; },
     hop() { A.hopAt = now() - T0; },
+    crouch() { A.crouchAt = now() - T0; },
     flash() { A.flashAt = now() - T0; },
     wave() { A.waveAt = now() - T0; },
     party() { A.partyAt = now() - T0; A.flashAt = A.partyAt + 0.3; },

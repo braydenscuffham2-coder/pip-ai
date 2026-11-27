@@ -744,6 +744,7 @@ dialog.sheet::backdrop{background:rgba(246,246,251,.6);-webkit-backdrop-filter:b
   radial-gradient(70% 45% at 50% 44%,#ffffff 0,rgba(255,255,255,0) 70%),
   linear-gradient(180deg,#e9e7f3 0,#efedf6 30%,#f4f2f7 46%,#f3f1f2 100%)}
 html.floor-on #office{display:block}
+html.floor-on.office-starting #office{background:url(/portal-art/office-poster.webp) 50% 50%/auto 100% no-repeat,#f2f3f6} /* the closed elevator, at once, while the live office loads */
 html.floor-on,html.floor-on body{overflow:hidden;height:100%}
 html.floor-on body>.bar,html.floor-on .atmo,html.floor-on .dock{display:none!important}
 html.floor-on #app{padding:0;max-width:none;margin:0}
@@ -804,6 +805,7 @@ html.office-live .fl-pipslot{display:none}
 .tag.k-needs{box-shadow:0 0 0 1px #fff,0 0 0 3px rgba(227,160,8,.32),0 14px 34px -16px rgba(38,34,90,.35)}
 .tag.open{background:rgba(255,255,255,.4);box-shadow:none;outline:1.5px dashed rgba(104,110,146,.45);outline-offset:-1.5px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
 .tag.open::after{display:none}
+.fl-av.img{box-shadow:0 0 0 2px color-mix(in srgb,var(--c) 60%,#fff),0 2px 6px -2px rgba(11,13,31,.25)!important;background-color:color-mix(in srgb,var(--c) 14%,#fff)!important;background-size:118%!important;background-position:50% 50%!important;background-repeat:no-repeat!important}
 .fl-av{width:20px;height:20px;border-radius:50%;flex:none;display:inline-block;background:radial-gradient(circle at 35% 30%,#fff 0 18%,transparent 19%),radial-gradient(circle at 50% 72%,var(--c),transparent 80%),#fff;box-shadow:0 0 0 1px rgba(11,13,31,.05),0 2px 6px -2px rgba(11,13,31,.25)}
 
 /* Pip's bubble, under Pip in the aisle */
@@ -831,7 +833,7 @@ html.office-live .fl-pipslot{display:none}
 .hl-pins .fl-say .say .b{font-size:14.5px;padding:12px 16px 13px}
 .hl-pins .fl-say .btn.pri{width:auto;min-height:42px;margin-top:9px;padding:0 18px;border-radius:999px;font-size:14px}
 .fl-roster{gap:4px;padding:5px;border-radius:999px;background:rgba(255,255,255,.66)!important}
-.fl-roster .fl-mydesk{min-height:44px;padding:4px 14px 4px 4px;border-radius:999px}
+.fl-roster .fl-mydesk{min-height:44px;padding:4px 14px 4px 4px;border-radius:999px;white-space:nowrap;flex:none}
 .fl-roster .fl-mydesk .ico{width:36px;height:36px;border-radius:50%}
 .fl-roster .fl-mydesk small,.fl-roster .fl-mate kbd{display:none}
 .fl-roster .fl-mate{min-height:44px;padding:4px;border-radius:50%}
@@ -1197,6 +1199,14 @@ html:not(.office-live) .fl-say{left:12px;transform:none!important}
   .fl-letgo-btn{padding:0 12px;flex:none}
 }
 .office-starting .fl-say,.office-starting .pipslot,.office-starting .fl-tags{visibility:hidden}
+/* one interface system on the floor: one surface, one shadow, one ring, one radius scale (pill 999 / card 20 / chip 12) */
+:root{--ui-ring:0 0 0 1px rgba(16,20,40,.055);--ui-lift:0 14px 32px -18px rgba(26,30,62,.34);--ui-surface:rgba(255,255,255,.86);--ui-ink:#14172a;--ui-focus:0 0 0 3px rgba(47,196,178,.38)}
+html.floor-on .glass{box-shadow:var(--ui-ring),var(--ui-lift),inset 0 1px 0 rgba(255,255,255,.95)}
+html.floor-on .hl-pins .tag,html.floor-on .hl-pins .fl-say .say .b,html.floor-on .hl-cards .sc-card{box-shadow:var(--ui-ring),var(--ui-lift)}
+html.floor-on .hl-pins .tag.k-needs{box-shadow:0 0 0 2px #f6c14b,var(--ui-lift)}
+html.floor-on .floor .btn.pri{background:var(--ui-ink);border-radius:999px;box-shadow:0 12px 26px -12px rgba(20,23,42,.5)}
+html.floor-on .floor :is(button,a):focus:not(:focus-visible){outline:none}
+html.floor-on .floor :is(button,a):focus-visible{outline:none;box-shadow:var(--ui-focus),var(--ui-ring)!important}
 </style>
 </head>
 <body>
@@ -1245,7 +1255,7 @@ function loadPart(name) {
   if (!PARTS[name]) PARTS[name] = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "/" + name + ".js?v=" + PART_V; sc.async = true; sc.onload = res; sc.onerror = () => { delete PARTS[name]; rej(new Error(name)); }; document.head.append(sc); });
   return PARTS[name];
 }
-const PART_V = "15";
+const PART_V = "16";
 function loadThree() {
   if (!threeP) { const l = document.createElement("link"); l.rel = "modulepreload"; l.href = THREE_URL; l.integrity = THREE_SRI; l.crossOrigin = "anonymous"; document.head.append(l); threeP = import(THREE_URL); threeP.catch(() => { threeP = null; }); }
   return threeP;
@@ -2367,7 +2377,7 @@ function bizPlan() {
     else if (st === "setup") { plan.line = owner ? "Next up: " + (nx ? nx.label.charAt(0).toLowerCase() + nx.label.slice(1) : "setup") + ". Each step saves on its own, so stop any time." : "An owner is finishing setup. " + d.checklist.filter((s) => s.status === "active").length + " of " + d.checklist.length + " steps are done."; plan.point = pointAt('[data-pip="next"]'); }
     else if (st === "ready") plan.line = "Setup is done. Brayden is doing a final check, then your team goes live.";
     else if (st === "live") plan.line = "Your team is working. I'll tell you the moment anything needs you.";
-    else if (st === "paused") { plan.mood = "concerned"; plan.tone = "warn"; plan.line = ps.length === 1 ? mateName(ps[0]) + " is paused. The rest of your team keeps working." : ps.length + " teammates are paused. The rest of your team keeps working."; plan.point = pointAt('[data-pip="next"]'); }
+    else if (st === "paused") { plan.mood = "concerned"; plan.tone = "warn"; plan.line = ps.length === d.agents.length ? (ps.length === 1 ? mateName(ps[0]) + " is paused." : "Your whole team is paused.") + " Nothing goes out until an owner resumes." : ps.length === 1 ? mateName(ps[0]) + " is paused. The rest of your team keeps working." : ps.length + " teammates are paused. The rest of your team keeps working."; plan.point = pointAt('[data-pip="next"]'); }
     else { plan.mood = "concerned"; plan.tone = "warn"; plan.line = "Everything is off. Call forwarding at your phone company is the one thing you'll need to turn off yourself."; }
   } else if (S.tab === "setup") {
     const locked = !d.setup_unlocked && d.role !== "founder", left = d.checklist.filter((s) => s.status !== "active");
@@ -2532,7 +2542,7 @@ async function startOffice() {
     const [THREE] = await Promise.all([loadThree(), loadPart("portal-pip"), loadPart("portal-office")]);
     await Promise.all([document.fonts.load("600 44px Geist"), document.fonts.load("italic 400 120px 'Instrument Serif'")]).catch(() => null);
     if (!FLOOR.X) FLOOR.X = threeAddons(THREE);
-    FLOOR.office = createOffice(THREE, FLOOR.X, { host: document.getElementById("office"), cssHost: document.getElementById("office"), reduce: reduced, onPick: (id) => openMate(id), onStation: (id, slot) => openStation(id, slot), room: "/portal-art/office.glb?v=" + PART_V, face: (id) => { const a = S.data && S.data.agents.find((x) => x.spec_id === id); return a ? face(mateName(a), (a.role || "") + " " + a.name) : null; }, onEntered: () => { FLOOR.entered = true; }, safeTop: () => { const r = document.querySelector(".fl-head"); return r ? r.getBoundingClientRect().bottom : 0; }, safeBottom: () => { const r = document.querySelector(".fl-roster"); return r ? innerHeight - r.getBoundingClientRect().top : 0; },
+    FLOOR.office = createOffice(THREE, FLOOR.X, { host: document.getElementById("office"), cssHost: document.getElementById("office"), reduce: reduced, onPick: (id) => openMate(id), onStation: (id, slot) => openStation(id, slot), room: "/portal-art/office.glb?v=" + PART_V, roomLite: "/portal-art/office-lite.glb?v=" + PART_V, face: (id) => { const a = S.data && S.data.agents.find((x) => x.spec_id === id); return a ? face(mateName(a), (a.role || "") + " " + a.name) : null; }, onEntered: () => { FLOOR.entered = true; }, onAvatars: () => { clearTimeout(FLOOR.avT); FLOOR.avT = setTimeout(() => { if (floorOn() && !S.focus) render({ keepFocus: document.activeElement && document.activeElement.dataset && document.activeElement.dataset.k }); }, 60); }, safeTop: () => { const r = document.querySelector(".fl-head"); return r ? r.getBoundingClientRect().bottom : 0; }, safeBottom: () => { const r = document.querySelector(".fl-roster"); return r ? innerHeight - r.getBoundingClientRect().top : 0; },
       onReveal: (el) => { el.classList.add("on"); fitTargets(); setTimeout(fitTargets, 700); } });
     await FLOOR.office.ready; // every shader is compiled before the first frame, so the walk-in is smooth from the start
     document.documentElement.classList.add("office-live");
@@ -2558,7 +2568,10 @@ function shortSum(sum, name) {
   return s;
 }
 const hexOf = (a) => TEAM_HEX[colorOf(mateName(a))];
-const avatar = (a, cls) => h("span", { class: "fl-av" + (cls ? " " + cls : ""), style: { "--c": hexOf(a) }, "aria-hidden": "true" });
+const avatar = (a, cls) => { // their real 3D head once the office has drawn it, a coloured pearl until then
+  const u = FLOOR.office && FLOOR.office.avatar && FLOOR.office.avatar(a.spec_id);
+  return h("span", { class: "fl-av" + (cls ? " " + cls : "") + (u ? " img" : ""), style: u ? { "--c": hexOf(a), backgroundImage: "url(" + u + ")" } : { "--c": hexOf(a) }, "aria-hidden": "true" });
+};
 
 // ---------- the screen you read over a teammate's shoulder ----------
 function screenFor(a, decor) {
