@@ -139,7 +139,8 @@ function createOffice(THREE, X, opts) {
     if (more > 0) { const m = document.createElement("span"); m.className = "sc-more card"; m.textContent = "+" + more + " more down the aisle"; pin(home, m, 50, 40.5, "tag"); }
     const dir = document.createElement("nav"); dir.className = "sc-dir"; dir.setAttribute("aria-hidden", "true");
     for (const [, el] of model.stationTags || []) dir.append(el);
-    pin(home, dir, 50, 10.5, "dir");
+    const top = opts.safeTop ? opts.safeTop() : 0; // just under the header, whatever the window's shape
+    pin(home, dir, 50, Math.max(4, ((top + 12 - box.y) / box.h) * 100), "dir");
     if (model.bubble) pin(home, model.bubble, SCENES.home.pip[0], SCENES.home.pip[1] + SCENES.home.pip[2] * 0.95, "say");
   }
   function pin(s, el, x, y, kind) { el.classList.add("sc-pin", "pin-" + kind); el.style.setProperty("--px", x + "%"); el.style.setProperty("--py", y + "%"); s.pins.append(el); }
@@ -232,7 +233,7 @@ function createOffice(THREE, X, opts) {
     raf = requestAnimationFrame(loop);
   }
   document.addEventListener("visibilitychange", kick);
-  addEventListener("resize", () => { measure(); if (cur) place(cur); if (cur) pipTo(cur); fitScreen(); });
+  addEventListener("resize", () => { measure(); if (cur) place(cur); if (cur) pipTo(cur); fitScreen(); if (cur && cur.key === "home") syncPins(cur); });
 
   // ---------- the arrival: elevator doors part onto your floor, once a day; a short glide otherwise ----------
   function enter(full = true) {
