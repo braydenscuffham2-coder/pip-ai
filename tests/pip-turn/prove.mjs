@@ -45,6 +45,7 @@ const BREAKS = [
   ["the website can ask for a call note", 'if (path === "/call-note" && who !== "site") return await callNote(body);', 'if (path === "/call-note") return await callNote(body);'],
   ["a note is written for a chat, or for another teammate's call", 'if (!own || own.channel !== "voice") return json({ error: "not_found" }, 404);', ""],
   ["any text from the model can mark a note as needing the owner", "needs_owner: j?.needs_owner === true }", "needs_owner: !!j?.needs_owner }"],
+  ["a working calendar is called unavailable because another product has a row", "for (const label of missing) if (!opened.has(label)) unavailable.push(label);", "for (const label of missing) unavailable.push(label); for (const r of catalog ?? []) { const sl = (cat ?? []).find((x: J) => (x.blocks ?? []).includes(r.block)); const cn = sl && (conns ?? []).find((x: J) => x.slot === sl.slot); if (sl && cn && cn.choice !== r.toolkit && !unavailable.includes(sl.label)) unavailable.push(sl.label); }"],
   ["a phone reply is spent on thinking", "...(quiet ? { thinking: quiet } : {}), ", ""],
   ["a reply cut off mid-sentence is said anyway", 'if (r.stop_reason === "max_tokens") text = wholeSentences(text);', ""],
   ["any model name in a setting is used on a call", 'typeof asked === "string" && Object.hasOwn(PRICE, asked) ? asked : MODEL', 'typeof asked === "string" ? asked : MODEL'],
