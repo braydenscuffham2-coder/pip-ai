@@ -344,10 +344,23 @@ async function status(req: Request) {
   const st = params.get("CallStatus") ?? "";
   if (OVER.includes(st)) {
     const secs = Math.max(0, Math.floor(Number(params.get("CallDuration") ?? "0")) || 0);
-    const { error } = await db.rpc("voice_call_end", { p_call_sid: params.get("CallSid") ?? "", p_duration: secs, p_status: st });
+    const { data: ended, error } = await db.rpc("voice_call_end", { p_call_sid: params.get("CallSid") ?? "", p_duration: secs, p_status: st });
     if (error) { console.error("[voice] end", error.message.slice(0, 160)); return new Response("retry", { status: 500 }); }
+    // The first time a call is settled, the owner gets a short note about it (pip-turn writes it, once per call).
+    if (ended?.ok && !ended.already) later(callNote(params.get("CallSid") ?? "", secs));
   }
   return new Response(null, { status: 204 });
+}
+
+/** Asks pip-turn for the owner's note about a finished call. A failure here costs the note and nothing else. */
+async function callNote(sid: string, secs: number) {
+  const { data: c } = await db.from("voice_calls").select("spec_id,conversation_id,contact_hint,turns").eq("call_sid", sid).maybeSingle();
+  if (!c?.spec_id || !c.conversation_id || !(Number(c.turns) > 0)) return;
+  const r = await fetch(`${SB_URL}/functions/v1/pip-turn/call-note`, {
+    method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${SERVICE}` },
+    body: JSON.stringify({ skill: c.spec_id, conversation: c.conversation_id, seconds: secs, caller: c.contact_hint ?? "" }), signal: AbortSignal.timeout(20000),
+  });
+  await r.body?.cancel();
 }
 
 async function twilioGet(path: string) {
@@ -366,7 +379,9 @@ async function sweep() {
   for (const sid of (Array.isArray(list) ? list : []) as string[]) {
     const r = await twilioGet(`/Calls/${sid}.json`);
     if (r.status === 200 && OVER.includes(String(r.j?.status))) {
-      await db.rpc("voice_call_end", { p_call_sid: sid, p_duration: Math.max(0, Math.floor(Number(r.j?.duration ?? 0)) || 0), p_status: String(r.j.status) });
+      const secs = Math.max(0, Math.floor(Number(r.j?.duration ?? 0)) || 0);
+      const { data: ended } = await db.rpc("voice_call_end", { p_call_sid: sid, p_duration: secs, p_status: String(r.j.status) });
+      if (ended?.ok && !ended.already) later(callNote(sid, secs));
       out.settled++;
     } else if (r.status === 200) out.still_open++;
     else out.unknown++;

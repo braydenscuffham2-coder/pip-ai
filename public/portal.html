@@ -2021,7 +2021,8 @@ function setupTab() {
 // What a teammate passed to the owner: a message it took, a lead, a booking it asked the owner to confirm, a draft, a
 // conversation it handed over. New ones are listed first; "Got it" only marks one as seen and never deletes it.
 // The words came from a customer by way of a teammate: they go on the page as text (h() never treats a string as markup).
-const INBOX_KIND = { notify_owner: "Message", capture_lead: "Lead", request_booking: "Booking request", draft_for_approval: "Draft", handoff: "Handed to you" };
+const INBOX_KIND = { notify_owner: "Message", capture_lead: "Lead", request_booking: "Booking request", draft_for_approval: "Draft", handoff: "Handed to you", call_note: "Call" };
+const INBOX_SHOW = 8; // new messages listed before the rest fold away, so a backlog does not bury the page
 const INBOX_VIA = { voice: "on a call", sms: "by text", web_chat: "in website chat", email: "by email" };
 const INBOX_LABEL = { name: "Name", phone: "Phone", email: "Email", need: "Wants", when: "When", contact: "Contact", what: "For", reason: "Why" };
 function inboxWhen(iso) {
@@ -2039,6 +2040,7 @@ function inboxCard() {
   const body = (m) => {
     const s = m.said || {};
     if (m.kind === "notify_owner") return h("p", { class: "inbox-said" }, s.summary || "No details were written down.");
+    if (m.kind === "call_note") { const facts = [s.caller ? "From " + s.caller : "", s.length, s.did ? m.teammate + " " + s.did : ""].filter(Boolean).join(" · "); return [h("p", { class: "inbox-said" }, s.summary || "No details were written down."), facts ? h("p", { class: "fine", style: { marginTop: "6px" } }, facts) : null]; }
     if (m.kind === "draft_for_approval") return [s.what ? h("p", { class: "small" }, h("b", {}, "For: "), s.what) : null, h("p", { class: "inbox-said inbox-draft" }, s.text || "")];
     const keys = Object.keys(INBOX_LABEL).filter((k) => s[k]);
     return keys.length ? h("dl", { class: "inbox-facts" }, keys.map((k) => [h("dt", {}, INBOX_LABEL[k]), h("dd", {}, s[k])])) : h("p", { class: "inbox-said" }, "No details were written down.");
@@ -2055,7 +2057,8 @@ function inboxCard() {
     h("div", { class: "card-h" }, h("div", {}, kick(fresh.length ? fresh.length + " new" : "All caught up"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "Messages from your team")),
       fresh.length > 1 ? h("button", { class: "btn link", type: "button", "data-k": "inbox-all", onclick: () => run(() => api("/business/" + id + "/inbox", { all: true }), "All marked as seen.") }, "Mark all as seen") : null),
     h("p", { class: "small", style: { marginTop: "6px" } }, "When a teammate takes a message, saves a lead or needs you to confirm something, it lands here."),
-    fresh.length ? h("ul", { class: "inbox-list" }, fresh.map(one)) : null,
+    fresh.length ? h("ul", { class: "inbox-list" }, fresh.slice(0, INBOX_SHOW).map(one)) : null,
+    fresh.length > INBOX_SHOW ? h("details", { class: "inbox-old", "data-k": "inbox-more" }, h("summary", {}, (fresh.length - INBOX_SHOW) + " more new"), h("ul", { class: "inbox-list" }, fresh.slice(INBOX_SHOW).map(one))) : null,
     old.length ? h("details", { class: "inbox-old", "data-k": "inbox-old" }, h("summary", {}, "Earlier (" + old.length + ")"), h("ul", { class: "inbox-list" }, old.map(one))) : null);
 }
 function notesCard() {

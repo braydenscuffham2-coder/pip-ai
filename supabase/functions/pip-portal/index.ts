@@ -238,10 +238,11 @@ async function business(u: User, bid: string) {
 // until Nov 27, 2026 no owner ever saw it. Owners and the founder read them here and mark them seen. Marking never
 // deletes. The words came from a customer through a model, so they are cut to length here and put on the page as
 // plain text there.
-const INBOX_KINDS = ["notify_owner", "capture_lead", "request_booking", "draft_for_approval", "handoff"];
+const INBOX_KINDS = ["notify_owner", "capture_lead", "request_booking", "draft_for_approval", "handoff", "call_note"];
 const INBOX_FIELDS: Record<string, string[]> = {
   notify_owner: ["summary", "urgency"], capture_lead: ["name", "phone", "email", "need"], request_booking: ["when", "need", "contact"],
   draft_for_approval: ["what", "text"], handoff: ["reason"],
+  call_note: ["summary", "caller", "length", "did"], // pip-turn's note after a phone call
 };
 async function inboxList(bid: string, agents: any[]) {
   const since = new Date(Date.now() - 60 * 864e5).toISOString();
