@@ -805,3 +805,55 @@ test("a teammate with no way to reach the owner is never told to take a message"
   assert.ok(!said.includes("offer to take a message: get their name"));
   assert.ok(!said.includes("__MESSAGE__"));
 });
+
+// ---------- a phone reply is whole ----------
+test("on a call the model is asked to answer without thinking first; in a chat nothing about thinking is sent", async () => {
+  const call = await boot({ model: [says("We open at five.")] });
+  await call.turn("when do you open?", { channel: "voice" });
+  assert.deepEqual(call.world.model.calls[0].thinking, { type: "disabled" });
+  assert.equal(call.world.model.calls[0].max_tokens, 320);
+  const chat = await boot({ model: [says("I am an AI assistant. We open at five.")] });
+  await chat.turn("when do you open?");
+  assert.equal(chat.world.model.calls[0].thinking, undefined);
+  assert.equal(chat.world.model.calls[0].max_tokens, 1600);
+});
+
+test("a reply that ran out of room is cut back to its last whole sentence", async () => {
+  const cut = { content: [{ type: "text", text: "We open at five on Friday. The private room seats up to for" }], stop_reason: "max_tokens", usage: { input_tokens: 100, output_tokens: 320 } };
+  const t = await boot({ model: [cut] });
+  const r = await t.turn("when do you open?", { channel: "voice", conversation: undefined });
+  assert.match(r.json.reply, /We open at five on Friday\.$/);
+  assert.ok(!r.json.reply.includes("seats up to for"));
+});
+
+test("a reply cut off before one whole sentence is never spoken: the model is asked again", async () => {
+  const cut = { content: [{ type: "text", text: "Hi, I'm Hallie, an" }], stop_reason: "max_tokens", usage: { input_tokens: 100, output_tokens: 320 } };
+  const t = await boot({ model: [cut, says("We open at five on Friday.")] });
+  const r = await t.turn("when do you open?", { channel: "voice" });
+  assert.equal(t.world.model.calls.length, 2);
+  assert.ok(!r.json.reply.includes("Hi, I'm Hallie"), r.json.reply);
+  assert.match(r.json.reply, /We open at five on Friday\.$/);
+});
+
+test("on a call the model can be switched by a setting, but only to one whose price is known", async () => {
+  const tables = baseTables();
+  tables.forge_settings.push({ key: "voice_model", value: { model: "claude-sonnet-5-5" } });
+  const t = await boot({ tables, model: [says("We open at five.")] });
+  await t.turn("when do you open?", { channel: "voice" });
+  assert.equal(t.world.model.calls[0].model, "claude-sonnet-5-5");
+  assert.deepEqual(t.world.model.calls[0].thinking, { type: "between_tools" });
+  const chat = await boot({ tables, model: [says("I am an AI assistant. We open at five.")] });
+  await chat.turn("when do you open?");
+  assert.equal(chat.world.model.calls[0].model, "claude-haiku-5-5", "the setting is for calls only");
+  const odd = baseTables(); odd.forge_settings.push({ key: "voice_model", value: { model: "some-unknown-model" } });
+  const o = await boot({ tables: odd, model: [says("We open at five.")] });
+  await o.turn("when do you open?", { channel: "voice" });
+  assert.equal(o.world.model.calls[0].model, "claude-haiku-5-5");
+});
+
+test("when the model cannot be reached on a call, the caller hears the truth and the owner is told", async () => {
+  const t = await boot({ model: [null] });
+  const r = await t.turn("when do you open?", { channel: "voice" });
+  assert.match(r.json.reply, /I'm having trouble on my end right now\. I've let the team know you called\./);
+  assert.equal(t.inserts("notifications").filter((n) => n.kind === "notify_owner").length, 1);
+});
