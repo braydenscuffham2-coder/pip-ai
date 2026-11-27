@@ -29,6 +29,7 @@ jobs:
         run: |
           deno run -A supabase/functions/pip-run/test/sms.ts
           deno run -A supabase/functions/pip-voice/test/run.ts
+          deno run -A supabase/functions/pip-line/test/run.ts
       - name: The hard limits in pip-turn hold, and every lane's own function tests pass
         run: node --test "tests/**/*.test.mjs" "supabase/functions/**/*.test.ts" "supabase/functions/**/*.test.mjs" "integrations/**/*.test.js"
       - name: The tests would notice if a limit were removed
