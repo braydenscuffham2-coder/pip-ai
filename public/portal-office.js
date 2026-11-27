@@ -561,7 +561,9 @@ function createOffice(THREE, X, opts) {
     }
     if (mode === "desk" && zoomed && now > nextGlance) { nextGlance = now + 5200 + Math.random() * 3000; const m = mates.get(focusId); if (m && m.data.kind !== "paused") m.actor.acts.lookAt(m.desk.monC.clone().add(V(0, 0.3, 0)), 1.2); }
     stepWebcam(now);
-    { const m = mates.get(focusId); for (const x of mates.values()) x.a.visible = !(x === m && (camera.position.distanceTo(m.desk.monC) < 0.95 || camera.position.distanceTo(m.desk.seat) < 0.78)); }
+    { const m = mates.get(focusId), inScreen = !!m && camera.position.distanceTo(m.desk.monC) < 0.95;
+      for (const x of mates.values()) x.a.visible = !(x === m && (inScreen || camera.position.distanceTo(m.desk.seat) < 0.78));
+      pip.a.visible = !inScreen; if (m) m.desk.note.visible = m.data.kind === "needs" && !inScreen; } // inside the monitor, only the screen
     if (!held) renderer.render(scene, camera);
     stepPins(); stepScreen(dt);
     raf = requestAnimationFrame(loop);
