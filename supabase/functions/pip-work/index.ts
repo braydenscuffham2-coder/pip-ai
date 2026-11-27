@@ -5,10 +5,13 @@
 //                  minute, and gives each one back (work_release). Two knocks at once cannot take the same job.
 //   POST /enqueue  internal (service key): { business, kind, title, plan?, identity?, spec?, key?, cap?, max_steps?, by? }
 //   POST /resume   internal (service key): { job }  a person did what was needed; the job goes back in the queue
+//   POST /approve  internal (service key): { job, ok, by? }  the owner's yes or no to a job waiting to save something
 //   POST /stop     internal (service key): { job }  close its browser and stop it
 //
 // A worker that dies mid-job never gives the job back. Its lease runs out, the next knock claims the job again, and
 // the job carries on from the state it last saved. The steps live in ../_shared/work/engine.ts.
+// A screen job (kind 'screen') also uses a model: one masked screenshot in, one proposed action out, and
+// ../_shared/work/screen.ts decides whether that action happens. ANTHROPIC_API_KEY, optional SCREEN_MODEL.
 // Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, BROWSERBASE_API_KEY, optional BROWSERBASE_PROJECT_ID,
 // RESEND_API_KEY + LEAD_ALERT_TO + LEAD_ALERT_FROM (failure emails to the founder). No vault token: only vault-writer has it.
 import { type FillCode, type Identity, type Out, step, type WorkDeps, type WorkJob } from "../_shared/work/engine.ts";
@@ -16,6 +19,7 @@ import { Cdp, openPage } from "../_shared/setup/cdp.ts";
 import { browserbase } from "../_shared/setup/vendors.ts";
 import { sessionMinutes } from "../_shared/setup/guards.ts";
 import { failureEmail, FILL_CODES, nextRelease } from "../_shared/work/worker.ts";
+import { type ScreenAction, type ScreenDeps, type ScreenPlan, screenStep } from "../_shared/work/screen.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 const SB_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -23,6 +27,8 @@ const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const BBKEY = Deno.env.get("BROWSERBASE_API_KEY") ?? "";
 const bb = browserbase({ apiKey: BBKEY, projectId: Deno.env.get("BROWSERBASE_PROJECT_ID") || undefined });
 const SELF = `${SB_URL}/functions/v1/pip-work`;
+const ANTHROPIC = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+const MODEL = Deno.env.get("SCREEN_MODEL") ?? "claude-sonnet-5-5";
 const TICK_MS = 75_000;   // how long one knock keeps working
 const LEASE_S = 90;       // how long a claim holds without a heartbeat
 
@@ -49,8 +55,28 @@ async function vault(path: "fill" | "code", identity: string, session: string): 
   return FILL_CODES.includes(code) ? code : "unavailable";
 }
 
-function depsFor(seq: { n: number }): WorkDeps {
+/** The model's one proposed action for a screen job, read from a masked screenshot. It is only a proposal: screen.ts decides. */
+const screenDeps: ScreenDeps = {
+  async model(input) {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST", signal: AbortSignal.timeout(60000),
+      headers: { "content-type": "application/json", "x-api-key": ANTHROPIC, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model: MODEL, max_tokens: 500, system: [{ type: "text", text: input.system, cache_control: { type: "ephemeral" } }],
+        messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: input.image } }, { type: "text", text: input.text }] }] }),
+    });
+    const j = await r.json().catch(() => ({}));
+    // deno-lint-ignore no-explicit-any
+    const text = ((j.content || []) as any[]).filter((c) => c.type === "text").map((c) => c.text).join("");
+    let action: ScreenAction = { type: "need_owner", reason: "Pip could not read the page." };
+    try { const m = text.match(/\{[\s\S]*\}/); if (m) action = JSON.parse(m[0]); } catch { /* keep need_owner */ }
+    return { action, usage: j.usage ?? {} };
+  },
+  async take(usd) { const why = await rpc("pip_take", { p_kind: "work_usd", p_units: Math.round(usd * 10000) / 10000, p_room: 0 }); return typeof why === "string" ? why : null; },
+};
+
+function depsFor(seq: { n: number }, kind: string): WorkDeps {
   return {
+    ...(kind === "screen" ? { work: (job, identity, page, deps) => screenStep(job, identity, page, deps, screenDeps) } : {}),
     async identity(id) { return (await rows(`tool_identities?id=eq.${id}&select=id,business_id,tool,tool_key,login_url,site,signin_hosts,browser_context_id,vault_item_id,totp,state,silent_signins`))?.[0] ?? null; },
     async saveIdentity(id, patch) { await db(`tool_identities?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }) }).then((r) => r.body?.cancel()); },
     browser: {
@@ -84,8 +110,20 @@ async function ownersOf(business: string): Promise<string[]> {
 /** Runs one claimed job until it ends, waits for a person, or this knock is out of time. */
 async function runJob(job: WorkJob, worker: string, deadline: number) {
   const seq = { n: (await rows(`work_steps?job_id=eq.${job.id}&select=seq&order=seq.desc&limit=1`))?.[0]?.seq + 1 || 0 };
-  const deps = depsFor(seq);
+  const deps = depsFor(seq, job.kind);
   let out: Out = { patch: {}, next: "again" };
+  if (job.kind === "screen" && job.identity_id) {
+    const plan = job.plan as ScreenPlan;
+    if (!ANTHROPIC) { await rpc("work_release", { p_job: job.id, p_worker: worker, p_status: "failed", p_summary: "Pip could not start this job.", p_reason: "The model key is not set for background work." }); return; }
+    // The first runs of a task that saves something wait for the owner's yes. Decided once, when the job first starts.
+    if (plan.require_approval === undefined && plan.level !== "read") {
+      const id = (await rows(`tool_identities?id=eq.${job.identity_id}&select=tool_key`))?.[0];
+      const needs = await rpc("screen_needs_approval", { p_business: job.business_id, p_tool: id?.tool_key ?? "", p_task: plan.task_key || job.title.slice(0, 80) });
+      const saved = await save(job, worker, { plan: { ...job.plan, require_approval: needs !== false } });
+      if (!saved) return;
+      job = { ...job, ...saved };
+    }
+  }
   try {
     for (;;) {
       out = await step(job, deps);
@@ -114,12 +152,17 @@ async function runJob(job: WorkJob, worker: string, deadline: number) {
   }
   const rel = nextRelease(out);
   await rpc("work_release", { p_job: job.id, p_worker: worker, p_status: rel.status, p_run_after: rel.runAfterSeconds ? new Date(Date.now() + rel.runAfterSeconds * 1000).toISOString() : null, p_summary: out.summary ?? null, p_reason: out.reason ?? null, p_outcome: out.outcome ?? null });
-  if (rel.status === "waiting_owner" && out.alert !== false && out.summary && job.identity_id) {
-    // One email per owner when a tool needs a person. The words are Pip's own (engine.ts), never the page's.
+  if ((rel.status === "waiting_owner" || rel.status === "waiting_approval") && out.alert !== false && out.summary && job.identity_id) {
+    // One email per owner when a tool needs a person, or a job needs their yes. The words are Pip's own, never the page's.
     const id = (await rows(`tool_identities?id=eq.${job.identity_id}&select=tool`))?.[0];
     for (const email of await ownersOf(job.business_id)) await db("portal_outbox", { method: "POST", headers: { prefer: "return=minimal" }, body: JSON.stringify({ business_id: job.business_id, to_email: email, template: "tool_needs_you", data: { tool: id?.tool ?? "A tool", why: out.summary } }) }).then((r) => r.body?.cancel()).catch(() => {});
   }
   if ((rel.status === "failed" || rel.status === "done" || rel.status === "waiting_owner") && job.browser_session_id) await deps.browser.close(job.browser_session_id).catch(() => {});
+  // A run the owner approved finished cleanly and saved something: one step closer to doing this task without asking.
+  if (rel.status === "done" && job.kind === "screen" && job.plan?.approved && (job.plan?.writes ?? 0) > 0 && job.identity_id) {
+    const id = (await rows(`tool_identities?id=eq.${job.identity_id}&select=tool_key`))?.[0];
+    if (id?.tool_key) await rpc("screen_trust_note", { p_business: job.business_id, p_tool: id.tool_key, p_task: job.plan.task_key || job.title.slice(0, 80) });
+  }
 }
 
 /** Every failed job is emailed to the founder once, with the job and the reason. Also catches jobs the database ended. */
@@ -172,9 +215,10 @@ Deno.serve(async (req) => {
       return json({ ok: true, job: j });
     }
     const id = uuid(body.job); if (!id) return json({ error: "bad_request" }, 400);
-    if (path === "/resume") {
-      const r = await db(`work_jobs?id=eq.${id}&status=in.(waiting_owner,waiting_approval)`, { method: "PATCH", headers: { prefer: "return=representation" }, body: JSON.stringify({ status: "queued", run_after: new Date().toISOString(), state: "start", reason: null, updated_at: new Date().toISOString() }) });
-      return json({ ok: true, resumed: ((await r.json().catch(() => [])) as unknown[]).length === 1 });
+    if (path === "/resume") return json({ ok: true, resumed: (await rpc("work_resume", { p_job: id })) === true });
+    if (path === "/approve") {
+      const answer = await rpc("work_approve", { p_job: id, p_ok: body.ok === true, p_by: typeof body.by === "string" ? body.by.slice(0, 120) : null });
+      return json({ ok: answer === "approved" || answer === "declined", answer });
     }
     if (path === "/stop") {
       const j = (await rows(`work_jobs?id=eq.${id}&select=browser_session_id,status`))?.[0];
