@@ -13,6 +13,7 @@ import { abilitiesOf } from "../_shared/abilities.ts";
 import { checkOperate, operatePlainWords } from "../_shared/operate.ts";
 import { checkAsk, mayApprove, mayRevoke } from "../_shared/operate-approval.ts";
 import { vaultRefusal } from "../_shared/vault-input.ts";
+import { setupOpen } from "../_shared/setup/gate.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -218,7 +219,7 @@ async function business(u: User, bid: string) {
     extra_tools: await extraTools(bid),
     setup_unlocked: !!b.price_accepted_at, terms_url: termsUrl, terms_version: await setting("portal_terms_version", null),
     vault_open: false, connect_on: !!(Deno.env.get("COMPOSIO_API_KEY") ?? "").trim(), fresh: u.fresh,
-    setup_on: (await setting("setup_agent_on", false)) === true,
+    setup_on: (await setupGate(r.admin, bid)).open,
     setups: r.role === "staff" ? [] : ((await db.from("setup_sessions").select("id,tool,state,reason,result,created_at").eq("business_id", bid).order("created_at", { ascending: false }).limit(10)).data || []),
   });
 }
@@ -541,9 +542,13 @@ async function setupRun(path: string, setup_id: string) {
   const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/setup-run${path}`, { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify({ setup_id }), signal: AbortSignal.timeout(path === "/step" ? 5000 : 20000) }).catch(() => null);
   return r ? await r.json().catch(() => null) : null;
 }
+// Open to every owner once setup_agent_on is true. Until then, only the founder on a TEST business (see gate.ts).
+async function setupGate(admin: boolean, bid: string) {
+  return setupOpen({ flag: await setting("setup_agent_on", false), admin, business: bid, sandbox: await setting("act_sandbox_businesses", []) });
+}
 async function setupAction(u: User, bid: string, body: any) {
   const r = await access(u, bid); need(r, "owner"); await unlocked(bid, r);
-  if ((await setting("setup_agent_on", false)) !== true) throw new Fail(409, "setup_off", "Pip's setup help is not switched on yet.");
+  if (!(await setupGate(r.admin, bid)).open) throw new Fail(409, "setup_off", "Pip's setup help is not switched on yet.");
   const action = cut(body.action, 20);
   if (action === "start") {
     needFresh(u);
