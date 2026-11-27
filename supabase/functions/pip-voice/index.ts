@@ -248,7 +248,7 @@ async function llm(req: Request) {
 
   later((async () => {
     put({ role: "assistant", content: "" });
-    let held = false;
+    let held = false, skipped = false;
     const turn = Number(open?.turn ?? 0);
     const hold = setTimeout(() => { held = true; put({ content: `${HOLD[turn % HOLD.length]} ` }); }, Math.max(0, HOLD_MS - (Date.now() - t0)));
     let out: Said;
@@ -259,11 +259,22 @@ async function llm(req: Request) {
         out = { say: "I need to end this call here. The team has my notes and will follow up. Goodbye.", end: canEnd ? "hangup" : undefined };
       } else {
         // The caller spoke again before the last turn finished: wait for it, so nothing is done twice.
-        for (let i = 0; open?.busy && i < 30; i++) {
+        let waited = false;
+        for (let i = 0; open?.busy && i < 30 && !gone; i++) {
+          waited = true;
           await new Promise((r) => setTimeout(r, 400));
+          if (gone) break;
           open = (await db.rpc("voice_turn_open", { p_pass_hash: hash })).data;
         }
-        if (!open?.ok || open?.busy) out = { say: open?.reason === "ending" ? "" : "Sorry, could you say that again?" };
+        if (gone && waited) {
+          // While this request waited, the phone side dropped it: the caller kept talking, and a newer request carries
+          // their whole sentence. Step aside without asking the teammate, so one sentence gets one answer (found on the
+          // first real call, Nov 27 2026: one long sentence was answered five times). A turn that had already started
+          // is never dropped, because the teammate may have acted.
+          if (open?.ok && !open.busy && open.call) await db.rpc("voice_turn_close", { p_call: open.call, p_next: null, p_outcome: null });
+          skipped = true;
+          out = { say: "" };
+        } else if (!open?.ok || open?.busy) out = { say: open?.reason === "ending" ? "" : "Sorry, could you say that again?" };
         else out = await answer(open, heard, canEnd);
       }
     } finally { clearTimeout(hold); }
@@ -273,7 +284,7 @@ async function llm(req: Request) {
       put({}, "tool_calls");
     } else put({}, "stop");
     done();
-    console.log(`[voice] turn ${turn} ms=${Date.now() - t0} held=${held} end=${out.end ?? "-"}`);
+    console.log(`[voice] turn ${turn} ms=${Date.now() - t0} held=${held} end=${out.end ?? "-"} dropped=${gone} skipped=${skipped}`);
   })());
 
   return new Response(stream, { headers: { "content-type": "text/event-stream", "cache-control": "no-cache, no-store", connection: "keep-alive", "x-accel-buffering": "no" } });

@@ -303,6 +303,29 @@ await test("A caller who interrupts cannot make the teammate act twice", async (
   ok("the second turn waited for the first to finish", world.turns.length === 2 && b.total > 2500, `${world.turns.length} turns, second took ${b.total} ms`);
 });
 
+await test("A caller who keeps talking gets one answer to the whole sentence, not one per pause", async () => {
+  reset();
+  const { pass: p } = await ring(24);
+  world.turn.delay = 1500;
+  const say = (text: string, ms: number) => (async () => { await new Promise((r) => setTimeout(r, ms)); return await speak(p, text); })();
+  // The middle request is dropped by the phone side while it waits, exactly as when a caller carries on speaking.
+  const dropped = (async () => {
+    await new Promise((r) => setTimeout(r, 300));
+    const ac = new AbortController();
+    const r = await fetch(`http://127.0.0.1:${FN}/functions/v1/pip-voice/llm/chat/completions`, { method: "POST", signal: ac.signal, headers: { "content-type": "application/json", "x-pip-pass": p },
+      body: JSON.stringify({ model: "pip", stream: true, tools: END_TOOL, messages: [{ role: "user", content: "I'd like a table for, um" }, { role: "user", content: "I'd like a table for, um, six people" }] }) });
+    const rd = r.body!.getReader(); await rd.read();
+    await new Promise((r) => setTimeout(r, 300)); ac.abort();
+    return true;
+  })().catch(() => true);
+  const [a, , c] = await Promise.all([speak(p, "I'd like a table for, um"), dropped, say("I'd like a table for, um, six people on Friday", 800)]);
+  await new Promise((r) => setTimeout(r, 1500));
+  ok("the first and the last request were answered", a.done && c.done && c.text.endsWith(world.turn.reply), c.text);
+  ok("the dropped middle request never reached the teammate", world.turns.length === 2 && world.turns[0].message === "I'd like a table for, um" && world.turns[1].message === "I'd like a table for, um, six people on Friday", JSON.stringify(world.turns.map((t: any) => t.message)));
+  const again = await speak(p, "thanks");
+  ok("the line is free for the next turn straight away", again.done && again.total < 2500 + 1500 && world.turns.length === 3, `${again.total} ms`);
+});
+
 await test("Billing", async () => {
   await ring(23);
   const end = (d: string, st = "completed") => twilio("/twilio/status", { CallSid: SID(23), CallStatus: st, CallDuration: d });

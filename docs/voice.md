@@ -22,6 +22,7 @@ How a call to a business's Pip number works, what is enforced where, and how to 
 | A call is transferred only to the number, and only inside the hours, on the business's `phone_lines` row | `voice_handoff` (database) |
 | A teammate that is not live answers only for a business on the test list whose name starts with TEST | `voice_line_ctx` |
 | One turn at a time per call, so an interrupting caller cannot make the teammate act twice | `voice_turn_open` |
+| A caller who keeps talking gets one answer to the whole sentence: a request the phone side dropped while it was waiting its turn never reaches the teammate. A turn that had already started is never dropped | the wait loop in `llm()` in `pip-voice` |
 | A call is billed once, whatever Twilio sends | `voice_call_end` |
 
 ## When something is down
@@ -37,6 +38,7 @@ How a call to a business's Pip number works, what is enforced where, and how to 
 
 - The greeting needs no model: it starts when the call connects.
 - For each later turn, the caller hears a short holding phrase if `pip-turn` has not answered in 0.7 seconds.
+- **Measured on the first two real calls (November 27, +1 208 248 7311, TEST Fork): 16 turns, median 2.4 seconds, fastest 0.8, slowest 4.0.** Twilio's first question was answered in 0.75 and 1.45 seconds.
 - `pip-turn` itself, measured on TEST Fork on November 17: **4.0, 4.9 and 6.6 seconds** for three ordinary turns, each of which used one tool. That is too slow for a phone call. The fix is in `pip-turn` (lane 01): no model thinking on the voice channel, shorter replies, and streaming the words as they are written.
 - November 27: the first two are in. `pip-turn` runs on the fast model with no thinking, and on the voice channel it is told to answer in one or two short sentences and is given a small reply budget (320 tokens against 1,600). A spoken answer is a fraction of the length, so less time is spent writing it. **Not re-measured:** a voice turn can only be timed with the service key or a real call, and neither was used. Streaming is not built; it needs `pip-voice` to pass words through as they arrive.
 
