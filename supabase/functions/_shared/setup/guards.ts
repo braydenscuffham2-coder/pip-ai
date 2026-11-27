@@ -36,6 +36,20 @@ export function siteOf(url: string): string | null {
   } catch { return null; }
 }
 
+/**
+ * Where a saved login may be typed with nobody watching: an https page whose host is exactly the host of the tool's
+ * sign-in page, or a host the owner themselves signed in on. Sharing a parent domain is not enough, because many tools
+ * give every customer their own subdomain (acme.example-crm.com and anyone-else.example-crm.com are different tenants).
+ */
+export function signInHostOk(href: string, loginUrl: string, hosts: string[] = []): boolean {
+  try {
+    const u = new URL(href);
+    if (u.protocol !== "https:") return false;
+    const h = u.hostname.toLowerCase();
+    return h === new URL(loginUrl).hostname.toLowerCase() || (hosts || []).some((x) => typeof x === "string" && x.toLowerCase() === h);
+  } catch { return false; }
+}
+
 export type Action =
   | { type: "click"; x: number; y: number; label?: string }
   | { type: "type"; text: string; field?: FieldInfo }
