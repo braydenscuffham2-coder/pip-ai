@@ -41,7 +41,7 @@ const BREAKS = [
   ["a disconnected business is served", '["disconnected", "cancelled"].includes(c.biz.status)', "false"],
   ["the spend guard is ignored", "&& body?.limited !== true", ""],
   ["a failed tool is called done", "const failed = !r.ok || r.j?.successful === false;", "const failed = false;"],
-  ["an unreadable calendar means free", "if (!Array.isArray(items)) {", "if (false) {"],
+  ["an unreadable calendar means free", "if (!busy) { await log(", "if (false) { await log("],
   ["a session is opened for the whole toolkit", "tools: { [toolkit]: { enable: allow } } });\n  if (!r.ok) r = await open({ ...pin, tools:", "});\n  if (!r.ok) r = await open({ ...pin, tools:"],
   ["tools outside the catalog can be sent to Composio", "if (!only && !kitTools.get(toolkit)?.has(slug)) {", "if (false) {"],
   // ---- a turn is held to the job that answers it (teammate contract) ----
