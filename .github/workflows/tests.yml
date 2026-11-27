@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Install the test database (PGlite), so the database tests run instead of being skipped
+      - name: Install the test database (PGlite) and the simulated page (jsdom), so those tests run instead of being skipped
         run: npm ci --ignore-scripts --no-audit --no-fund
       - uses: denoland/setup-deno@v2
         with:
