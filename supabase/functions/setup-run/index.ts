@@ -84,7 +84,7 @@ async function rememberIdentity(row: SetupRow) {
   const totp = vaultItem ? !!(await rows(`vault_items?id=eq.${vaultItem}&select=has_authenticator`))?.[0]?.has_authenticator : false;
   const t = new Date().toISOString();
   const r = await db("tool_identities?on_conflict=business_id,tool_key", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=representation" },
-    body: JSON.stringify({ business_id: row.business_id, tool: row.tool, tool_key: row.tool_key, login_url: row.login_url, site, browser_context_id: row.browser_context_id, vault_item_id: vaultItem, totp, state: "signed_in", reason: null, checked_at: t, signed_in_at: t, updated_at: t }) });
+    body: JSON.stringify({ business_id: row.business_id, tool: row.tool, tool_key: row.tool_key, login_url: row.login_url, site, signin_hosts: (Array.isArray(row.plan?.signin_hosts) ? row.plan.signin_hosts : []).filter((h: unknown) => typeof h === "string").slice(0, 6), browser_context_id: row.browser_context_id, vault_item_id: vaultItem, totp, state: "signed_in", reason: null, checked_at: t, signed_in_at: t, updated_at: t }) });
   const id = r.ok ? ((await r.json()) as { id: string }[])?.[0]?.id : null;
   if (id) await db(`work_jobs?identity_id=eq.${id}&status=eq.waiting_owner`, { method: "PATCH", body: JSON.stringify({ status: "queued", state: "start", run_after: t, reason: null, updated_at: t }) }).then((x) => x.body?.cancel());
 }

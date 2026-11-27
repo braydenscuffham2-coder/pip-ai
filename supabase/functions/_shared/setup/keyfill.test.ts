@@ -18,7 +18,7 @@ function world(o: { href?: string; tags?: any[]; totp?: boolean; vaultItem?: str
     setHref: (h: string) => { href = h; },
   };
   const deps: KeyfillDeps = {
-    identity: async (id) => id === ID ? { id: ID, site: "practicetool.com", vault_item_id: o.vaultItem === undefined ? "vi-1" : o.vaultItem, totp: !!o.totp } : null,
+    identity: async (id) => id === ID ? { id: ID, login_url: "https://app.practicetool.com/login", signin_hosts: [], vault_item_id: o.vaultItem === undefined ? "vi-1" : o.vaultItem, totp: !!o.totp } : null,
     vaultRef: async () => REF,
     vault: async () => ({
       vaultFor: async () => "v", putLogin: async () => ({ itemId: "i", ref: REF }),
@@ -43,7 +43,7 @@ test("a saved login is typed into the tool's own sign-in page and only a code co
 });
 
 test("a page on another site is refused before the vault is even opened", async () => {
-  for (const href of ["https://practicetool.com.evil.test/login", "https://practicetool-login.com/login", "http://app.practicetool.com/login", "about:blank", ""]) {
+  for (const href of ["https://practicetool.com.evil.test/login", "https://practicetool-login.com/login", "https://someone-else.practicetool.com/login", "http://app.practicetool.com/login", "about:blank", ""]) {
     const w = world({ href });
     const r = await fillSaved(body, "login", w.deps);
     assert.deepEqual(r, { status: 409, code: "wrong_site" }, href);

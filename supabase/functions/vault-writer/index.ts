@@ -55,6 +55,11 @@ const deps: KeyboxDeps = {
     if (id) await db(`setup_sessions?id=eq.${r.setup_id}`, { method: "PATCH", body: JSON.stringify({ vault_item_id: id, updated_at: new Date().toISOString() }) }).then((x) => x.body?.cancel());
     return id;
   },
+  async signedInOn(setupId, host) {
+    const cur = (await rows(`setup_sessions?id=eq.${setupId}&select=plan`))?.[0]?.plan ?? {};
+    const hosts = [...new Set([...(Array.isArray(cur.signin_hosts) ? cur.signin_hosts : []), host])].slice(0, 6);
+    await db(`setup_sessions?id=eq.${setupId}`, { method: "PATCH", body: JSON.stringify({ plan: { ...cur, signin_hosts: hosts }, updated_at: new Date().toISOString() }) }).then((x) => x.body?.cancel());
+  },
   async terms(key) { return (await rows(`tool_terms?tool_key=eq.${encodeURIComponent(key)}&select=automation`))?.[0]?.automation ?? "unknown"; },
   async note(setupId, what) {
     const s = (await rows(`setup_sessions?id=eq.${setupId}&select=log,owner_taps`))?.[0];
@@ -73,7 +78,7 @@ const deps: KeyboxDeps = {
 };
 
 const fillDeps: KeyfillDeps = {
-  async identity(id) { return (await rows(`tool_identities?id=eq.${id}&state=neq.retired&select=id,site,vault_item_id,totp`))?.[0] ?? null; },
+  async identity(id) { return (await rows(`tool_identities?id=eq.${id}&state=neq.retired&select=id,login_url,signin_hosts,vault_item_id,totp`))?.[0] ?? null; },
   async vaultRef(item) { return (await rows(`vault_items?id=eq.${item}&vault_provider=eq.1password&select=vault_ref`))?.[0]?.vault_ref ?? null; },
   vault: () => deps.vault(),
   page: (sessionId) => deps.page(sessionId),

@@ -14,6 +14,7 @@ export interface KeyboxDeps {
   page(sessionId: string): Promise<Page | null>;
   fill(page: Page, username: string, password: string): Promise<{ user: boolean; pass: boolean; submitted: boolean }>;
   saveRef(row: { business_id: string; tool_name: string; login_url: string | null; vault_ref: string; username_hint: string; setup_id: string; has_authenticator?: boolean }): Promise<string | null>;
+  signedInOn?(setupId: string, host: string): Promise<void>;            // the host the owner's own sign-in was typed on
   terms?(toolKey: string): Promise<"allowed" | "forbidden" | "unknown">; // what Pip knows about this tool's rules on automated sign-in
   note(setupId: string, what: Record<string, unknown>): Promise<void>;
   canaries?(setupId: string, secrets: string[]): Promise<void>; // test runs only: slice hashes for the leak check
@@ -75,6 +76,8 @@ export async function keybox(body: unknown, deps: KeyboxDeps): Promise<{ status:
     await deps.note(s.id, { did: "vault_failed" });
     return { status: 502, code: "vault_failed" };
   }
+  // The owner is watching and chose to sign in here, so this host is one their saved login may be typed on later.
+  try { await deps.signedInOn?.(s.id, new URL(href).hostname.toLowerCase()); } catch { /* not remembered */ }
   const itemId = await deps.saveRef({ business_id: s.business_id, tool_name: s.tool, login_url: s.login_url, vault_ref: ref, username_hint: hint(username.trim()), setup_id: s.id, has_authenticator: !!authenticator });
   if (deps.canaries) await deps.canaries(s.id, [username.trim(), password, ...(authenticator ? [authenticator.split("secret=")[1].split("&")[0]] : [])]).catch(() => {});
   const filled = await deps.fill(page, username.trim(), password).catch(() => ({ user: false, pass: false, submitted: false }));

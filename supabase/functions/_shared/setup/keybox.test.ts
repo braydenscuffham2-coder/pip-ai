@@ -110,3 +110,10 @@ test("an authenticator key is read as a bare key or an otpauth link, and nothing
   assert.equal(authenticatorOf("otpauth://totp/Tool:pip?secret=JBSWY3DPEHPK3PXP&issuer=Tool"), "otpauth://totp/Tool:pip?secret=JBSWY3DPEHPK3PXP&issuer=Tool");
   for (const bad of ["123456", "otpauth://totp/Tool", "https://example.com", "not a key!"]) assert.equal(authenticatorOf(bad), null, bad);
 });
+
+test("the host the owner signed in on is remembered, so a later silent sign-in may use that host and no other", async () => {
+  const seen: string[] = [];
+  const w = await world({ page: async () => ({ evaluate: async () => "https://login.example.com/start" } as any), signedInOn: async (_id, host) => { seen.push(host); } });
+  assert.equal((await send(w.deps)).status, 200);
+  assert.deepEqual(seen, ["login.example.com"]);
+});

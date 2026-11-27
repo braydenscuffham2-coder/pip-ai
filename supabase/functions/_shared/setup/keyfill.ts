@@ -1,14 +1,15 @@
 // vault-writer's second job: put a login the owner already saved back into the tool's own sign-in page, when Pip has
 // been signed out in the background. No model runs here and nothing is returned but a code.
 //
-// The one rule that matters most: the vault fills on the tool's own site and nowhere else. The page's address is read
-// from the browser itself, and if its site is not the one saved for this tool, the vault is never even opened.
+// The one rule that matters most: the vault fills on the tool's own sign-in host and nowhere else. The page's address
+// is read from the browser itself, and unless its host is exactly the sign-in page's host (or one the owner themselves
+// signed in on), the vault is never even opened. A shared parent domain is not enough.
 import type { Page } from "./engine.ts";
 import type { Vault } from "./vendors.ts";
-import { siteOf, TAG_LOGIN_JS } from "./guards.ts";
+import { signInHostOk, TAG_LOGIN_JS } from "./guards.ts";
 
 export type FillAnswer = "submitted" | "filled" | "wrong_site" | "no_form" | "no_login" | "no_code" | "vault_failed" | "bad_request" | "browser_closed";
-export interface FillIdentity { id: string; site: string; vault_item_id: string | null; totp: boolean }
+export interface FillIdentity { id: string; login_url: string; signin_hosts: string[]; vault_item_id: string | null; totp: boolean }
 export interface KeyfillDeps {
   identity(id: string): Promise<FillIdentity | null>;
   vaultRef(vaultItemId: string): Promise<string | null>;     // the op:// reference kept in vault_items
@@ -22,10 +23,10 @@ export interface KeyfillDeps {
 type Tags = { user: boolean; pass: boolean; submit: boolean; twoStep: boolean };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** True only when the page the browser is on right now is an https page on the tool's own site. */
-async function onOwnSite(page: Page, site: string): Promise<boolean> {
+/** True only when the page the browser is on right now is an https page on the tool's own sign-in host. */
+async function onOwnSite(page: Page, id: FillIdentity): Promise<boolean> {
   const href = await page.evaluate<string>("location.href").catch(() => "");
-  return /^https:\/\//i.test(href) && !!site && siteOf(href) === site;
+  return signInHostOk(href, id.login_url, id.signin_hosts ?? []);
 }
 
 export async function fillSaved(body: unknown, mode: "login" | "code", deps: KeyfillDeps): Promise<{ status: number; code: FillAnswer }> {
@@ -39,7 +40,7 @@ export async function fillSaved(body: unknown, mode: "login" | "code", deps: Key
   const page = await deps.page(sessionId);
   if (!page) return { status: 409, code: "browser_closed" };
   // Before the vault is opened at all.
-  if (!(await onOwnSite(page, id.site))) return { status: 409, code: "wrong_site" };
+  if (!(await onOwnSite(page, id))) return { status: 409, code: "wrong_site" };
   const ref = await deps.vaultRef(id.vault_item_id);
   const vault = ref ? await deps.vault() : null;
   if (!ref || !vault) return { status: 503, code: "vault_failed" };
@@ -56,7 +57,7 @@ export async function fillSaved(body: unknown, mode: "login" | "code", deps: Key
       await deps.fill(page, login.username, "");
       for (let i = 0; i < 12; i++) { await wait(500); tags = await page.evaluate<Tags>(TAG_LOGIN_JS).catch(() => tags); if (tags.pass) break; }
       if (!tags.pass) return { status: 200, code: "filled" };
-      if (!(await onOwnSite(page, id.site))) return { status: 409, code: "wrong_site" };
+      if (!(await onOwnSite(page, id))) return { status: 409, code: "wrong_site" };
       const r = await deps.fill(page, tags.user ? login.username : "", login.password);
       await deps.used(id.vault_item_id, r.pass).catch(() => {});
       return { status: 200, code: r.submitted ? "submitted" : "filled" };
