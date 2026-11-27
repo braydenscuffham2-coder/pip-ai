@@ -9,6 +9,7 @@
 // - Users, connections, the price and Disconnect everything need a sign-in from the last 15 minutes.
 // - verify_jwt is off because /signin is public; this file checks the session itself.
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { draftWords, priceKeyOf } from "../_shared/price-keys.ts";
 import { abilitiesOf } from "../_shared/abilities.ts";
 import { checkOperate, operatePlainWords } from "../_shared/operate.ts";
 import { checkAsk, mayApprove, mayRevoke } from "../_shared/operate-approval.ts";
@@ -964,6 +965,21 @@ async function founder(u: User, action: string, body: any) {
     return json({ businesses: data || [], settings: Object.fromEntries((st || []).map((s: any) => [s.key, s.value])), vendor_agreements: vend || [], issues: iss || [] });
   }
   const bid = cut(body.business_id, 40);
+  if (action === "quote_draft") {
+    // The founder's pricing draft. One price-book line per teammate, picked from what its jobs do, priced by quote().
+    // Nothing is saved on the business and the owner sees nothing: the page only fills the founder's three boxes.
+    if (!UUID.test(bid)) throw new Fail(400, "bad_business");
+    const { data: orders } = await db.from("build_orders").select("id").eq("business_id", bid);
+    const ids = (orders ?? []).map((o: any) => o.id);
+    const { data: specs } = ids.length ? await db.from("skill_specs").select("skill_id,spec,quote,status").in("order_id", ids).neq("status", "retired").order("created_at") : { data: [] };
+    const mates = (specs ?? []).slice(0, 30).map((x: any) => ({ name: cut(x.spec?.board?.teammate?.name || x.spec?.board?.name || x.skill_id, 60), key: priceKeyOf(x.spec, x.quote?.lane) }));
+    if (!mates.length) throw new Fail(409, "no_teammates", "This business has no teammates to price yet.");
+    const { data: conns } = await db.from("client_connections").select("toolkit,status").eq("business_id", bid);
+    const connections = [...new Set((conns ?? []).filter((c: any) => c.status === "active" || c.status === "connected").map((c: any) => cut(c.toolkit, 40)))].slice(0, 20).map((tool) => ({ tool, kind: "api" }));
+    const { data, error } = await db.rpc("quote", { p_agents: mates.map((m: any) => ({ key: m.key })), p_connections: connections, p_opts: { caller: "portal", business_id: bid } });
+    if (error || !data) throw new Fail(400, "bad_quote", String(error?.message || "quote failed").replace(/^quote: /, ""));
+    return json({ ok: true, ...draftWords(data, mates), quote_id: data.quote_id ?? null, teammates: mates.length });
+  }
   if (action === "quote") {
     if (!UUID.test(bid)) throw new Fail(400, "bad_business");
     const { data: b } = await db.from("businesses").select("price_accepted_at,status").eq("id", bid).single();

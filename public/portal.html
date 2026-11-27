@@ -2321,13 +2321,25 @@ function founderCard() {
   const d = S.data, b = d.business, id = S.bid, q = b.quote || {};
   const mo = h("input", { class: "in", id: "f-mo", type: "number", inputmode: "decimal", placeholder: "Monthly $", value: q.monthly_usd != null ? q.monthly_usd : "" }), su = h("input", { class: "in", id: "f-su", type: "number", inputmode: "decimal", placeholder: "Setup $ (optional)", value: q.setup_usd || "" }), sum = h("textarea", { class: "area", id: "f-sum", placeholder: "What is included, per teammate, and the overage rate" }); sum.value = q.summary || "";
   const who = h("select", { class: "sel", id: "f-who" }, d.people.map((p) => h("option", { value: p.email }, p.email))), out = h("div", { "aria-live": "polite" });
+  // A draft from the price book (quote(), the same function the pricing email uses). It only fills the three boxes:
+  // nothing is saved and the owner sees nothing until Save price is pressed.
+  const note = h("p", { class: "fine", "aria-live": "polite", "data-k": "f-draft-note" });
+  let quoteId = null;
+  const draft = async () => {
+    try {
+      const r = await api("/founder/quote_draft", { business_id: id });
+      mo.value = r.monthly_usd; su.value = r.setup_usd || ""; sum.value = r.summary; quoteId = r.quote_id || null;
+      note.textContent = "Drafted from the price book for " + r.teammates + (r.teammates === 1 ? " teammate" : " teammates") + ". Nothing is saved until you press Save price." + (r.flags && r.flags.indexOf("placeholder_costs") >= 0 ? " The price book's costs are still placeholders, so check the numbers." : "");
+    } catch (e) { note.textContent = (e && e.code === "no_teammates" ? "This business has no teammates to price yet." : "The draft could not be made.") + " You can still type a price."; }
+  };
   return h("section", { class: "console rise", style: { "--i": 8 }, "aria-label": "Founder" }, kick("Founder"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "Behind the scenes"), h("p", { class: "fine", style: { marginTop: "4px" } }, "Only you see this card."),
     h("div", { class: "sep" }),
     b.price_accepted_at ? h("p", { class: "small" }, "Price accepted " + new Date(b.price_accepted_at).toLocaleDateString() + ".") : h("div", { class: "stack" },
       h("p", { class: "small" }, "Price shown to the owner (you still send the pricing email yourself)"),
       h("div", { class: "fields two" }, h("label", { class: "field", for: "f-mo" }, h("span", { class: "lab" }, "Monthly $"), mo), h("label", { class: "field", for: "f-su" }, h("span", { class: "lab" }, "Setup $ ", h("em", {}, "optional")), su)),
       h("label", { class: "field", for: "f-sum" }, h("span", { class: "lab" }, "What is included"), sum),
-      h("div", {}, h("button", { class: "btn ghost", "data-k": "f-quote", onclick: () => run(() => api("/founder/quote", { business_id: id, quote: { monthly_usd: Number(mo.value) || 0, setup_usd: Number(su.value) || 0, summary: sum.value.trim() } }), "Price saved. The owner can accept it in the Portal.") }, "Save price"))),
+      h("div", { class: "btns" }, h("button", { class: "btn ghost", type: "button", "data-k": "f-draft", onclick: draft }, "Draft from the price book"), h("button", { class: "btn ghost", "data-k": "f-quote", onclick: () => run(() => api("/founder/quote", { business_id: id, quote: Object.assign({ monthly_usd: Number(mo.value) || 0, setup_usd: Number(su.value) || 0, summary: sum.value.trim() }, quoteId ? { quote_id: quoteId } : {}) }), "Price saved. The owner can accept it in the Portal.") }, "Save price")),
+      note),
     d.people.length ? h("div", { class: "stack", style: { marginTop: "18px" } }, h("label", { class: "field", for: "f-who" }, h("span", { class: "lab" }, "One-time sign-in link to send yourself"), who), h("div", {}, h("button", { class: "btn ghost", "data-k": "f-link", onclick: async () => { try { const r = await api("/founder/link", { email: who.value }); out.replaceChildren(h("label", { class: "field" }, h("span", { class: "lab" }, "Sign-in link"), h("textarea", { class: "area", readonly: true }, r.link)), h("p", { class: "fine", style: { marginTop: "8px" } }, r.note)); } catch (e) { out.replaceChildren(h("p", { class: "note err", role: "alert" }, icon("alert"), h("span", {}, e.message))); } } }, "Make link")), out) : null,
     founderSteps(),
     d.health_missing.length ? h("div", { style: { marginTop: "18px" } }, h("p", { class: "small" }, "Health agreements still missing"), d.health_missing.map((m) => h("div", { class: "row-f" }, h("span", { class: "grow" }, m.party), h("button", { class: "btn ghost", onclick: () => confirmSheet({ title: "Mark this signed?", body: "Only mark this signed if the signed agreement is on file.", ok: "Mark signed", onOk: () => run(() => api("/founder/agreement", { business_id: m.kind === "baa_client" ? id : null, kind: m.kind, party: m.kind === "baa_client" ? "Pip" : m.party, status: "signed" }), "Recorded.") }) }, "Mark signed")))) : null);
