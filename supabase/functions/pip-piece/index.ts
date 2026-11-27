@@ -18,7 +18,7 @@
 // deno-lint-ignore no-var
 declare var EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { checkPiece, closestParts, intakeForm, type LibraryPart, piecePrompt, pieceWords, type PieceSpec, publicPage, readPieceAnswer, selfTest, submitIntake } from "../_shared/piece.ts";
+import { checkPiece, closestParts, intakeForm, type LibraryPart, piecePrompt, pieceWords, type PieceSpec, publicPage, readPieceAnswer, reusedPart, selfTest, submitIntake } from "../_shared/piece.ts";
 import { dbStore } from "../_shared/piece-store.ts";
 import { costOf } from "../_shared/setup/guards.ts";
 
@@ -103,7 +103,7 @@ async function draft(b: any) {
     if (c.ok) {
       const tests = await selfTest(c.spec);
       if (tests.passed) {
-        const reuse = typeof ans!.reuse === "string" && close.some((p) => p.id === ans!.reuse) ? ans!.reuse : null;
+        const reuse = reusedPart(ans!.reuse, close);
         return json({ ok: true, spec: c.spec, tests, reuse, why: String(ans!.why ?? "").slice(0, 300), closest: close.map((p) => ({ id: p.id, name: p.name, score: p.score })), cost_usd: Math.round(usd * 10000) / 10000, attempts: attempt });
       }
       last = tests.lines.filter((l) => !l.passed).map((l) => `Sandbox: ${l.test} (${l.saw})`);
