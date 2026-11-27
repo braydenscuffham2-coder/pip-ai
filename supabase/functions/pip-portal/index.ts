@@ -221,6 +221,7 @@ async function business(u: User, bid: string) {
     setup_unlocked: !!b.price_accepted_at, terms_url: termsUrl, terms_version: await setting("portal_terms_version", null),
     vault_open: false, connect_on: !!(Deno.env.get("COMPOSIO_API_KEY") ?? "").trim(), fresh: u.fresh,
     setup_on: (await setupGate(r.admin, bid)).open,
+    work: r.role === "staff" ? [] : await workList(bid),
     setups: r.role === "staff" ? [] : ((await db.from("setup_sessions").select("id,tool,state,reason,result,created_at").eq("business_id", bid).order("created_at", { ascending: false }).limit(10)).data || []),
   });
 }
@@ -543,6 +544,47 @@ async function setupRun(path: string, setup_id: string) {
   const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/setup-run${path}`, { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify({ setup_id }), signal: AbortSignal.timeout(path === "/step" ? 5000 : 20000) }).catch(() => null);
   return r ? await r.json().catch(() => null) : null;
 }
+// ---------------- background work ----------------
+// What Pip did for this business with nobody watching (pip-work), in plain words, and the two things only the owner
+// can do: say yes or no to a job that is waiting to save something, and tell Pip to carry on after they signed in again.
+async function workList(bid: string) {
+  const { data } = await db.from("work_jobs").select("id,kind,title,status,outcome,summary,created_at,finished_at,plan").eq("business_id", bid).order("created_at", { ascending: false }).limit(12);
+  return ((data as any[]) || []).map((j) => ({
+    id: j.id, kind: j.kind, title: j.title, status: j.status, outcome: j.outcome, summary: j.summary, created_at: j.created_at, finished_at: j.finished_at,
+    // Only what the owner needs to decide: the button Pip wants to press and the values it filled in. Never the rest of the plan.
+    pending: j.status === "waiting_approval" && j.plan?.pending ? { label: cut(j.plan.pending.label, 80), form: j.plan.pending.form && typeof j.plan.pending.form === "object" ? j.plan.pending.form : {} } : null,
+  }));
+}
+async function workAction(u: User, bid: string, body: any) {
+  const r = await access(u, bid); need(r, "owner");
+  const jid = cut(body.job, 40); if (!UUID.test(jid)) throw new Fail(400, "bad_job");
+  const { data: j } = await db.from("work_jobs").select("id,title,status").eq("id", jid).eq("business_id", bid).maybeSingle();
+  if (!j) throw new Fail(404, "not_found");
+  const action = cut(body.action, 20);
+  if (action === "approve" || action === "decline") {
+    const { data: answer } = await db.rpc("work_approve", { p_job: jid, p_ok: action === "approve", p_by: u.email });
+    if (answer !== "approved" && answer !== "declined") throw new Fail(409, "not_now", "This is not waiting for an answer any more.");
+    return json({ ok: true, answer });
+  }
+  if (action === "resume") {
+    const { data: ok } = await db.rpc("work_resume", { p_job: jid });
+    if (ok !== true) throw new Fail(409, "not_now", "This is not waiting for you any more.");
+    return json({ ok: true });
+  }
+  if (action === "shot") {
+    // The masked screenshot Pip took just before asking: what it filled in, as the model saw it.
+    const { data: st } = await db.from("work_steps").select("shot").eq("job_id", jid).eq("did", "approval_needed").not("shot", "is", null).order("seq", { ascending: false }).limit(1).maybeSingle();
+    return json({ ok: true, shot: (st as any)?.shot ?? null });
+  }
+  if (action === "stop") {
+    const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/pip-work/stop`, { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify({ job: jid }), signal: AbortSignal.timeout(20000) }).then((x) => x.body?.cancel()).catch(() => {});
+    await log(bid, "owner", `${j.title}: you stopped it.`, { actor: u.email });
+    return json({ ok: true });
+  }
+  throw new Fail(400, "bad_action");
+}
+
 // Open to every owner once setup_agent_on is true. Until then, only the founder on a TEST business (see gate.ts).
 async function setupGate(admin: boolean, bid: string) {
   return setupOpen({ flag: await setting("setup_agent_on", false), admin, business: bid, sandbox: await setting("act_sandbox_businesses", []) });
@@ -927,6 +969,7 @@ Deno.serve(async (req) => {
       if (a === "ack") return await ack(u, bid, body);
       if (a === "vault") return await vault(u, bid, body);
       if (a === "setup") return await setupAction(u, bid, body);
+      if (a === "work") return await workAction(u, bid, body);
       if (a === "unsupported") return await unsupported(u, bid, body);
       if (a === "issue") return await issue(u, bid, body);
       if (a === "people") return await addPerson(u, bid, body);

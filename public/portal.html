@@ -1840,6 +1840,8 @@ function teamTab() {
   const opMate = S.op && d.operate_on ? d.agents.find((x) => x.spec_id === S.op && x.operator) : null;
   if (opMate) return operatorTab(opMate);
   return [stageCard(),
+    // A job waiting on the owner (a yes before saving, or a sign-in) is shown first, where they land.
+    isOwner() ? workCard(true) : null,
     d.agents.length ? h("section", { class: "stack", "aria-label": "Your team" }, h("div", { class: "row", style: { justifyContent: "space-between", marginTop: "6px" } }, h("h2", { class: "h-s" }, "Your team"), h("span", { class: "fine" }, d.agents.length === 1 ? "1 teammate" : d.agents.length + " teammates")), h("div", { class: "team" }, d.agents.map(mateCard)))
       : h("div", { class: "card dash empty rise", style: { "--i": 2 }, "data-pip-empty": "" }, h("p", { class: "h-s" }, "Your teammates will show here.")),
     d.business.health_lane ? h("div", { class: "card warm rise", style: { "--i": 4 } }, kick("Health agreements"), h("p", { class: "lead", style: { marginTop: "10px", fontSize: "15.5px" } }, "No health teammate goes live until each of these is signed."),
@@ -1952,7 +1954,8 @@ function setupTab() {
         return det;
       }))),
     isOwner() && !locked && d.connect_on ? anyToolCard() : null,
-    isOwner() && d.setup_unlocked ? vaultCard() : null];
+    isOwner() && d.setup_unlocked ? vaultCard() : null,
+    isOwner() ? workCard() : null];
 }
 // ---------- any other tool: search for it and connect it without leaving setup ----------
 function anyToolCard() {
@@ -1991,6 +1994,41 @@ function vaultCard() {
       }) }, "Connect it with Pip's help") : null,
       h("button", { class: "btn ghost", "data-k": "vault", onclick: () => tool.value.trim() && run(() => api("/business/" + id + "/vault", { tool_name: tool.value.trim(), login_url: page.value.trim() }), "Saved. No password was taken.") }, "Save for the vault")),
     setupList());
+}
+// What Pip did in the background (on Pip's own computers, with nobody watching), newest first. Two kinds need the
+// owner: a job waiting for a yes before it saves something, and a tool that needs them to sign in again.
+function workCard(needsYouOnly) {
+  const all = (S.data.work || []), id = S.bid;
+  const list = needsYouOnly ? all.filter((j) => j.status === "waiting_approval" || j.status === "waiting_owner") : all;
+  if (!list.length) return null;
+  const act = (job, action, ok) => run(() => api("/business/" + id + "/work", { job, action }), ok);
+  const word = { queued: "Waiting its turn", running: "Working now", done: "Done", failed: "Did not finish", stopped: "Stopped" };
+  const item = (j) => {
+    if (j.status === "waiting_approval" && j.pending) {
+      const rows = Object.keys(j.pending.form || {}).map((k) => h("li", {}, h("span", {}, h("b", {}, k.replace(/_/g, " ") + ": "), String(j.pending.form[k]))));
+      const view = h("div", { "aria-live": "polite" });
+      return h("li", { class: "work-ask" }, icon("info"), h("div", { class: "grow" },
+        h("b", {}, j.title), h("p", { class: "small", style: { margin: "4px 0" } }, "Pip is ready to press \u201c" + j.pending.label + "\u201d with this filled in. Nothing is saved until you say yes."),
+        rows.length ? h("ul", { class: "rules", style: { margin: "6px 0" } }, rows) : null, view,
+        h("div", { class: "btns", style: { marginTop: "8px" } },
+          h("button", { class: "btn pri", "data-k": "work-yes", onclick: () => act(j.id, "approve", "Pip will save it now.") }, "Yes, save it"),
+          h("button", { class: "btn ghost", "data-k": "work-no", onclick: () => act(j.id, "decline", "Nothing was saved.") }, "No, don't"),
+          h("button", { class: "btn ghost", "data-k": "work-shot", onclick: async () => {
+            try { const r = await api("/business/" + id + "/work", { job: j.id, action: "shot" });
+              view.replaceChildren(r.shot ? h("img", { src: "data:image/jpeg;base64," + r.shot, alt: "The screen as Pip saw it, with secrets blurred", style: { maxWidth: "100%", borderRadius: "8px", marginTop: "8px" } }) : h("p", { class: "small" }, "No picture was kept for this one."));
+            } catch (e) { view.replaceChildren(h("p", { class: "small" }, "The picture could not be loaded.")); }
+          } }, "Show me the screen"))));
+    }
+    if (j.status === "waiting_owner") {
+      return h("li", {}, icon("info"), h("div", { class: "grow" }, h("b", {}, j.title), h("p", { class: "small", style: { margin: "4px 0" } }, j.summary || "Pip needs you for this one."),
+        h("div", { class: "btns", style: { marginTop: "8px" } }, h("button", { class: "btn ghost", "data-k": "work-resume", onclick: () => act(j.id, "resume", "Pip will carry on.") }, "I've done it, carry on"),
+          h("button", { class: "btn ghost", "data-k": "work-stop", onclick: () => act(j.id, "stop", "Stopped.") }, "Stop this one"))));
+    }
+    return h("li", {}, icon(j.status === "done" ? "check" : "info"), h("span", {}, h("b", {}, j.title + ": "), (j.status === "done" || j.status === "failed" || j.status === "stopped") && j.summary ? j.summary : (word[j.status] || "Pip is working on it")));
+  };
+  return h("div", { class: "card dash rise", style: { "--i": 4 } },
+    h("div", { class: "row", style: { alignItems: "flex-start" } }, h("span", { class: "ic" }, icon("shield")), h("div", { class: "grow" }, h("h2", { class: "h-s" }, needsYouOnly ? "Pip needs you for this" : "What Pip did while you were away"), h("p", { class: "small", style: { marginTop: "6px" } }, "Work your teammates do inside your tools on Pip's own computers. Pip reads, adds and updates. It never deletes."))),
+    h("ul", { class: "rules", style: { marginTop: "14px" } }, list.map(item)));
 }
 // Setups Pip is helping with: one line each, with a way back in when one needs the owner.
 function setupList() {
