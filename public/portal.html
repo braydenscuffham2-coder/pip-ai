@@ -1162,7 +1162,7 @@ function loadPart(name) {
   if (!PARTS[name]) PARTS[name] = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "/" + name + ".js?v=" + PART_V; sc.async = true; sc.onload = res; sc.onerror = () => { delete PARTS[name]; rej(new Error(name)); }; document.head.append(sc); });
   return PARTS[name];
 }
-const PART_V = "1";
+const PART_V = "2";
 function loadThree() {
   if (!threeP) { const l = document.createElement("link"); l.rel = "modulepreload"; l.href = THREE_URL; l.integrity = THREE_SRI; l.crossOrigin = "anonymous"; document.head.append(l); threeP = import(THREE_URL); threeP.catch(() => { threeP = null; }); }
   return threeP;
@@ -2693,7 +2693,7 @@ function stationModel() {
   const cables = d.agents.filter((a) => !building(a)).map((a) => { const st = a.needs.map(stepFor).filter(Boolean).map(stateOf); return { id: a.spec_id, state: isPaused(a) ? "none" : st.includes("you") ? "you" : st.includes("pip") ? "pip" : "ok" }; });
   return { meter: { frac, warn: !!late || (u && Number(u.beyond_plan_usd) > 0) }, tools, cables, founder: d.role === "founder" };
 }
-const shortTool = (l) => { const w = String(l).replace(/^(A|An|Your)\s+/i, "").replace(/ from your address/i, "").split(/\s+/); const t = w[0].length > 9 || w.length === 1 ? w[0] : w.slice(0, 2).join(" "); return t.length > 11 ? t.slice(0, 10) + "…" : t.charAt(0).toUpperCase() + t.slice(1); };
+const shortTool = (l) => { const w = String(l).replace(/^(A|An|Your)\s+/i, "").replace(/ from your address/i, "").split(/\s+/), two = w.slice(0, 2).join(" "), t = two.length <= 10 ? two : w[0]; const c = t.charAt(0).toUpperCase() + t.slice(1); return c.length > 12 ? c.slice(0, 11) + "…" : c; }; // fits on a tool block
 const TOOL_HEX = { google: "#5b9dff", calendly: "#5eead9", acuity: "#9b86ff", square: "#8f93b8", microsoft: "#5eead9" };
 const toolHex = (x) => { const p = (x.choices && x.choices[0] && x.choices[0].provider) || x.provider || ""; return TOOL_HEX[p] || ["#ff9ac0", "#ffc861", "#9b86ff", "#5eead9", "#8fd8bb"][String(x.slot || x.toolkit || x.label).length % 5]; };
 function firstToday() { const k = new Date().toDateString(); let seen = null; try { seen = localStorage.getItem("pip-portal:arrived"); localStorage.setItem("pip-portal:arrived", k); } catch (e) { /* private mode */ } return seen !== k; }

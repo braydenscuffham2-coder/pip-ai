@@ -619,7 +619,7 @@ function createOffice(THREE, X, opts) {
       const b = new THREE.Group(); b.position.set(x, T_.shelves[row] + 0.12, -0.05); b.rotation.y = (col % 2 ? -1 : 1) * 0.12;
       b.add(new THREE.Mesh(blockGeo, blockMat(t.hex)));
       const dot = new THREE.Mesh(dotGeo, glowMat(STATE_HEX[t.state] || C.aqua, 3)); dot.position.set(0, 0.07, 0.114); b.add(dot);
-      const face = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.08), new THREE.MeshBasicMaterial({ map: label(t.short, { w: 300, h: 120, color: "#3d3460", font: "600 64px Geist", align: "center" }), transparent: true, depthWrite: false }));
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.08), new THREE.MeshBasicMaterial({ map: label(t.short, { w: 300, h: 120, color: "#3d3460", font: "600 " + (t.short.length <= 6 ? 60 : t.short.length <= 9 ? 48 : 38) + "px Geist", align: "center" }), transparent: true, depthWrite: false }));
       face.position.set(0, -0.035, 0.113); b.add(face); b.userData.state = t.state; b.userData.dot = dot;
       tools.grp.add(b); T_.blocks.push(b); onlyMain(dot, face);
     });
