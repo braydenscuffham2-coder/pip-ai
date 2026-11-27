@@ -23,7 +23,7 @@ def business(w):
         {"id": DONE, "kind": "screen", "title": "Read Juniper's record", "status": "done", "outcome": "ok", "summary": "Species: Cat. Owner: Marcus Oyelaran. Reminders: on. I changed nothing.", "created_at": "2026-11-27T00:30:00Z", "finished_at": "2026-11-27T00:30:08Z", "pending": None}]
     return {"role": w["role"], "business": {"id": BIZ, "name": "TEST Fork", "domain": "testfork.example", "industry": "restaurant", "state": "ID", "status": "active", "quote": None, "price_accepted_at": "2026-11-20T00:00:00Z", "timezone": "America/Boise", "health_lane": False, "terms_version": "2026-11"},
             "checklist": [], "agents": [], "people": [], "issues": [], "phone": None, "texting": None, "rules": [], "health_missing": [], "agreements": [], "extra_tools": [], "setup_unlocked": True, "terms_url": None, "terms_version": "2026-11",
-            "vault_open": False, "connect_on": False, "fresh": True, "setup_on": False, "setups": [], "operate_on": False, "work": work}
+            "vault_open": False, "connect_on": False, "fresh": not w.get("stale"), "setup_on": bool(w.get("setup_on")), "setups": [], "operate_on": False, "work": work}
 
 def serve(w):
     def handle(route):
@@ -39,6 +39,7 @@ def serve(w):
             elif a == "decline": w["ask"] = "stopped"
             elif a == "resume": w["signin"] = "queued"
             elif a == "shot": out = {"ok": True, "shot": PIXEL}
+        elif path == f"pip-portal/business/{BIZ}/setup" and w.get("stale"): out, status = {"error": "fresh_sign_in", "message": "Sign in again to do this."}, 401
         elif path.startswith("pip-portal-ops/"): out = {}
         route.fulfill(status=status, content_type="application/json", headers={"access-control-allow-origin": "*"}, body=json.dumps(out))
     return handle
@@ -96,6 +97,23 @@ with sync_playwright() as p:
         check(fits(pg), tag + "the list fits the width"); check(not errs, tag + f"list: console clean {errs[:2]}"); ctx.close()
         w = {"role": "staff", "ask": "waiting_approval", "signin": "waiting_owner", "calls": []}; ctx, pg, errs = page(w)
         check("Pip needs you for this" not in text(pg) and pg.locator('[data-k="work-yes"]').count() == 0, tag + "staff cannot approve"); ctx.close()
+
+        # 4. setup help with a sign-in older than 15 minutes: the page says what to do and keeps what was typed
+        w = {"role": "owner", "ask": "queued", "signin": "queued", "calls": [], "setup_on": True, "stale": True}; ctx, pg, errs = page(w)
+        pg.locator('[data-k$="-setup"]:visible').first.click(); pg.wait_for_timeout(1200)
+        check("Your password goes straight into a locked vault" in text(pg), tag + "with setup help on, the card says where the password goes")
+        pg.fill("#v-tool", "Practice Vet (TEST)"); pg.fill("#v-page", "https://www.hirepip.com/practice/x/login")
+        pg.locator('[data-k="setup-start"]').click(); pg.wait_for_timeout(2500)
+        t = text(pg)
+        check("We just emailed you a new link" in t, tag + "an old sign-in: the message says a new link was emailed")
+        check(any(c[1] == "pip-portal/signin" and c[2].get("email") == "owner@example.test" for c in w["calls"]), tag + "the new sign-in link is asked for, for the signed-in owner only")
+        check(pg.input_value("#v-tool") == "Practice Vet (TEST)" and pg.input_value("#v-page").endswith("/practice/x/login"), tag + "what was typed is still there after the page redraws")
+        pg.goto(f"{BASE}/portal.html?b={BIZ}", wait_until="load"); pg.wait_for_timeout(2500)
+        pg.locator('[data-k$="-setup"]:visible').first.click(); pg.wait_for_timeout(1200)
+        check(pg.input_value("#v-tool") == "Practice Vet (TEST)", tag + "and after coming back through the emailed link (a fresh page load)")
+        kept = pg.evaluate("()=>Object.keys(localStorage).filter(k=>k.startsWith('pip.setup-draft.')).map(k=>localStorage.getItem(k)).join('')")
+        check("password" not in kept.lower() and set(json.loads(kept).keys()) == {"tool", "page"}, tag + "only the tool's name and address are kept on the device")
+        check(fits(pg), tag + "the setup card fits the width"); check(not [e for e in errs if "401" not in e], tag + f"setup card: console clean {errs[:2]}"); ctx.close()
     b.close()
 print(f"{'PASS' if not problems else 'FAIL'}: {len(problems)} problem(s)")
 sys.exit(1 if problems else 0)
