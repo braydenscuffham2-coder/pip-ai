@@ -33,6 +33,7 @@ import { type ExecResult, runJob, type State, type Tool } from "../_shared/job-e
 import { localDay } from "../_shared/schedule.ts";
 import { EMAIL_OPT_OUT_LINE, isStopRequest } from "../_shared/optout.ts";
 import { sendOut } from "../_shared/edges.ts";
+import { addsToCalendar, busyTimes, inviteKeys, withoutInvites } from "../_shared/calendar.ts";
 import { firstText, gate as outboundGate, phone, refusal as sendRefusal } from "../_shared/outbound.ts";
 import { isOperatorRun, operatorSend } from "../_shared/operate-run.ts";
 
@@ -521,7 +522,8 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
     // A catalog row that adds is treated as a write even if its "access" column was left as read.
     const write = meta.row.access === "write" || meta.row.level !== "read";
     // Only the fields this tool's catalog row allows, then the values Pip always sets itself.
-    let args: J = Object.fromEntries(Object.entries(input ?? {}).filter(([k]) => !(meta.row.hide ?? []).includes(k)));
+    // A calendar hold never invites anyone: inviting inputs are dropped here whatever the model sent.
+    let args: J = withoutInvites(meta.row, Object.fromEntries(Object.entries(input ?? {}).filter(([k]) => !(meta.row.hide ?? []).includes(k))));
     if (write) {
       const bad = (JSON.stringify(args).match(EMAIL_RE) ?? []).map((e) => e.toLowerCase()).filter((e) => !seen.has(e));
       if (bad.length) { actions.push({ tool: name, status: "blocked" }); return { text: "Blocked: you may only use an email address the customer gave in this conversation.", error: true }; }
@@ -603,14 +605,12 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
     }
     if (write) await log(`${c!.teammate}: ${meta.row.label}`, "ok", meta.job);
     if (meta.row.shape === "busy_only") {
-      const items = dig(r.j?.data, "items");
+      const busy = busyTimes(r.j?.data);
       // No list at all means the answer could not be read. Saying "nothing is booked" then would be a guess.
-      if (!Array.isArray(items)) { await log(`${c!.teammate} could not read the calendar's answer`, "failed", meta.job); return { text: "The calendar could not be read. Do not say whether the time is open. Tell the customer a team member will confirm.", error: true }; }
-      const busy = items.filter((e: J) => e?.status !== "cancelled" && e?.transparency !== "transparent")
-        .map((e: J) => ({ start: e?.start?.dateTime ?? e?.start?.date, end: e?.end?.dateTime ?? e?.end?.date })).filter((e: J) => e.start).slice(0, 80);
+      if (!busy) { await log(`${c!.teammate} could not read the calendar's answer`, "failed", meta.job); return { text: "The calendar could not be read. Do not say whether the time is open. Tell the customer a team member will confirm.", error: true }; }
       return { text: JSON.stringify({ busy, note: "These are busy times only. Anything not listed is open on the calendar. You cannot see what the events are." }) };
     }
-    if (write) return { text: "Done." };
+    if (write) return { text: addsToCalendar(meta.row) && inviteKeys(Object.keys(input ?? {})).length ? "Done. No invitation was sent: a hold never invites anyone. Do not say an invitation was sent." : "Done." };
     return { text: JSON.stringify(r.j?.data ?? {}).slice(0, 4000) };
   }
 
@@ -795,7 +795,7 @@ async function jobRun(body: J) {
       let r: { ok: boolean; status: number; err: string }, raw: J = null, slotLabel: string;
       if (m?.sheet) { r = await sheetRow(c, m.sheet, args?.row); slotLabel = m.sheet.job; }
       else {
-        let input: J = { ...Object.fromEntries(Object.entries(args ?? {}).filter(([k]) => !(m.row.hide ?? []).includes(k))), ...(m.row.fixed ?? {}) };
+        let input: J = { ...withoutInvites(m.row, Object.fromEntries(Object.entries(args ?? {}).filter(([k]) => !(m.row.hide ?? []).includes(k)))), ...(m.row.fixed ?? {}) };
         let sentTo = "";
         // A message to a customer: the touch is reserved first, the database and the consent gate both say yes, and
         // only then does it go. Any step that cannot say yes sends nothing. (A text is never offered; see operate-run.ts.)
@@ -839,9 +839,8 @@ async function jobRun(body: J) {
       }
       if (write) { await db.rpc("portal_log", { p_spec: run.spec_id, p_summary: `${c.teammate}: ${what}`, p_outcome: "ok", p_job: label }); return { outcome: "ok", text: "Done." }; }
       if (m.row.shape === "busy_only") {
-        const items = dig(raw, "items");
-        if (!Array.isArray(items)) return { outcome: "failed", text: "The calendar could not be read." };
-        const busy = items.filter((e: J) => e?.status !== "cancelled" && e?.transparency !== "transparent").map((e: J) => ({ start: e?.start?.dateTime ?? e?.start?.date, end: e?.end?.dateTime ?? e?.end?.date })).filter((e: J) => e.start).slice(0, 80);
+        const busy = busyTimes(raw);
+        if (!busy) return { outcome: "failed", text: "The calendar could not be read." };
         return { outcome: "ok", text: JSON.stringify({ busy, note: "Busy times only. Anything not listed is open." }) };
       }
       return { outcome: "ok", text: JSON.stringify(raw ?? {}).slice(0, 4000) };

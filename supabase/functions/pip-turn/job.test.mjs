@@ -112,3 +112,17 @@ test("hold 1: through POST /job, a read is not offered when the job lists what i
   assert.equal(t.executed().length, 0, "and not run when asked for anyway");
   assert.equal(r.json.refusals, 1);
 });
+
+test("a calendar hold never invites anyone: with no field list, an attendee the model adds is dropped before the tool is called", async () => {
+  const t = await bootJob({ tables: tables((j) => { for (const g of j.tools) delete g.fields; }), composio: () => ok(), model: [
+    acts(use("GOOGLECALENDAR_CREATE_EVENT", { summary: "Hold", start_datetime: "2026-11-19T09:00:00", attendees: ["x@evil.example"], send_updates: "all" })),
+    says("Held the slot."),
+  ] });
+  const r = await t.job();
+  t.restore();
+  assert.equal(r.json.outcome, "done");
+  const sent = t.executed();
+  assert.equal(sent.length, 1);
+  assert.ok(!JSON.stringify(sent).includes("evil.example") && !("attendees" in sent[0].body.arguments) && !("send_updates" in sent[0].body.arguments), "no attendee and no notification setting reached the calendar");
+  assert.equal(sent[0].body.arguments.summary, "Hold");
+});
