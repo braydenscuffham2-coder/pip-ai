@@ -251,6 +251,32 @@ const READERS: Record<string, (f: any) => Promise<Reading>> = {
     }, 0);
     return { source: 'estimate', balance_usd: Number(f.balance_usd) - since0, spend_7d_usd: spend7, note: `Your reading of $${Number(f.balance_usd).toFixed(2)} on ${shortDate(f.balance_at)}, minus live spend since.` };
   },
+  // The Setup Agent's hosted browser. Proves the key works and the project it points at exists, and reads minutes used.
+  async browserbase() {
+    const key = env('BROWSERBASE_API_KEY');
+    if (!key) throw new Error('BROWSERBASE_API_KEY is missing');
+    const h = { headers: { 'X-BB-API-Key': key } };
+    const list = await getJson('https://api.browserbase.com/v1/projects', h);
+    const projects = Array.isArray(list) ? list : (list?.projects ?? list?.data ?? []);
+    const want = env('BROWSERBASE_PROJECT_ID');
+    const pick = want ? projects.find((x: any) => x?.id === want) : projects[0];
+    if (want && !pick) throw new Error(`the key works, but BROWSERBASE_PROJECT_ID is not one of its ${projects.length} project(s)`);
+    if (!pick?.id) throw new Error('the key works, but it has no project');
+    const u = await getJson(`https://api.browserbase.com/v1/projects/${enc(pick.id)}/usage`, h);
+    const mins = num(u?.browserMinutes);
+    return { source: 'live', credits_left: null, credits_limit: null, credit_unit: 'browser minutes',
+      note: `Key works. Project ${want ? 'set and found' : 'not set, so the first of ' + projects.length + ' is used'}${pick.concurrency ? `, ${pick.concurrency} browsers at once` : ''}. ${mins ?? 0} browser minutes used this period.` };
+  },
+  // The vault for client logins. Proves the service account token signs in; never reads an item.
+  async onepassword() {
+    const token = env('OP_SERVICE_ACCOUNT_TOKEN');
+    if (!token) throw new Error('OP_SERVICE_ACCOUNT_TOKEN is missing. Create the service account, then add it in Supabase secrets');
+    const sdk = (await import('npm:@1password/sdk@0')).default;
+    const client = await sdk.createClient({ auth: token, integrationName: 'Pip Shelf', integrationVersion: '1.0.0' });
+    const vaults = await client.vaults.list();
+    const pip = vaults.filter((v: any) => String(v?.title ?? '').startsWith('Pip · ')).length;
+    return { source: 'live', note: `Token works. It can see ${vaults.length} vault(s), ${pip} of them client vaults Pip made.` };
+  },
   async none(f) { return manual(f); },
 };
 
