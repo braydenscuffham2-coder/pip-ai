@@ -107,3 +107,10 @@ To get a consent screen that says "Pip" and asks only for send-mail and calendar
 ## Signing in again
 
 A connected step can be signed in again from the Portal ("Sign in again or switch account"). The working sign-in stays in use; the new one is stored in `business_connections.detail.pending` until Composio reports it active, then the step switches and the old account is deleted at Composio (`detail.replaces` holds any that could not be deleted yet, retried on each check). Unfinished sign-ins are removed after two hours (second sign-ins) or a day (first sign-ins for extra tools).
+
+## The page is three files (November 26)
+
+`public/portal.html` (sign-in, the app, every card) loads two parts after first paint, from the same site:
+`public/portal-pip.js` (Pip in 3D) and `public/portal-office.js` (the 3D office and its stations). Pictures live in
+`public/portal-art/`. The CSP allows `'self'` scripts for these two files only; nothing else changed in it.
+Bump `PART_V` in portal.html when either part changes in a way the page depends on.
