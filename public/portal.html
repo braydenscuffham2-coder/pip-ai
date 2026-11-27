@@ -1419,7 +1419,7 @@ async function api(path, body, base) {
   const tok = data.session && data.session.access_token;
   const r = await fetch((base || FN) + path, { method: body ? "POST" : "GET", headers: Object.assign({ "content-type": "application/json" }, tok ? { authorization: "Bearer " + tok } : {}), body: body ? JSON.stringify(body) : undefined });
   let j = {}; try { j = await r.json(); } catch (e) { /* empty */ }
-  if (!r.ok) { const err = new Error(j.message || WORDS[j.error] || "Something went wrong. Try again."); err.code = j.error; throw err; }
+  if (!r.ok) { const err = new Error((j.error === "fresh_sign_in" && WORDS.fresh_sign_in) || j.message || WORDS[j.error] || "Something went wrong. Try again."); err.code = j.error; throw err; }
   return j;
 }
 const rpc = (name, args) => api("/rpc/" + name, { business: S.bid, args: args || {} }, OPS);
@@ -1983,17 +1983,22 @@ function anyToolCard() {
     mine.length ? h("ul", { class: "rules", style: { marginTop: "14px" } }, mine.map((t) => h("li", {}, icon(t.status === "active" ? "check" : "info"), h("span", {}, t.toolkit + ": " + (word[t.status] || t.status))))) : null);
 }
 function vaultCard() {
-  const id = S.bid, tool = h("input", { class: "in", id: "v-tool", placeholder: "Tool name" }), page = h("input", { class: "in", id: "v-page", type: "url", placeholder: "Its sign-in page (optional)" });
+  // What was typed here is kept on this device (a tool's name and its sign-in address, never a password), so the
+  // reload after "sign in again" and the emailed sign-in link do not wipe it.
+  const id = S.bid, KEEP = "pip.setup-draft." + id, kept = (() => { try { return JSON.parse(localStorage.getItem(KEEP) || "{}") || {}; } catch (e) { return {}; } })();
+  const keep = () => { try { if (tool.value.trim() || page.value.trim()) localStorage.setItem(KEEP, JSON.stringify({ tool: tool.value.slice(0, 120), page: page.value.slice(0, 500) })); else localStorage.removeItem(KEEP); } catch (e) { /* private mode: nothing is kept */ } };
+  const forget = () => { try { localStorage.removeItem(KEEP); } catch (e) { /* nothing was kept */ } };
+  const tool = h("input", { class: "in", id: "v-tool", placeholder: "Tool name", value: typeof kept.tool === "string" ? kept.tool : "", oninput: () => keep() }), page = h("input", { class: "in", id: "v-page", type: "url", placeholder: "Its sign-in page (optional)", value: typeof kept.page === "string" ? kept.page : "", oninput: () => keep() });
   return h("div", { class: "card dash vault rise", style: { "--i": 3 } },
-    h("div", { class: "row", style: { alignItems: "flex-start" } }, h("span", { class: "ic" }, icon("shield")), h("div", { class: "grow" }, h("h2", { class: "h-s" }, "A tool that only has a username and password?"), h("p", { class: "small", style: { marginTop: "6px" } }, "Tell us which one. The locked vault for these is not open yet, so we do not take the password now. Never send a password by email or text."))),
+    h("div", { class: "row", style: { alignItems: "flex-start" } }, h("span", { class: "ic" }, icon("shield")), h("div", { class: "grow" }, h("h2", { class: "h-s" }, "A tool that only has a username and password?"), h("p", { class: "small", style: { marginTop: "6px" } }, S.data.setup_on ? "Tell us which one. Pip opens a secure browser you sign in to while you watch. Your password goes straight into a locked vault, and Pip never sees it. Never send a password by email or text." : "Tell us which one. The locked vault for these is not open yet, so we do not take the password now. Never send a password by email or text."))),
     h("div", { class: "fields", style: { marginTop: "16px" } }, h("label", { class: "field", for: "v-tool" }, h("span", { class: "lab" }, "Tool name"), tool), h("label", { class: "field", for: "v-page" }, h("span", { class: "lab" }, "Its sign-in page ", h("em", {}, "optional")), page)),
     h("div", { class: "btns" },
       // Pip's setup help (the Setup Agent): a secure cloud browser the owner signs in to while watching. Shown only when it is switched on.
       S.data.setup_on ? h("button", { class: "btn pri", "data-k": "setup-start", onclick: () => tool.value.trim() && run(async () => {
-        const r = await api("/business/" + id + "/setup", { action: "start", tool_name: tool.value.trim(), login_url: page.value.trim() });
-        location.href = "/setup.html?b=" + encodeURIComponent(id) + "&s=" + encodeURIComponent(r.setup_id);
+        keep(); const r = await api("/business/" + id + "/setup", { action: "start", tool_name: tool.value.trim(), login_url: page.value.trim() });
+        forget(); location.href = "/setup.html?b=" + encodeURIComponent(id) + "&s=" + encodeURIComponent(r.setup_id);
       }) }, "Connect it with Pip's help") : null,
-      h("button", { class: "btn ghost", "data-k": "vault", onclick: () => tool.value.trim() && run(() => api("/business/" + id + "/vault", { tool_name: tool.value.trim(), login_url: page.value.trim() }), "Saved. No password was taken.") }, "Save for the vault")),
+      h("button", { class: "btn ghost", "data-k": "vault", onclick: () => tool.value.trim() && run(async () => { keep(); await api("/business/" + id + "/vault", { tool_name: tool.value.trim(), login_url: page.value.trim() }); forget(); }, "Saved. No password was taken.") }, "Save for the vault")),
     setupList());
 }
 // What Pip did in the background (on Pip's own computers, with nobody watching), newest first. Two kinds need the
