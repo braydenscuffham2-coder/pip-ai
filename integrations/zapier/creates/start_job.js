@@ -9,7 +9,7 @@ const perform = async (z, bundle) => {
   const once = bundle.meta && bundle.meta.zap && bundle.meta.zap.id && bundle.meta.id ? `zap-${bundle.meta.zap.id}-${bundle.meta.id}`.slice(0, 100) : undefined;
   const res = explain(z, await z.request({ url: `${BASE}/hook/${door(bundle)}`, method: 'POST', headers: Object.assign(headers(bundle), once ? { 'idempotency-key': once } : {}), body, skipThrowForStatus: true }));
   const d = res.data || {};
-  return { id: d.id || once || 'already-received', received: true, already_received: d.duplicate === true, jobs_started: d.started || 0 };
+  return { id: d.id || once || 'already-received', received: true, already_received: d.duplicate === true };
 };
 
 module.exports = {
@@ -23,10 +23,10 @@ module.exports = {
       { key: 'fields', label: 'More fields', required: false, dict: true, helpText: 'Named values from earlier steps, for example customer_name or appointment_time.' },
     ],
     perform,
-    sample: { id: '7f1c2c1e-1111-4111-8111-000000000001', received: true, already_received: false, jobs_started: 1 },
+    sample: { id: '7f1c2c1e-1111-4111-8111-000000000001', received: true, already_received: false },
     outputFields: [
       { key: 'id', label: 'Pip ID' }, { key: 'received', label: 'Received', type: 'boolean' },
-      { key: 'already_received', label: 'Already received before', type: 'boolean' }, { key: 'jobs_started', label: 'Teammate jobs started', type: 'integer' },
+      { key: 'already_received', label: 'Already received before', type: 'boolean' },
     ],
   },
 };

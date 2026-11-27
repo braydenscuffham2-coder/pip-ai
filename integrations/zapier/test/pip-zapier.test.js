@@ -33,14 +33,14 @@ test('a wrong secret, a busy door and a pause each give the Zap owner a plain re
 });
 
 test('the action posts what happened once, with Zapier\'s own run id as the once-only key', async () => {
-  const { z, calls } = fakeZ({ status: 200, data: { ok: true, id: 'ev-1', started: 2 } });
+  const { z, calls } = fakeZ({ status: 200, data: { ok: true, id: 'ev-1', received: true } });
   const out = await startJob.operation.perform(z, bundle({ inputData: { subject: 'New booking', details: 'Dana, Tuesday 3pm', fields: { customer_name: 'Dana' } }, meta: { id: 'run-9', zap: { id: 'zap-7' } } }));
-  assert.deepEqual(out, { id: 'ev-1', received: true, already_received: false, jobs_started: 2 });
+  assert.deepEqual(out, { id: 'ev-1', received: true, already_received: false });
   assert.equal(calls[0].method, 'POST');
   assert.deepEqual(calls[0].body, { customer_name: 'Dana', subject: 'New booking', details: 'Dana, Tuesday 3pm' });
   assert.equal(calls[0].headers['idempotency-key'], 'zap-zap-7-run-9');
   const again = await startJob.operation.perform(fakeZ({ status: 200, data: { ok: true, duplicate: true } }).z, bundle({ inputData: { subject: 'New booking' }, meta: { id: 'run-9', zap: { id: 'zap-7' } } }));
-  assert.equal(again.already_received, true); assert.equal(again.jobs_started, 0);
+  assert.equal(again.already_received, true);
 });
 
 test('the trigger returns one flat item per update, each with the id Zapier counts it by', async () => {

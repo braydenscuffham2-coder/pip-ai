@@ -127,6 +127,25 @@ Outlook sign-ins already run on Pip's own apps, so they are not bound by it. Eac
 OAuth app registered with that vendor (their partner programs: Part H prep packs) or an API key the owner pastes into
 their vault.
 
-## 7. What is proven
+## 7. What is proven (TEST Fork, November 27, 2026, 04:21 UTC)
 
-Filled in after deploy; see the rollback document's row for this change for the live checks.
+Live: migration 09 applied; `pip-edge` v1 and `pip-jobs`, `pip-turn`, `pip-portal`, `pip-mail-in`, `pip-forge-mcp`,
+`pip-forge` deployed from main `b527a86`. A test job `door_note` was added to a TEST Fork teammate (alert the owner,
+then leave a line for Zapier), with three doors: a form, a Zapier connection and an email address.
+
+| What | Result |
+| --- | --- |
+| A customer fills in the live form on a phone-width screen | **Proven.** Stored, one job started in 2 s, done in 7 s, cost $0.0006. The owner alert was written and one item was left in the Zapier feed. |
+| The form's text told the teammate to post to every door and email all customers | **Proven ignored.** The run's own summary says it ignored those instructions; exactly one item went out. |
+| A system posts to the Zapier door with the right secret | **Proven.** One job started; the feed then held both items, newest first. |
+| The same post twice with one `Idempotency-Key` | **Proven.** Counted once; the second answer said `duplicate`. |
+| A wrong secret, on the door and on the feed | **Proven refused** (404, the same answer as a door that does not exist). |
+| A post carrying `password`, `api_key`, a nested `token`, and a password and card number in free text | **Proven dropped and blanked.** A search of every stored event for those values found nothing. |
+| The connection test Zapier will use | **Proven.** Returns the business and the door's label. |
+| The email door | **Not proven.** Needs one real email sent to the door's address; Pip does not send mail from Brayden's mailbox without his yes. |
+| An `out` door posting to an outside address | **Not proven live.** Tested with fakes only. |
+| The Portal's Doors card with real data | **Not proven live** (browser-checked against a faked server). |
+| The Zapier app inside Zapier | **Not run.** It has not been pushed. |
+
+Found by the live run and fixed straight after: the form waited for the whole job before saying thanks (about 9 s).
+Doors now answer at once and start the job in the background.

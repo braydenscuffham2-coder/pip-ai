@@ -20,6 +20,8 @@
 // verify_jwt is off because the senders cannot hold a Supabase sign-in; every route checks for itself.
 // Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
 // deno-lint-ignore-file no-explicit-any
+// deno-lint-ignore no-var
+declare var EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { checkForm, checkSubmission, cleanPayload, EDGE_EVENT, type EdgeKind, type FormDef, mailData, outUrlOk, sha256 } from "../_shared/edges.ts";
 import { isStopRequest } from "../_shared/optout.ts";
@@ -65,8 +67,10 @@ async function hook(req: Request, id: string) {
   if (error) return json({ ok: false, error: "server" }, 500);
   if (!t?.ok) { const [s, e] = REFUSED[t?.error] ?? [400, "bad_request"]; return json({ ok: false, error: e }, s); }
   if (t.duplicate) return json({ ok: true, duplicate: true });
-  const started = await start(t, cleanPayload(b.obj));
-  return json({ ok: true, id: t.event, started });
+  // Answer at once. The job may take many seconds; whoever knocked should not have to wait for it, and a sender that
+  // times out would knock again. (Found live: a customer's form sat on "Sending" for the whole run.)
+  EdgeRuntime.waitUntil(start(t, cleanPayload(b.obj)));
+  return json({ ok: true, id: t.event, received: true });
 }
 
 const secretOf = (req: Request) => (req.headers.get("x-pip-secret") ?? (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "")).trim();
@@ -103,7 +107,7 @@ async function formPost(req: Request, id: string) {
   const { data: t, error } = await db.rpc("edge_take", { p_edge: id, p_address: null, p_kind: "form", p_secret: null, p_key: key, p_data: sub.data });
   if (error) return json({ ok: false, error: "server" }, 500, h);
   if (!t?.ok) { const [s, e] = REFUSED[t?.error] ?? [400, "bad_request"]; return json({ ok: false, error: e }, s, h); }
-  if (!t.duplicate) await start(t, sub.data);
+  if (!t.duplicate) EdgeRuntime.waitUntil(start(t, sub.data));
   return json({ ok: true }, 200, h);
 }
 
