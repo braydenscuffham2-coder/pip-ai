@@ -437,7 +437,10 @@ async function turn(body: J, trace: boolean) {
     tools.push({ name: k, description: b.description, input_schema: { type: "object", properties: Object.fromEntries(Object.entries(b.props).map(([p, d]) => [p, { type: "string", ...(d ? { description: d } : {}) }])), required: b.required } });
   }
   let sheet: J = null;
-  const unavailable: string[] = [];
+  // A step is "not available" to the teammate only when it has no working connection. Found on a real call (Nov 27,
+  // 2026): once Outlook's calendar rows were switched on, every teammate on Google Calendar was told "Not available
+  // right now: Calendar", while holding working calendar tools, and so told callers a person would have to confirm.
+  const unavailable: string[] = [], missing = new Set<string>(), opened = new Set<string>();
   if (job && catalogP) {
     const [{ data: conns }, { data: cat }, { data: catalog }, { data: pauses }] = await catalogP;
     const paused = new Set((pauses ?? []).map((p: J) => p.job));
@@ -458,19 +461,23 @@ async function turn(body: J, trace: boolean) {
       if (!g || notYet(g, row, true)) continue;
       const conn = (conns ?? []).find((x: J) => x.slot === slot.slot);
       if (!conn || conn.status !== "active" || conn.choice !== row.toolkit || !conn.connected_account_id || paused.has(slot.label)) {
-        if (!unavailable.includes(slot.label)) unavailable.push(slot.label);
+        // A row for a product this business did not pick (Outlook's calendar row, for a business on Google Calendar)
+        // says nothing about whether the step works. Only a step with no working connection at all is missing.
+        if (!conn || conn.status !== "active" || !conn.connected_account_id || paused.has(slot.label)) missing.add(slot.label);
         continue;
       }
       const hide: string[] = [...(row.hide ?? []), ...Object.keys(row.fixed ?? {})];
       // On the sheet, the fields are the column names of the row.
       const meta = open(row, g, conn, slot.label, row.guard === "pip_sheet" ? (args: J) => Object.keys(args?.row && typeof args.row === "object" ? args.row : {}) : argFields(hide));
       if (!meta) continue;
+      opened.add(slot.label);
       if (row.guard === "pip_sheet") { row.schema = await toolSchema(row); sheet ??= { ...meta, rows: {} as Record<string, J>, grant: g }; sheet.rows[row.role] = row; continue; }
       const sc = await toolSchema(row);
       if (!sc) continue;
       outside.set(row.slug, meta);
       tools.push({ name: row.slug, description: sc.description + fillOnly(g), input_schema: visible(sc.input, hide) });
     }
+    for (const label of missing) if (!opened.has(label)) unavailable.push(label);
     // A tool the owner connected outside the setup steps gives a teammate nothing by default, and nothing in it is
     // found or opened automatically: in a tool billed per use, "add one record" can send a text or buy a number.
     // It is opened one action at a time, by a reviewed catalog row (block "any_tool") that says which kind of record

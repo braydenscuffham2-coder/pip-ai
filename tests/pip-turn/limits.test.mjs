@@ -857,3 +857,29 @@ test("when the model cannot be reached on a call, the caller hears the truth and
   assert.match(r.json.reply, /I'm having trouble on my end right now\. I've let the team know you called\./);
   assert.equal(t.inserts("notifications").filter((n) => n.kind === "notify_owner").length, 1);
 });
+
+// ---------- a step that works is not called unavailable ----------
+const OUTLOOK_ROW = { slug: "OUTLOOK_GET_CALENDAR_VIEW", block: "calendar", toolkit: "outlook", access: "read", label: "checked the calendar", enabled: true, record: "busy_time", level: "read", shape: "busy_only", hide: [], fixed: {}, schema_at: new Date().toISOString(),
+  schema: { description: "List events.", input: { type: "object", properties: { start_datetime: { type: "string" }, end_datetime: { type: "string" } }, required: ["start_datetime", "end_datetime"] } } };
+
+test("a business on Google Calendar is not told its calendar is unavailable because an Outlook row exists", async () => {
+  const tables = baseTables();
+  tables.tool_catalog.push(OUTLOOK_ROW);
+  const t = await boot({ tables, model: [says("I am an AI assistant. Let me look.")] });
+  await t.turn("do you have Tuesday at 7 open?");
+  const sys = t.world.model.calls[0].system.map((x) => x.text).join("\n");
+  assert.ok(!/Not available right now/.test(sys), sys.slice(-400));
+  assert.ok(offeredTo(t).includes("GOOGLECALENDAR_EVENTS_LIST"));
+  assert.ok(!offeredTo(t).includes("OUTLOOK_GET_CALENDAR_VIEW"), "the other product's tool is still not offered");
+});
+
+test("a calendar with no working connection is still called unavailable", async () => {
+  const tables = baseTables();
+  tables.tool_catalog.push(OUTLOOK_ROW);
+  for (const c of tables.business_connections) if (c.slot === "calendar") c.status = "expired";
+  const t = await boot({ tables, model: [says("I am an AI assistant. I will pass that on.")] });
+  await t.turn("do you have Tuesday at 7 open?");
+  const sys = t.world.model.calls[0].system.map((x) => x.text).join("\n");
+  assert.match(sys, /Not available right now: [^\n]*Calendar/);
+  assert.ok(!offeredTo(t).includes("GOOGLECALENDAR_EVENTS_LIST"));
+});
