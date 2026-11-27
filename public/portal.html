@@ -807,6 +807,40 @@ html.office-live .fl-pipslot{display:none}
 .fl-av{width:20px;height:20px;border-radius:50%;flex:none;display:inline-block;background:radial-gradient(circle at 35% 30%,#fff 0 18%,transparent 19%),radial-gradient(circle at 50% 72%,var(--c),transparent 80%),#fff;box-shadow:0 0 0 1px rgba(11,13,31,.05),0 2px 6px -2px rgba(11,13,31,.25)}
 
 /* Pip's bubble, under Pip in the aisle */
+.floor>.fl-tags{display:none} /* the tags live inside the scenes */
+html.fl-st-on .fl-say{opacity:0;pointer-events:none;visibility:hidden}
+html.fl-st-on .fl-roster{opacity:0;pointer-events:none;transform:translate(-50%,20px)}
+html.fl-st-on .fl-head{opacity:0;pointer-events:none;transform:translateY(-16px)}
+.fl-stpov .fl-who .st-ico{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:color-mix(in srgb,var(--c) 22%,#fff);color:color-mix(in srgb,var(--c) 70%,#26224a)}
+.fl-stpov .fl-who .st-ico svg{width:16px;height:16px}
+.fl-st-open{margin-left:auto;min-height:48px}
+html.fl-desk-open .fl-stpov .fl-pov-top{right:min(630px,calc(100vw - 14px))}
+.sc-card{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:190px;max-width:260px;padding:13px 16px 14px;border:0;border-radius:22px;background:rgba(255,255,255,.88);box-shadow:0 0 0 1px rgba(255,255,255,.95),0 0 0 5px color-mix(in srgb,var(--c) 14%,transparent),0 26px 50px -24px rgba(38,34,90,.5);color:var(--ink);text-align:left;font:400 14px/1.35 var(--f-body);cursor:pointer;transition:transform .35s var(--ease),box-shadow .35s var(--ease);animation:sc-card-in .7s var(--ease) both .25s}
+.sc-card:hover{transform:translateY(-3px);box-shadow:0 0 0 1px #fff,0 0 0 6px color-mix(in srgb,var(--c) 26%,transparent),0 30px 60px -24px rgba(38,34,90,.55)}
+.sc-card .k{font:600 10.5px/1 var(--f-body);letter-spacing:.14em;text-transform:uppercase;color:color-mix(in srgb,var(--c) 75%,#26224a)}
+.sc-card b{font:italic 400 25px/1.08 "Instrument Serif",Georgia,serif;letter-spacing:-.005em;margin-top:4px}
+.sc-card .ln{color:var(--ink-2,#4b5175);font-size:13px}
+.sc-card .cta{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:8px 13px;border-radius:999px;background:#15172a;color:#fff;font-weight:500;font-size:13px}
+.sc-card .cta svg{width:14px;height:14px}
+.sc-label{display:inline-flex;align-items:center;gap:7px;max-width:180px;padding:6px 11px 6px 9px;border:0;border-radius:999px;background:rgba(255,255,255,.9);box-shadow:0 10px 24px -14px rgba(38,34,90,.5),0 0 0 1px rgba(255,255,255,.9);color:var(--ink);font:500 12.5px/1.15 var(--f-body);white-space:nowrap;cursor:pointer;transform:translate(-50%,-50%)!important;animation:sc-card-in .6s var(--ease) both .3s}
+.sc-label span{overflow:hidden;text-overflow:ellipsis}
+.sc-label i{flex:none;width:8px;height:8px;border-radius:50%;background:#2fc4b2;box-shadow:0 0 0 3px rgba(47,196,178,.2)}
+.sc-label.s-you i{background:#f2b02a;box-shadow:0 0 0 3px rgba(242,176,42,.25);animation:sc-dot 1.6s ease-in-out infinite}
+.sc-label.s-pip i{background:#9b86ff;box-shadow:0 0 0 3px rgba(155,134,255,.25)}
+.sc-label.s-stop i{background:#ff6b7d;box-shadow:0 0 0 3px rgba(255,107,125,.25)}
+.sc-hot{width:15vw;max-width:240px;height:4.2vw;max-height:60px;border:0;border-radius:999px;background:transparent;cursor:pointer;transform:translate(-50%,-50%)!important;transition:box-shadow .3s}
+.sc-hot:hover{box-shadow:0 0 0 4px rgba(255,107,125,.35),0 0 40px rgba(255,107,125,.5)}
+.sc-pin.pin-hot{transform:translate(-50%,-50%)!important}
+.sc-pins .tag{max-width:250px;overflow:hidden}
+.sc-pins .tag .doing{overflow:hidden;text-overflow:ellipsis}
+.sc-label.s-none i{background:#c9c6da;box-shadow:none}
+.sc-label:hover{box-shadow:0 14px 28px -14px rgba(38,34,90,.55),0 0 0 3px rgba(155,134,255,.25)}
+.sc-pin.pin-label{transform:translate(-50%,-50%)!important}
+.sc-pin.pin-center{transform:translate(-50%,-50%)!important}
+@keyframes sc-card-in{from{opacity:0;translate:0 10px}}
+@keyframes sc-dot{50%{transform:scale(1.35)}}
+.sc-stack{position:fixed;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom,0px));z-index:11;display:flex;flex-direction:column;gap:10px;max-height:46vh;overflow:auto;pointer-events:auto}
+.sc-stack .sc-card{max-width:none;width:100%;transform:none!important;position:relative!important;left:auto!important;top:auto!important}
 .fl-say{position:fixed;left:0;top:0;z-index:9;width:320px;transition:opacity .45s var(--ease)}
 .fl-say .say .b{min-height:0;box-shadow:0 22px 48px -20px rgba(38,34,90,.38),0 0 0 1px rgba(11,13,31,.04);font-size:15.5px;line-height:1.42}
 .fl-say .say .b::after{left:50%}
@@ -1175,7 +1209,7 @@ function loadPart(name) {
   if (!PARTS[name]) PARTS[name] = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "/" + name + ".js?v=" + PART_V; sc.async = true; sc.onload = res; sc.onerror = () => { delete PARTS[name]; rej(new Error(name)); }; document.head.append(sc); });
   return PARTS[name];
 }
-const PART_V = "3";
+const PART_V = "4";
 function loadThree() {
   if (!threeP) { const l = document.createElement("link"); l.rel = "modulepreload"; l.href = THREE_URL; l.integrity = THREE_SRI; l.crossOrigin = "anonymous"; document.head.append(l); threeP = import(THREE_URL); threeP.catch(() => { threeP = null; }); }
   return threeP;
@@ -2627,7 +2661,7 @@ function fitTargets() {
   // the screen is angled, so measure every button and size for the one furthest away
   let k = Infinity; for (const b of s.querySelectorAll("button")) if (b.offsetHeight) k = Math.min(k, b.getBoundingClientRect().height / b.offsetHeight);
   if (!(k > 0 && k < Infinity)) return;
-  FLOOR.tgt = Math.ceil(54 / Math.min(k, 1.2)) + "px"; s.style.setProperty("--tgt", FLOOR.tgt);
+  FLOOR.tgt = Math.min(72, Math.ceil(54 / Math.min(k, 1.2))) + "px"; // the screen is a flat picture now, big enough to read; past 72px the chips stop fitting s.style.setProperty("--tgt", FLOOR.tgt);
 }
 addEventListener("resize", () => {
   clearTimeout(FLOOR.fitT); FLOOR.fitT = setTimeout(fitTargets, 300);
@@ -2638,13 +2672,19 @@ function openMate(id) { if (!S.data.agents.some((a) => a.spec_id === id)) return
 function closeMate() { const id = S.focus; S.focus = null; S.letGo = null; render({ keepFocus: "fl-m-" + id }); }
 function walk(dir) { const ag = S.data.agents, i = ag.findIndex((a) => a.spec_id === S.focus); if (i < 0 || !ag.length) return; openMate(ag[(i + dir + ag.length) % ag.length].spec_id); }
 function openDesk(tab, slot) { const was = S.desk && !S.station; S.desk = true; S.focus = null; S.station = null; S.menu = null; S.deskFocus = !was && !slot; if (slot) { S.openTouched = true; S.openSlots = new Set([slot]); } setTab(tab || S.tab || "team", slot); }
-function closeDesk() { const st = S.station; S.desk = false; S.station = null; render({ keepFocus: st ? "fl-st-" + st : "fl-office" }); }
+function closeDesk() { if (S.station && S.desk) { S.desk = false; render({ keepFocus: "fl-st-open" }); return; } toFloor(); } // a station's panel closes back onto its scene
+function toFloor() { S.desk = false; S.station = null; S.menu = null; render({ keepFocus: "fl-office" }); }
+function openPanel(slot) { // the station's full cards, beside its scene
+  S.desk = true; if (slot) { S.openTouched = true; S.openSlots = new Set([slot]); }
+  render({ keepFocus: slot ? null : "fl-desk-x", scroll: "top" });
+  if (slot) requestAnimationFrame(() => { const el = document.getElementById("step-" + slot); if (el) { el.open = true; el.scrollIntoView({ behavior: reduced() ? "auto" : "smooth", block: "start" }); } });
+}
 document.addEventListener("keydown", (e) => {
   if (!floorOn() || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
   const ae = document.activeElement, typing = ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);
   if (typing || document.querySelector("dialog[open]")) return;
   if (e.key === "Escape" && S.paper) { e.preventDefault(); closePaper(); return; } // a paper is on its way: Esc sends it back
-  if (e.key === "Escape") { if (S.letGo) { e.preventDefault(); S.letGo = null; render({ keepFocus: "fl-letgo" }); } else if (S.menu) { e.preventDefault(); S.menu = null; render({ keepFocus: "fl-office" }); } else if (S.desk) { e.preventDefault(); closeDesk(); } else if (S.focus) { e.preventDefault(); closeMate(); } }
+  if (e.key === "Escape") { if (S.letGo) { e.preventDefault(); S.letGo = null; render({ keepFocus: "fl-letgo" }); } else if (S.menu) { e.preventDefault(); S.menu = null; render({ keepFocus: "fl-office" }); } else if (S.desk || S.station) { e.preventDefault(); closeDesk(); } else if (S.focus) { e.preventDefault(); closeMate(); } }
   else if (/^[1-9]$/.test(e.key) && !S.desk) { const a = S.data.agents[+e.key - 1]; if (a) { e.preventDefault(); openMate(a.spec_id); } }
   else if (S.focus && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !(ae && ae.closest && ae.closest("[role=tablist]"))) { e.preventDefault(); walk(e.key === "ArrowRight" ? 1 : -1); }
 });
@@ -2677,9 +2717,9 @@ const stationList = () => Object.keys(STATIONS).filter((k) => k !== "founder" ||
 function openStation(id, slot) {
   if (!STATIONS[id] || (id === "founder" && S.data.role !== "founder")) return;
   if (id === "founder" && !S.founder) api("/founder/businesses", {}).then((r) => { S.founder = r; if (S.station === "founder") render(); }).catch(() => null);
-  S.station = id; S.desk = true; S.focus = null; S.menu = null; S.letGo = null; say(null);
+  S.station = id; S.desk = !!slot; S.focus = null; S.menu = null; S.letGo = null; say(null);
   if (slot) { S.openTouched = true; S.openSlots = new Set([slot]); }
-  render({ keepFocus: slot ? null : "fl-desk-x", scroll: "top" });
+  render({ keepFocus: slot ? null : "fl-st-back", scroll: "top" });
   if (slot) requestAnimationFrame(() => { const el = document.getElementById("step-" + slot); if (el) { el.open = true; el.scrollIntoView({ behavior: reduced() ? "auto" : "smooth", block: "start" }); } });
 }
 function founderLoft() { // the founder home's switches, reports and every business, without its own Pip
@@ -2705,6 +2745,59 @@ function stationModel() {
   const tools = d.checklist.filter((x) => !COMMS_KINDS.includes(x.kind)).concat(d.extra_tools || []).map((x) => ({ short: shortTool(x.label || x.name || x.toolkit || "Tool"), kind: toolKind(x), hex: toolHex(x), state: x.slot ? stateOf(x) : x.status === "active" ? "ok" : "you" }));
   const cables = d.agents.filter((a) => !building(a)).map((a) => { const steps = a.needs.map(stepFor).filter(Boolean), st = steps.map(stateOf); return { id: a.spec_id, state: isPaused(a) ? "none" : st.includes("you") ? "you" : st.includes("pip") ? "pip" : "ok", cut: steps.some((x) => ["failed", "expired", "revoked"].includes(x.status)) }; });
   return { meter: { frac, warn: !!late || (u && Number(u.beyond_plan_usd) > 0) }, tools, cables, founder: d.role === "founder" };
+}
+// what a teammate's desk looks like up close: asleep, unplugged, waiting on you, or just working
+function deskVariant(a) {
+  if (isPaused(a) || S.data.business.status === "disconnected") return "paused";
+  const yn = youNeeds(a); if (!yn.length || building(a)) return "normal";
+  const s = stepFor(yn[0]); return s && ["failed", "expired", "revoked"].includes(s.status) ? "cut" : "needs";
+}
+// The cards that sit inside each scene, where the concept pictures put them. Each one opens the station's full panel.
+function sceneCards() {
+  const d = S.data, b = d.business, owner = isOwner(), out = {}, off = b.status === "disconnected";
+  const card = (o) => ({ x: o.x, y: o.y, kind: o.kind || "center", el: h("button", { class: "sc-card" + (o.cls ? " " + o.cls : ""), type: "button", "data-k": o.k, style: { "--c": o.hex || "#6b5cff" }, onclick: o.go },
+    h("span", { class: "k" }, o.kick), h("b", {}, o.title), o.line ? h("span", { class: "ln" }, o.line) : null, o.cta ? h("span", { class: "cta" }, o.cta, icon("arrow", "arr")) : null) });
+  const label = (o) => ({ x: o.x, y: o.y, kind: "label", el: h("button", { class: "sc-label s-" + (o.state || "ok"), type: "button", "data-k": o.k, title: o.title || o.text, onclick: o.go }, h("i", { "aria-hidden": "true" }), h("span", {}, o.text)) });
+  const stateOf = (x) => (!x ? "none" : x.status === "active" ? "ok" : x.waiting_on === "pip" || ["submitted", "unsupported"].includes(x.status) ? "pip" : "you");
+  const word = { ok: "Connected", pip: "Pip is on it", you: "Needs you", none: "" };
+  const where = S.station || (S.focus ? "desk" : "home");
+  if (where === "meter") {
+    if (stageOf(d) === "priced") { const q = b.quote || {};
+      out.contract = [card({ x: 60, y: 52, k: "sc-price", hex: "#5eead9", kick: "Your price", title: q.monthly_usd != null ? money(q.monthly_usd) + " a month" : "Your price is ready", line: q.setup_usd ? "plus " + money(q.setup_usd) + " one-time setup" : "Read it, then accept to unlock setup.", cta: owner ? "Read and accept" : "Read your price", go: () => openPanel() })];
+    } else { const [line, kind] = stationStatus("meter");
+      out.meter = [card({ x: 53.3, y: 25.5, kind: "card", k: "sc-meter", hex: kind === "needs" ? "#e9a534" : "#2fc4b2", kick: "This month", title: line, line: off ? "Everything is disconnected." : b.price_accepted_at ? "The tube fills as your team works." : "Your price comes by email from Brayden.", cta: "Billing and usage", go: () => openPanel() })]; }
+  }
+  if (where === "tools") {
+    const list = d.checklist.filter((x) => !COMMS_KINDS.includes(x.kind)).slice(0, 12), [line] = stationStatus("tools");
+    out.tools = list.map((x, i) => { const st = stateOf(x); return label({ x: [40, 46.4, 52.7, 59][i % 4], y: [29, 39.5, 50][Math.floor(i / 4)] + 4.4, k: "sc-t-" + x.slot, state: st, text: shortTool(x.label || x.name || "Tool"), title: (x.label || "Tool") + " · " + word[st], go: () => openPanel(x.slot) }); });
+    out.tools.push(card({ x: 50, y: 77, k: "sc-tools", hex: "#9b86ff", kick: "Tool wall", title: line, line: list.length ? "Tap a tool to connect it or check it." : "Your teammates use no tools yet.", cta: owner && S.data.connect_on ? "Connect any tool" : "See every tool", go: () => openPanel() }));
+  }
+  if (where === "comms") {
+    const pick = (kinds) => d.checklist.find((x) => kinds.includes(x.kind)), [line] = stationStatus("comms");
+    const spot = (x, y, kinds, name, k) => { const s = pick(kinds), st = stateOf(s); return label({ x, y, k: "sc-c-" + k, state: st, text: s ? shortTool(s.label) : name, title: (s ? s.label : name) + (s ? " · " + word[st] : ""), go: () => openPanel(s && s.slot) }); };
+    out.comms = [spot(19, 55, ["number"], "Phone line", "phone"), spot(51, 50, ["registration"], "Texting", "text"), spot(65, 57, ["snippet", "pip_side"], "Logins", "vault"), spot(88, 63, ["hardware"], "Deliveries", "parcel"),
+      card({ x: 50, y: 82, k: "sc-comms", hex: "#7cc4ff", kick: "Comms corner", title: line, line: "Phone, texting, logins and deliveries.", cta: "Open the corner", go: () => openPanel() })];
+  }
+  if (where === "front") {
+    const n = (d.people || []).length, a = b.alert_prefs || {};
+    out.front = [card({ x: 25, y: 66, k: "sc-people", hex: "#ff9ac0", kick: "People", title: n ? n + (n === 1 ? " person" : " people") : "Just you", line: "Who can sign in and help.", cta: "Manage people", go: () => openPanel() }),
+      owner ? card({ x: 75, y: 70, k: "sc-alerts", hex: "#e9a534", kick: "Alerts", title: a.mobile ? "Texts and email" : "Email alerts", line: "When a teammate has to pause.", cta: "Alert settings", go: () => openPanel() }) : null,
+      label({ x: 69, y: 34, k: "sc-where", text: [b.city, b.state].filter(Boolean).join(", ") || b.state || "Location", go: () => openPanel() }),
+      label({ x: 90, y: 46, k: "sc-rules", text: "Rules", go: () => openPanel() })].filter(Boolean);
+  }
+  if (where === "exit") {
+    out.exit = [label({ x: 23, y: 37.6, k: "sc-breaker", state: off ? "none" : "stop", text: off ? "Everything is off" : "Disconnect everything", title: owner ? "Revokes every sign-in and stops every teammate" : "Only an owner can do this", go: () => openPanel() }),
+      { x: 23, y: 45, kind: "hot", el: h("button", { class: "sc-hot", type: "button", "data-k": "sc-red", "aria-label": "The breaker: disconnect everything", onclick: () => openPanel() }) },
+      d.role === "founder" ? card({ x: 72, y: 30, k: "sc-founder", hex: "#ffc861", kick: "Founder", title: "Your office", line: "Every business, switches and reports.", cta: "Go up", go: () => openStation("founder") }) : null,
+      label({ x: 50, y: 86, k: "sc-signout", text: "Sign out", go: signOut })].filter(Boolean);
+  }
+  if (where === "founder") out.founder = [card({ x: 72, y: 36, k: "sc-loft", hex: "#ffc861", kick: "Founder", title: "Every business", line: "Switches, reports and every floor.", cta: "Open your office", go: () => openPanel() })];
+  if (where === "desk") {
+    const a = d.agents.find((x) => x.spec_id === S.focus);
+    if (a && deskVariant(a) === "cut") { const yn = youNeeds(a), s = stepFor(yn[0]);
+      out.deskCut = [label({ x: 36, y: 80, k: "sc-plug", state: "you", text: yn[0] + " disconnected · Plug back in", go: () => openStation(COMMS_KINDS.includes(s && s.kind) ? "comms" : "tools", s && s.slot) })]; }
+  }
+  return out;
 }
 const shortTool = (l) => { const w = String(l).replace(/^(A|An|Your)\s+/i, "").replace(/ from your address/i, "").split(/\s+/), two = w.slice(0, 2).join(" "), t = two.length <= 10 ? two : w[0]; const c = t.charAt(0).toUpperCase() + t.slice(1); return c.length > 12 ? c.slice(0, 11) + "…" : c; }; // fits on a tool block
 const toolKind = (x) => { const t = [x.slot, x.label, x.name, x.toolkit, x.kind].join(" ").toLowerCase();
@@ -2746,7 +2839,7 @@ function officeMenu() { // every place on the floor, and everything at once
 function renderFloor(opts = {}) {
   const d = S.data, b = d.business, st = stageOf(d), multi = S.me.founder || (S.me.businesses || []).length > 1, ag = d.agents;
   const html = document.documentElement;
-  html.classList.add("floor-on"); html.classList.toggle("fl-desk-open", !!S.desk); html.classList.toggle("fl-pov-on", !!S.focus);
+  html.classList.add("floor-on"); html.classList.toggle("fl-desk-open", !!S.desk); html.classList.toggle("fl-pov-on", !!S.focus); html.classList.toggle("fl-st-on", !!S.station);
   setDock(null); ensureLog();
   if (!FLOOR.office) startOffice(); else { FLOOR.office.setActive(true); Pip.office(FLOOR.office.pip); }
   if (!FLOOR.office) Pip.office(true);
@@ -2785,7 +2878,7 @@ function renderFloor(opts = {}) {
     cta ? h("button", { class: "btn pri", type: "button", "data-k": "fl-cta", onclick: cta.go }, cta.label, icon("arrow", "arr")) : null);
 
   const roster = h("nav", { class: "fl-roster glass", "aria-label": "Your team" },
-    h("div", { class: "fl-office-wrap" }, h("button", { class: "fl-mydesk", type: "button", "data-k": "fl-office", "aria-haspopup": "menu", "aria-expanded": S.menu === "office" ? "true" : "false", onclick: () => { if (S.desk) { closeDesk(); return; } S.menu = S.menu === "office" ? null : "office"; render({ keepFocus: "fl-office" }); } }, h("span", { class: "ico", "aria-hidden": "true" }, icon("grid")), h("span", { class: "tx" }, h("b", {}, "The office"), h("small", {}, S.desk ? "Back to the floor" : "Front desk, tools, billing and more"))), S.menu === "office" ? officeMenu() : null),
+    h("div", { class: "fl-office-wrap" }, h("button", { class: "fl-mydesk", type: "button", "data-k": "fl-office", "aria-haspopup": "menu", "aria-expanded": S.menu === "office" ? "true" : "false", onclick: () => { if (S.desk || S.station) { toFloor(); return; } S.menu = S.menu === "office" ? null : "office"; render({ keepFocus: "fl-office" }); } }, h("span", { class: "ico", "aria-hidden": "true" }, icon("grid")), h("span", { class: "tx" }, h("b", {}, "The office"), h("small", {}, S.desk || S.station ? "Back to the floor" : "Front desk, tools, billing and more"))), S.menu === "office" ? officeMenu() : null),
     ag.length ? h("ul", {}, ag.map((a, i) => { const L = looks.get(a.spec_id); return h("li", {}, h("button", { class: "fl-mate k-" + L.kind, type: "button", "data-k": "fl-m-" + a.spec_id, "aria-current": S.focus === a.spec_id ? "true" : null, onclick: () => openMate(a.spec_id), onpointerenter: () => FLOOR.office && FLOOR.office.hover(a.spec_id), onfocus: () => FLOOR.office && FLOOR.office.hover(a.spec_id) },
       avatar(a), h("span", { class: "tx" }, h("b", {}, mateName(a)), h("small", {}, L.text)), i < 9 ? h("kbd", { "aria-hidden": "true" }, String(i + 1)) : null)); }))
       : h("p", { class: "fl-empty" }, "Your teammates will show here."));
@@ -2811,6 +2904,16 @@ function renderFloor(opts = {}) {
       S.letGo === a.spec_id ? letGoCard(a) : null);
   }
 
+  let stBar = null;
+  if (S.station) {
+    const st = STATIONS[S.station], [line, kind] = stationStatus(S.station);
+    stBar = h("section", { class: "fl-pov fl-stpov", "aria-label": st.name },
+      h("div", { class: "fl-pov-top" },
+        h("button", { class: "btn ghost glass", type: "button", "data-k": "fl-st-back", onclick: toFloor }, icon("back"), "The floor"),
+        h("p", { class: "fl-who glass", style: { "--c": st.hex } }, h("span", { class: "st-ico", "aria-hidden": "true" }, icon(st.ico)), h("b", {}, st.name), h("span", { class: "st k-" + kind }, h("i", { "aria-hidden": "true" }), line)),
+        S.desk ? null : h("button", { class: "btn pri fl-st-open", type: "button", "data-k": "fl-st-open", onclick: () => openPanel() }, "Everything here", icon("arrow", "arr"))));
+  }
+
   let desk = null;
   if (S.desk && S.station) {
     const st = STATIONS[S.station];
@@ -2830,7 +2933,7 @@ function renderFloor(opts = {}) {
   const fk = opts.keepFocus || (document.activeElement && document.activeElement.dataset && document.activeElement.dataset.k);
   paint("floor:" + S.bid, [h("div", { class: "floor" + (FLOOR.office ? " live" : "") },
     h("div", { class: "fl-load", "aria-hidden": "true" }, h("div", { class: "pipslot fl-pipslot" })),
-    head, h("div", { class: "fl-tags", "aria-hidden": "true" }, [...tags.values()], [...stTags.values()]), say, roster, pov, desk)], plan, Object.assign({}, opts, { scroll: "top" }));
+    head, h("div", { class: "fl-tags", "aria-hidden": "true" }, [...tags.values()], [...stTags.values()]), say, roster, pov, stBar, desk)], plan, Object.assign({}, opts, { scroll: "top" }));
 
   // tell the 3D floor what to show
   FLOOR.wasNarrow = narrow();
@@ -2838,16 +2941,18 @@ function renderFloor(opts = {}) {
   if (o) {
     const pipPoint = st === "paused" ? (ag.find(isPaused) || {}).spec_id : (ag.find((a) => youNeeds(a).length && !isPaused(a)) || {}).spec_id;
     o.sync({ dim: b.status === "disconnected", agents: ag.map((a, i) => { const L = looks.get(a.spec_id), p = propOf((a.role || "") + " " + a.name);
-      return { id: a.spec_id, look: L.look, light: L.light, hex: hexOf(a), prop: p === "headset" || p === "glasses" ? "letters" : p || "letters", phone: p === "headset", sticky: L.kind === "needs" ? "Needs you: " + lowerFirst(youNeeds(a)[0]) : null, ph: i * 1.3 + 0.3 }; }),
-      tags: [...tags.entries()], bubble: narrow() ? null : say, pipPoint: pipPoint || null, stations: Object.assign(stationModel(), { tags: [...stTags.entries()] }) });
+      return { id: a.spec_id, look: L.look, light: L.light, kind: L.kind, variant: deskVariant(a), hex: hexOf(a), prop: p === "headset" || p === "glasses" ? "letters" : p || "letters", phone: p === "headset", sticky: L.kind === "needs" ? "Needs you: " + lowerFirst(youNeeds(a)[0]) : null, ph: i * 1.3 + 0.3 }; }),
+      tags: [...tags.entries()], bubble: narrow() ? null : say, pipPoint: pipPoint || null, stations: Object.assign(stationModel(), { tags: [...stTags.entries()], priced: stageOf(d) === "priced" }), cards: sceneCards() });
+    if (o.panel) o.panel(!!(S.desk && S.station) && !narrow());
     if (FLOOR.reenter) { FLOOR.reenter = false; o.enter(false); }
     if (S.focus) {
       const go = FLOOR.focusShown !== S.focus || o.mode !== "desk";
       FLOOR.focusShown = S.focus;
       if (FLOOR.tgt) screenEl.style.setProperty("--tgt", FLOOR.tgt);
       if (!narrow()) o.mountScreen(S.focus, screenEl); else o.mountScreen(S.focus, decorEl);
-      if (go) o.desk(S.focus).then(() => fitTargets());
-      else screenEl.classList.add("on", "settled"); // a refresh while you read: no second entrance
+      if (S.letGo === S.focus) o.letGoPreview(S.focus, true); // the goodbye scene behind the card; "Let go" itself does nothing yet
+      else if (go) o.desk(S.focus).then(() => fitTargets());
+      else { o.letGoPreview(S.focus, false); screenEl.classList.add("on", "settled"); } // a refresh while you read: no second entrance
       // the monitor's HTML lives in the panel's tab order on a computer, and back with the room on a phone
       const host = document.getElementById("fl-scr-host"), home = document.getElementById("office"), layer = o.layer;
       if (!narrow() && host && layer.parentElement !== host) host.append(layer);

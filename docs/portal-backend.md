@@ -111,6 +111,19 @@ A connected step can be signed in again from the Portal ("Sign in again or switc
 ## The page is three files (November 26)
 
 `public/portal.html` (sign-in, the app, every card) loads two parts after first paint, from the same site:
-`public/portal-pip.js` (Pip in 3D) and `public/portal-office.js` (the 3D office and its stations). Pictures live in
-`public/portal-art/`. The CSP allows `'self'` scripts for these two files only; nothing else changed in it.
+`public/portal-pip.js` (Pip in 3D) and `public/portal-office.js` (the office). Pictures live in `public/portal-art/`. The CSP allows `'self'` scripts for these two files only; nothing else changed in it.
 Bump `PART_V` in portal.html when either part changes in a way the page depends on.
+
+## The office is pictures, not 3D (November 26)
+
+`portal-office.js` no longer renders a 3D room. Each place (the floor, every station, a teammate's desk in four moods,
+the goodbye) is one cleaned Higgsfield picture in `public/portal-art/sc/` (2400px, plus a `-s` 1280px copy for smaller
+screens). Teammates are cut-outs in their own colour (`agent-{work,sleep,wave}-{colour}.webp`), seated over an empty
+floor with a clipped copy of the floor drawn in front of them; a desk close-up uses a copy of the scene recoloured to
+that teammate. Moving around is a zoom and cross-fade the browser's compositor runs on its own, so it stays at full
+frame rate. Pip is the only live 3D, from his original engine on one small canvas.
+
+Everything you click is HTML from portal.html: tags, Pip's bubble, and `sceneCards()` (the cards and labels inside each
+station, positioned in percent of its picture). A station opens on its scene; "Everything here" or any card opens the
+station's full panel. Positions are at the top of portal-office.js (`SCENES`, `SEATS`). "Let go" shows the goodbye scene
+behind its card; the button itself still does nothing (`letGoNow`).
