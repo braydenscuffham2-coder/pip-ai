@@ -56,7 +56,14 @@ export const SIGN_STATE_JS = String.raw`(() => {
   const pass = inputs.some((el) => el.type === "password");
   const CODE = /(otp|one[-_ ]?time|2fa|mfa|totp|verification|security[-_ ]?code|auth(enticator)?[-_ ]?code|passcode)/i;
   const code = inputs.some((el) => el.type !== "password" && (/one-time-code/i.test(el.autocomplete || "") || CODE.test((el.name || "") + " " + (el.id || "") + " " + (el.getAttribute("aria-label") || "") + " " + (el.placeholder || ""))));
-  const user = !pass && !code && inputs.some((el) => el.type === "email" || /^(username|email)$/i.test(el.autocomplete || "") || /(user|email|login)/i.test((el.name || "") + " " + (el.id || "")));
+  // A username-first sign-in screen. Deliberately narrow, because an ordinary record form can also hold an email field
+  // and Pip must never mistake one for a sign-in: few fields, a field marked as the username, and either the page's
+  // address or its main button says this is a sign-in.
+  const texty = inputs.filter((el) => !/^(hidden|submit|button|checkbox|radio|search)$/i.test(el.type));
+  const named = texty.some((el) => /^(username|email)$/i.test(el.autocomplete || "") || el.type === "email" || /(user|email|login)/i.test((el.name || "") + " " + (el.id || "")));
+  const signInAddress = /(log[-_]?in|sign[-_]?in|signin|auth|sso|session|account\/start)/i.test(location.pathname + location.hostname.split(".")[0]);
+  const signInButton = [...document.querySelectorAll("button, input[type=submit]")].some((b) => vis(b) && /^(sign ?in|log ?in|next|continue)$/i.test((b.innerText || b.value || "").trim()));
+  const user = !pass && !code && texty.length <= 2 && named && (signInAddress || signInButton);
   const captcha = [...document.querySelectorAll("iframe")].some((f) => /(recaptcha|hcaptcha|challenges\.cloudflare\.com|turnstile|arkoselabs|funcaptcha|captcha)/i.test(f.src || ""));
   return { url: location.href, host: location.hostname, pass, user, code, captcha };
 })()`;
