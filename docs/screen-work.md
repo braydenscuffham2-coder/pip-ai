@@ -69,6 +69,15 @@ On Pip's practice tool (`/practice/...`, made-up records, marked TEST), with a r
 
 The practice tool keeps its own record of every change. It shows one add and one update, and no delete.
 
+Learned steps, same day, same tool:
+
+| Run | What happened | Cost |
+|---|---|---|
+| First read of a patient (Juniper) | The model found the way; the step was kept as `Open {{pet}}` | $0.008 |
+| Second read (Pickle) | Replayed with no model step; one look at the result; right facts for Pickle | $0.004 |
+| Weekly check, forced early | Walked the steps, typed and saved nothing, reported they still match | $0 |
+| Third read (Biscuit), with the learned step deliberately broken | Missed, started over with the model, finished, and replaced the skill (version 2, one repair) | $0.007 |
+
 ## Not proven, said plainly
 
 - **No real third-party tool yet.** The practice tool is Pip's own. Real software has bot checks, slower pages and
@@ -76,5 +85,5 @@ The practice tool keeps its own record of every change. It shows one add and one
 - **Add and update are not told apart in code.** Both are "a save". The level is declared and shown to the owner.
 - **Screens drawn on a canvas, or inside another site's frame, are not handled.**
 - **Typing replaces a one-line field's content.** A long text box is typed into where the cursor is.
-- **Replay and the weekly check are covered by tests, and were not yet run live** when this was written.
+- **A repair that fails, and so pauses the job for the owner, is covered by tests and was not run live.**
 - Only TEST businesses can have background jobs until `background_work_on` is switched on.
