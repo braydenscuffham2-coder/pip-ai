@@ -35,6 +35,7 @@ import { EMAIL_OPT_OUT_LINE, isStopRequest } from "../_shared/optout.ts";
 import { sendOut } from "../_shared/edges.ts";
 import { addsToCalendar, busyTimes, inviteKeys, withoutInvites } from "../_shared/calendar.ts";
 import { firstText, gate as outboundGate, phone, refusal as sendRefusal } from "../_shared/outbound.ts";
+import { canText } from "../_shared/line.ts";
 import { isOperatorRun, operatorSend } from "../_shared/operate-run.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!, SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -266,7 +267,7 @@ async function sendFirstText(business: string, spec: string, args: J, teammate: 
   if (!g.allowed) return { ok: false, text: sendRefusal(g.reason, "sms") };
   const { data: line } = await db.from("phone_lines").select("pip_number,status").eq("business_id", business).maybeSingle();
   const sid = (Deno.env.get("TWILIO_ACCOUNT_SID") ?? "").trim(), token = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
-  if (!line?.pip_number || line.status !== "active" || !sid || !token) return { ok: false, text: "This business does not have a working texting number yet. Nothing was sent. Tell the owner instead." };
+  if (!canText(line) || !sid || !token) return { ok: false, text: "This business does not have a working texting number yet. Nothing was sent. Tell the owner instead." };
   try {
     const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, { method: "POST", headers: { authorization: `Basic ${btoa(`${sid}:${token}`)}`, "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ From: line.pip_number, To: to, Body: body }).toString(), signal: AbortSignal.timeout(15000) });
     await r.body?.cancel();

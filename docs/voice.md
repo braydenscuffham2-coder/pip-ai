@@ -47,6 +47,33 @@ How a call to a business's Pip number works, what is enforced where, and how to 
 3. On the Twilio number: "A call comes in" = `.../pip-voice/twilio/voice` (POST), "Primary handler fails" = the TwiML Bin, "Call status changes" = `.../pip-voice/twilio/status` (POST).
 4. A `phone_lines` row for the business with `pip_number`, and for a TEST business `spec_id`.
 
+Steps 3 and 4 are now done by `pip-line` (below); the console is only needed for the backup message.
+
+## Getting a number (pip-line, Nov 27, 2026)
+
+`POST pip-line/buy {business, area_codes?, spec?, dry?}` buys one United States local number on Pip's Twilio account, sets the three addresses from step 3 on it, and writes it on the business's line. It is internal: the service key, or a founder's test ticket for a business on the TEST list.
+
+What stops it spending twice, and where each rule lives:
+
+| Rule | Where |
+| --- | --- |
+| Nothing is bought unless `forge_settings.line_buy.on` is exactly `true` | `line_claim` (database), and checked first in `pip-line` |
+| Never above `line_buy.max_monthly_usd` (1.20). Twilio's own price is read first; a price that cannot be read is a no | `localPrice`, `priceOk` in `_shared/line.ts` |
+| Never more numbers in use than `line_buy.max_lines` (1). Buys in flight count | `line_claim` |
+| One number per business; one buy at a time for everyone | `line_claim` |
+| Twilio is asked for one exact number, never "any number in this area code" | `buyForm` |
+| A number already bought for the business (label `pip:<business id>` at Twilio) is used again | `owned`, step 2 of `pip-line` |
+| A buy whose answer never arrived is not retried for three minutes, and the next try looks at Twilio first | `line_claim`, `pip-line` |
+| Two businesses can never hold the same number | unique index `phone_lines_pip_number_in_use` |
+
+A number bought by hand in Twilio's console is put to use with `number` in the same call: nothing is bought, the number must already be on Pip's account, and a number labelled for another business is refused. The first number, +1 208 248 7311 (Boise), was bought this way by Brayden on November 27, 2026.
+
+To allow another number, raise `max_lines` by hand. A number stays on Twilio's bill every month until it is released in Twilio's console; nothing in Pip releases a number.
+
+Tests: `deno run -A supabase/functions/pip-line/test/run.ts` (the real function against stand-ins, no real purchase), `supabase/functions/_shared/line.test.ts`, `tests/db/line-buy.test.mjs` (the real migration on an in-memory Postgres).
+
+Not covered: a new number cannot send texts until it is registered with the carriers (10DLC). No backup message is set on the number unless `forge_settings.voice.fallback_url` holds one, so if `pip-voice` is down a caller hears Twilio's own error message.
+
 ## Tests
 
 - `deno run -A supabase/functions/pip-voice/test/run.ts` (set `DENO_NO_PACKAGE_JSON=1`). Runs the real function against stand-ins for the database, `pip-turn`, ElevenLabs and Twilio: 83 checks.
