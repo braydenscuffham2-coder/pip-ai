@@ -1076,6 +1076,44 @@ html:not(.office-live) .fl-say{left:12px;transform:none!important}
 .cd-part ul{margin:0;padding-left:18px;font-size:14px;line-height:1.5}
 .cd-part.yes h5{color:#0a7a4b;opacity:1}.cd-part.no h5{color:#a33;opacity:1}.cd-part.wait h5{color:#8a6100;opacity:1}
 .cd-foot{margin-top:12px}
+
+.fl-head:has(.fl-menu),.fl-roster:has(.fl-menu){z-index:130}
+/* the rest of the office: station tags, the office and floors menus, the let-go card */
+.fl-tags .tag.st{padding:8px 12px 9px}
+.tag.st .st-ico{width:22px;height:22px;border-radius:8px;display:grid;place-items:center;background:linear-gradient(160deg,#fff,#efeafe);box-shadow:inset 0 0 0 1px rgba(var(--violet-rgb),.18);color:#6f64c9;flex:none}
+.tag.st .st-ico svg.i{width:14px;height:14px}
+.fl-floors-wrap,.fl-office-wrap{position:relative;display:flex}
+.fl-floors-btn svg.i:last-child{width:14px;height:14px;opacity:.6}
+.fl-menu{position:absolute;z-index:30;min-width:260px;max-width:min(360px,calc(100vw - 28px));padding:6px;border-radius:20px;display:flex;flex-direction:column;gap:2px;background:rgba(251,250,247,.96);box-shadow:0 0 0 1px rgba(11,13,31,.06),0 24px 60px -20px rgba(36,30,90,.35);animation:fl-menu-in .28s var(--ease) both}
+.fl-menu>button{appearance:none;border:0;background:transparent;display:flex;align-items:center;gap:12px;min-height:50px;padding:6px 12px;border-radius:14px;text-align:left;font:inherit;color:var(--ink);cursor:pointer}
+.fl-menu>button:hover,.fl-menu>button:focus-visible{background:#fff;box-shadow:inset 0 0 0 1px var(--line)}
+.fl-menu>button .tx{display:flex;flex-direction:column;gap:2px;min-width:0}
+.fl-menu>button small{font-size:12.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fl-menu>button small.k-needs{color:#8a6418}
+.fl-menu>button .ico{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(160deg,#fff,#efeafe);color:#6f64c9;flex:none}
+.fl-menu>button.all{min-height:44px;margin-top:4px;border-top:1px solid var(--line-2);border-radius:0 0 14px 14px;color:var(--ink-2);font-size:14px}
+.fl-menu>button.on b{color:#5848c8}
+.fl-floors{top:calc(100% + 8px);right:0}
+.fl-fl-dot{width:10px;height:10px;border-radius:50%;background:#d8d2f2;flex:none}
+.fl-menu>button.on .fl-fl-dot{background:var(--aqua,#5eead9);box-shadow:0 0 0 4px rgba(94,234,217,.22)}
+.fl-office-menu{bottom:calc(100% + 10px);left:0}
+@keyframes fl-menu-in{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
+.fl-everything{align-self:center;margin-top:4px}
+.fl-letgo-btn{color:var(--ink-3)} .fl-letgo-btn .lg-short{display:none}
+@media (max-width:719px),(max-height:559px){.fl-letgo-btn .lg-short{display:inline}}
+.fl-letgo-wrap{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:20px;background:rgba(36,32,70,.16);pointer-events:auto;animation:fade .3s var(--ease) both}
+.fl-letgo{width:min(420px,100%);padding:30px 28px 24px;border-radius:28px;text-align:center;background:rgba(251,250,247,.97);box-shadow:0 0 0 1px rgba(11,13,31,.06),0 40px 80px -30px rgba(36,30,90,.45);animation:fl-menu-in .4s var(--ease) both}
+.fl-letgo h2{margin-top:14px}
+.fl-letgo p{margin-top:8px}
+.fl-letgo .btns{justify-content:center;margin-top:20px}
+.fl-letgo-av{display:inline-block;width:56px;height:56px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff 0 18%,transparent 19%),radial-gradient(circle at 50% 72%,var(--c),transparent 80%),#fff;box-shadow:0 0 0 1px rgba(11,13,31,.05),0 10px 24px -10px rgba(11,13,31,.35)}
+@media (max-width:719px),(max-height:559px){
+  .fl-desk.fl-station{top:44vh;border-radius:26px 26px 0 0}
+  .fl-office-menu{left:0;right:auto;max-height:60vh;overflow:auto}
+  .fl-floors-btn span{display:none}
+  .fl-letgo-btn .lg-long{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+  .fl-letgo-btn{padding:0 12px;flex:none}
+}
 </style>
 </head>
 <body>
@@ -2202,6 +2240,243 @@ function createOffice(THREE, X, opts) {
     return Y;
   }
 
+  // ---------------- the rest of the office: one floor, front to back ----------------
+  // Front: the elevator you arrive by, the front desk (people, alerts, rules, consent) and the usage meter (price, card,
+  // this month's use). Back, where the aisle of desks ends: the tool wall every desk's cable runs to, the comms corner
+  // (phone line, texting, saved logins, deliveries) and the exit (disconnect, close the office). Founders also see a
+  // glass office above the back of the room. Everything is the same pearl as the desks, so it reads as one room.
+  const ST = new Map(); // id -> { grp, hit, anchor (local), shot(), extra }
+  const FX = () => (PHONE() ? 2.0 : 2.34), FZ = 6.35;
+  const zBack = () => { const n = Math.max(1, order.length || 1); return slotOf(n - 1).z - 3.1; };
+  const glassMat = new THREE.MeshPhysicalMaterial({ color: "#f6f4ff", roughness: 0.08, metalness: 0, transmission: 0.0, transparent: true, opacity: 0.32, clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 1.2, depthWrite: false });
+  glassMat.envMap = env;
+  const glowMat = (hex, k = 4) => new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(k) });
+  const RB = (w, h, d, r) => new X.RoundedBoxGeometry(w, h, d, 3, r);
+  const column = (r, h) => lathe([[0, 0.002], [r + 0.04, 0.002], [r + 0.05, 0.03], [r, 0.07], [r * 0.94, h - 0.08], [r + 0.03, h - 0.03], [r + 0.02, h], [0, h]], 40);
+  function stationHit(id, w, h, d, at) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), M.hit); m.position.copy(at); m.userData.station = id; return m; }
+  function station(id, grp, hit, anchor, cam) { scene.add(grp); grp.add(hit); const s = { id, grp, hit, anchor, cam, on: true }; ST.set(id, s); return s; }
+
+  // the elevator: a pearl cab whose doors part to let you onto the floor
+  const lift = (() => {
+    const g = new THREE.Group(); g.position.set(0, 0, 12.7);
+    for (const s of [-1, 1]) {
+      const p = new THREE.Mesh(column(0.16, 2.7), M.leg); p.position.set(s * 1.16, 0, 0); g.add(p);
+      const wall = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.7), M.shell); wall.rotation.y = -s * Math.PI / 2; wall.position.set(s * 1.12, 1.35, 1.25); g.add(wall);
+    }
+    const head = new THREE.Mesh(slab(2.6, 0.34, 0.24, 0.12, 0.05, 6), M.shell); head.position.set(0, 2.78, 0); g.add(head);
+    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 2.5), M.shell); ceil.rotation.x = Math.PI / 2; ceil.position.set(0, 2.68, 1.25); g.add(ceil);
+    const lamp = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.03, 10, 64), glowMat("#ffffff", 2.6)); lamp.rotation.x = Math.PI / 2; lamp.position.set(0, 2.64, 1.2); g.add(lamp);
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 2.7), M.shell); back.position.set(0, 1.35, 2.5); back.rotation.y = Math.PI; g.add(back);
+    const doors = [-1, 1].map((s) => { const d = new THREE.Mesh(slab(1.08, 0.06, 2.5, 0.04, 0.02, 4), M.shell); d.position.set(s * 0.55, 1.27, 0.06); g.add(d);
+      const seam = new THREE.Mesh(new THREE.CapsuleGeometry(0.007, 2.3, 4, 8), glowMat(C.aqua, 3)); seam.position.set(-s * 0.53, 0, 0.04); d.add(seam); return d; });
+    const sh = blob(3.2, 2.0, shadowTex, 0.35); sh.position.set(0, 0.004, 0.2); g.add(sh); onlyMain(sh, lamp);
+    scene.add(g); return { g, doors };
+  })();
+
+  // the front desk: a curved counter with a badge tray, a service bell and a slim filing cabinet
+  {
+    const g = new THREE.Group(); g.position.set(-FX(), 0, FZ); g.rotation.y = 0.78; g.userData.side = -1;
+    const arc = 2.3, a0 = -arc / 2; // the counter's curve faces you; whoever works it stands inside
+    const prof = (pts) => pts.map(([x, y]) => new THREE.Vector2(x, y));
+    const body = new THREE.Mesh(new THREE.LatheGeometry(prof([[0.6, 0], [0.84, 0], [0.86, 0.06], [0.83, 0.9], [0.84, 0.95], [0.6, 0.95], [0.58, 0.06], [0.6, 0]]), 64, a0, arc), M.desk); g.add(body);
+    const top = new THREE.Mesh(new THREE.LatheGeometry([[0.54, 0.95], [0.92, 0.95], [0.94, 0.975], [0.92, 1.0], [0.54, 1.0], [0.52, 0.975], [0.54, 0.95]].map(([x, y]) => new THREE.Vector2(x, y)), 64, a0 - 0.06, arc + 0.12), M.shell); g.add(top);
+    const strip = new THREE.Mesh(new THREE.TorusGeometry(0.86, 0.009, 8, 96, arc), glowMat(C.lilac, 3.5)); strip.rotation.x = Math.PI / 2; strip.rotation.z = -(a0 + arc) + Math.PI / 2; strip.position.y = 0.91; g.add(strip);
+    for (const e of [a0, a0 + arc]) { const cap = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.72, 6, 18), M.desk); cap.position.set(Math.sin(e) * 0.72, 0.47, Math.cos(e) * 0.72); g.add(cap); }
+    const bell = new THREE.Group(); bell.position.set(0.34, 1.0, 0.72);
+    bell.add(new THREE.Mesh(lathe([[0, 0], [0.085, 0], [0.09, 0.012], [0, 0.016]], 36), M.silver));
+    const dome = new THREE.Mesh(lathe([[0, 0.016], [0.075, 0.016], [0.07, 0.04], [0.05, 0.07], [0.02, 0.086], [0, 0.088]], 36), M.silver); bell.add(dome);
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.014, 16, 12), M.silver); knob.position.y = 0.1; bell.add(knob); g.add(bell);
+    const tray = new THREE.Group(); tray.position.set(-0.3, 1.0, 0.7); tray.rotation.y = -0.4;
+    tray.add(new THREE.Mesh(slab(0.34, 0.16, 0.02, 0.04, 0.008, 3), M.shell));
+    ["#ff9ac0", "#5eead9", "#ffc861"].forEach((hex, i) => { const bd = new THREE.Mesh(slab(0.085, 0.012, 0.11, 0.018, 0.005, 3), pearlStuff({ color: pastel(hex, 0.35).getStyle(), flank: hex, fk: 0.4, rough: 0.3 })); bd.rotation.x = -0.35; bd.position.set(-0.1 + i * 0.1, 0.07, 0); tray.add(bd); });
+    g.add(tray);
+    const cab = new THREE.Group(); cab.position.set(-0.35, 0, -0.55); cab.rotation.y = 0.2;
+    cab.add(new THREE.Mesh(RB(0.42, 1.05, 0.46, 0.05), M.shell)); cab.children[0].position.y = 0.525;
+    for (let i = 0; i < 3; i++) { const f = new THREE.Mesh(slab(0.36, 0.01, 0.3, 0.03, 0.004, 2), M.leg); f.position.set(0, 0.2 + i * 0.33, 0.235); cab.add(f);
+      const hd = new THREE.Mesh(new THREE.CapsuleGeometry(0.009, 0.08, 4, 8), M.silver); hd.rotation.z = Math.PI / 2; hd.position.set(0, 0.28 + i * 0.33, 0.245); cab.add(hd); }
+    g.add(cab);
+    const sh = blob(2.6, 2.2, deskShadowTex, 0.9); sh.position.y = 0.004; g.add(sh);
+    onlyMain(sh, bell, tray, strip);
+    station("front", g, stationHit("front", 2.0, 1.3, 1.6, V(0, 0.65, 0.3)), V(0, 1.6, 0.3), { pos: V(0.1, 2.15, 3.4), look: V(0, 0.85, 0.3) });
+  }
+
+  // the usage meter: a pearl column with a glass tube that fills with this month's use
+  const meter = (() => {
+    const g = new THREE.Group(); g.position.set(FX(), 0, FZ); g.rotation.y = -0.78; g.userData.side = 1;
+    g.add(new THREE.Mesh(column(0.24, 2.05), M.leg));
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.022, 10, 64), glowMat("#ffffff", 2.4)); halo.rotation.x = Math.PI / 2; halo.position.y = 2.14; g.add(halo);
+    const tubeG = new THREE.CylinderGeometry(0.085, 0.085, 1.2, 40, 1, true), tube = new THREE.Mesh(tubeG, glassMat); tube.position.set(0, 1.12, 0.27); tube.renderOrder = 3; g.add(tube);
+    for (const y of [0.52, 1.72]) { const c = new THREE.Mesh(new THREE.TorusGeometry(0.088, 0.016, 10, 40), M.silver); c.rotation.x = Math.PI / 2; c.position.set(0, y, 0.27); g.add(c); }
+    const liqMat = new THREE.MeshPhysicalMaterial({ color: "#bff5ee", roughness: 0.15, clearcoat: 1, emissive: new THREE.Color(C.aqua), emissiveIntensity: 0.55, transparent: true, opacity: 0.9 }); liqMat.envMap = env;
+    const liq = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1, 32), liqMat); liq.position.set(0, 0.53, 0.27); g.add(liq);
+    const bubbles = []; for (let i = 0; i < 7; i++) { const b = new THREE.Mesh(new THREE.SphereGeometry(0.008 + (i % 3) * 0.004, 10, 8), glowMat("#ffffff", 1.6)); g.add(b); bubbles.push(b); }
+    for (const k of [0.25, 0.5, 0.75]) { const tk = new THREE.Mesh(new THREE.CapsuleGeometry(0.004, 0.05, 2, 6), glowMat(C.lilac, 1.6)); tk.rotation.z = Math.PI / 2; tk.position.set(-0.13, 0.53 + k * 1.18, 0.25); g.add(tk); }
+    const sh = blob(1.4, 1.4, shadowTex, 0.6); sh.position.y = 0.004; g.add(sh); onlyMain(sh, halo, ...bubbles);
+    const s = station("meter", g, stationHit("meter", 0.9, 2.2, 0.9, V(0, 1.1, 0.1)), V(0, 2.3, 0.1), { pos: V(-0.55, 1.95, 4.7), look: V(0, 1.1, 0.15) });
+    s.extra = { liq, liqMat, bubbles, frac: 0.0, shown: 0, warn: false };
+    return s;
+  })();
+
+  // the back of the room: the tool wall under a pearl arch, with the comms corner and the exit on either side
+  const tools = (() => {
+    const g = new THREE.Group();
+    for (const s of [-1, 1]) { const p = new THREE.Mesh(column(0.15, 2.5), M.leg); p.position.set(s * 1.8, 0, 0); g.add(p); }
+    const arch = new THREE.Mesh(new THREE.TorusGeometry(1.8, 0.11, 18, 96, Math.PI), M.shell); arch.position.y = 2.5; g.add(arch);
+    const archGlow = new THREE.Mesh(new THREE.TorusGeometry(1.8, 0.012, 8, 96, Math.PI), glowMat(C.aqua, 3)); archGlow.position.set(0, 2.5, 0.11); g.add(archGlow);
+    const shelves = [0.78, 1.32, 1.86].map((y) => { const sh = new THREE.Mesh(slab(3.2, 0.34, 0.035, 0.05, 0.012, 3), glassMat); sh.position.set(0, y, -0.05); sh.renderOrder = 2; g.add(sh);
+      const lip = new THREE.Mesh(new THREE.CapsuleGeometry(0.006, 3.0, 2, 8), glowMat(C.lilac, 2.4)); lip.rotation.z = Math.PI / 2; lip.position.set(0, y - 0.02, 0.12); g.add(lip); return y; });
+    const plinth = new THREE.Mesh(slab(3.3, 0.5, 0.14, 0.12, 0.04, 5), M.shell); plinth.position.set(0, 0.07, 0.05); g.add(plinth);
+    const sockets = [-1, 1].map((s) => { const k = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 8, 28), glowMat(C.aqua, 3)); k.rotation.x = Math.PI / 2; k.position.set(s * 1.25, 0.145, 0.25); g.add(k); return k; });
+    const sh = blob(4.4, 1.6, deskShadowTex, 0.8); sh.position.y = 0.004; g.add(sh); onlyMain(sh, archGlow, ...sockets);
+    const s = station("tools", g, stationHit("tools", 3.6, 2.4, 0.8, V(0, 1.2, 0)), V(0, 2.95, 0), { pos: V(0, 1.75, 4.6), look: V(0, 1.3, 0) });
+    s.extra = { blocks: [], shelves, sig: "" };
+    return s;
+  })();
+  const blockGeo = RB(0.26, 0.24, 0.22, 0.06), dotGeo = new THREE.SphereGeometry(0.022, 12, 10), blockMats = new Map(), STATE_HEX = { ok: C.aqua, you: "#f2b02a", pip: C.violet, bad: "#ff7d6b" };
+  function blockMat(hex) { if (!blockMats.has(hex)) blockMats.set(hex, pearlStuff({ color: pastel(hex, 0.3).getStyle(), flank: pastel(hex, 0.7).getStyle(), belly: "#ffffff", fk: 0.55, bk: 0.2, rough: 0.3, irid: 0.12, rim: 0.3 })); return blockMats.get(hex); }
+  function setToolBlocks(list) { // one glossy block per tool your team uses, with a light that says where it stands
+    const T_ = tools.extra, sig = JSON.stringify(list); if (sig === T_.sig) return; T_.sig = sig;
+    for (const b of T_.blocks) tools.grp.remove(b); T_.blocks = [];
+    const per = 7, shown = list.slice(0, per * 3);
+    shown.forEach((t, i) => {
+      const row = Math.floor(i / per), col = i % per, n = Math.min(per, shown.length - row * per), x = (col - (n - 1) / 2) * 0.44;
+      const b = new THREE.Group(); b.position.set(x, T_.shelves[row] + 0.12, -0.05); b.rotation.y = (col % 2 ? -1 : 1) * 0.12;
+      b.add(new THREE.Mesh(blockGeo, blockMat(t.hex)));
+      const dot = new THREE.Mesh(dotGeo, glowMat(STATE_HEX[t.state] || C.aqua, 3)); dot.position.set(0, 0.07, 0.114); b.add(dot);
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.08), new THREE.MeshBasicMaterial({ map: label(t.short, { w: 300, h: 120, color: "#3d3460", font: "600 64px Geist", align: "center" }), transparent: true, depthWrite: false }));
+      face.position.set(0, -0.035, 0.113); b.add(face); b.userData.state = t.state; b.userData.dot = dot;
+      tools.grp.add(b); T_.blocks.push(b); onlyMain(dot, face);
+    });
+  }
+
+  const comms = (() => {
+    const g = new THREE.Group(); g.userData.side = -1;
+    const top = new THREE.Mesh(slab(1.2, 0.56, 0.05, 0.12, 0.02, 5), M.desk); top.position.set(0, 0.72, 0); g.add(top);
+    for (const s of [-1, 1]) { const leg = new THREE.Mesh(LEG, M.leg); leg.scale.set(1, 0.72 / (TOP - 0.06) * 0.98, 0.85); leg.position.set(s * 0.48, 0, 0); g.add(leg); }
+    const phone = new THREE.Group(); phone.position.set(-0.3, 0.745, 0.04); phone.rotation.y = 0.35;
+    const pb = new THREE.Mesh(slab(0.24, 0.2, 0.07, 0.05, 0.02, 4), M.shell); pb.position.y = 0.035; pb.rotation.x = -0.12; phone.add(pb);
+    const hs = new THREE.Mesh(new THREE.CapsuleGeometry(0.03, 0.17, 6, 14), M.shell); hs.rotation.z = Math.PI / 2; hs.position.set(0, 0.095, -0.02); phone.add(hs);
+    const keys = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.009, 0.009, 0.006, 14), M.key, 9), km2 = new THREE.Matrix4();
+    for (let i = 0; i < 9; i++) { km2.makeRotationX(-0.12); km2.setPosition(-0.03 + (i % 3) * 0.03, 0.074 - Math.floor(i / 3) * 0.004, 0.02 + Math.floor(i / 3) * 0.028); keys.setMatrixAt(i, km2); } phone.add(keys);
+    const pl = new THREE.Mesh(dotGeo, glowMat(C.aqua, 3)); pl.scale.setScalar(0.5); pl.position.set(0.08, 0.08, 0.07); phone.add(pl); g.add(phone);
+    const mail = new THREE.Group(); mail.position.set(0.28, 0.745, -0.02); mail.rotation.y = -0.3;
+    const mb = new THREE.Mesh(RB(0.2, 0.17, 0.3, 0.07), M.shell); mb.position.y = 0.09; mail.add(mb);
+    const flag = new THREE.Mesh(slab(0.012, 0.07, 0.1, 0.004, 0.003, 2), M.gold); flag.rotation.z = Math.PI / 2; flag.position.set(0.105, 0.15, -0.04); mail.add(flag);
+    const slot = new THREE.Mesh(new THREE.CapsuleGeometry(0.006, 0.08, 2, 6), glowMat(C.lilac, 2.4)); slot.rotation.z = Math.PI / 2; slot.position.set(0, 0.12, 0.152); mail.add(slot); g.add(mail);
+    const safe = new THREE.Group(); safe.position.set(-0.85, 0, 0.12); safe.rotation.y = 0.35;
+    safe.add(new THREE.Mesh(RB(0.46, 0.46, 0.44, 0.07), M.shell)); safe.children[0].position.y = 0.23;
+    const dial = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.016, 10, 32), M.silver); dial.position.set(0, 0.26, 0.225); safe.add(dial);
+    const knb = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.03, 20), M.silver); knb.rotation.x = Math.PI / 2; knb.position.set(0, 0.26, 0.23); safe.add(knb);
+    const sl = new THREE.Mesh(dotGeo, glowMat(C.aqua, 3)); sl.scale.setScalar(0.45); sl.position.set(0.15, 0.4, 0.225); safe.add(sl); g.add(safe);
+    const parcels = [[0.82, 0.16, 0.25, 0.32, 0.26, 0.2], [0.95, 0.05, -0.1, 0.24, 0.2, 0.26]].map(([x, y, z, w, hh, d], i) => { const p = new THREE.Mesh(RB(w, hh, d, 0.025), M.kraft); p.position.set(x, hh / 2 + (i ? 0 : 0), z); p.rotation.y = i ? 0.4 : -0.2; g.add(p);
+      const tape = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.2, d * 1.01), new THREE.MeshStandardMaterial({ color: "#efd9a6", roughness: 0.7 })); tape.rotation.x = -Math.PI / 2; tape.position.set(0, hh / 2 + 0.001, 0); p.add(tape); return p; });
+    const sh = blob(2.6, 1.6, deskShadowTex, 0.85); sh.position.y = 0.004; g.add(sh); onlyMain(sh, keys, pl, slot, sl);
+    return station("comms", g, stationHit("comms", 2.3, 1.2, 1.0, V(0, 0.6, 0)), V(-0.1, 1.38, 0), { pos: V(0.1, 1.85, 3.1), look: V(-0.05, 0.6, 0) });
+  })();
+
+  const exit = (() => {
+    const g = new THREE.Group(); g.userData.side = 1;
+    for (const s of [-1, 1]) { const p = new THREE.Mesh(column(0.07, 2.1), M.leg); p.position.set(s * 0.56, 0, 0); g.add(p); }
+    const head = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.06, 14, 64, Math.PI), M.shell); head.position.y = 2.1; g.add(head);
+    const door = new THREE.Mesh(slab(1.0, 0.05, 2.12, 0.05, 0.02, 4), M.shell); door.position.set(0, 1.07, -0.02); g.add(door);
+    const light = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.9), new THREE.MeshBasicMaterial({ map: radial([[0, "rgba(255,252,240,1)"], [0.6, "rgba(255,250,235,.5)"], [1, "rgba(255,255,255,0)"]], 128), transparent: true, depthWrite: false, opacity: 0 }));
+    light.position.set(0, 1.07, 0.02); g.add(light);
+    const handle = new THREE.Mesh(new THREE.CapsuleGeometry(0.012, 0.2, 4, 10), M.silver); handle.position.set(0.36, 1.05, 0.04); g.add(handle);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.14), new THREE.MeshBasicMaterial({ map: label("Exit", { w: 360, h: 120, color: "#6f64c9", font: "italic 400 92px 'Instrument Serif'", align: "center" }), transparent: true, depthWrite: false }));
+    sign.position.set(0, 2.38, 0.02); g.add(sign);
+    const box = new THREE.Group(); box.position.set(-1.02, 0, 0.12); box.rotation.y = 0.25;
+    const post = new THREE.Mesh(new THREE.CapsuleGeometry(0.02, 1.0, 4, 10), M.silver); post.position.y = 0.52; box.add(post);
+    const panel = new THREE.Mesh(RB(0.34, 0.46, 0.1, 0.04), M.shell); panel.position.y = 1.22; box.add(panel);
+    const lever = new THREE.Mesh(new THREE.CapsuleGeometry(0.02, 0.12, 4, 10), new THREE.MeshPhysicalMaterial({ color: "#ffb0a2", roughness: 0.3, clearcoat: 1, emissive: new THREE.Color("#ff7d6b"), emissiveIntensity: 0.25 }));
+    lever.position.set(0, 1.25, 0.07); lever.rotation.x = 0.5; box.add(lever);
+    const cover = new THREE.Mesh(RB(0.3, 0.4, 0.04, 0.03), glassMat); cover.position.set(0, 1.22, 0.1); cover.renderOrder = 3; box.add(cover); g.add(box);
+    const sh = blob(2.2, 1.3, deskShadowTex, 0.75); sh.position.y = 0.004; g.add(sh); onlyMain(sh, sign, light, lever);
+    const s = station("exit", g, stationHit("exit", 2.0, 2.4, 0.9, V(-0.35, 1.2, 0)), V(-0.4, 2.62, 0), { pos: V(-0.25, 1.75, 3.5), look: V(-0.4, 1.15, 0) });
+    s.extra = { light };
+    return s;
+  })();
+
+  // the founder's glass office, above the back of the room
+  const loft = (() => {
+    const g = new THREE.Group();
+    const fl = new THREE.Mesh(slab(3.0, 1.5, 0.12, 0.2, 0.04, 6), M.shell); g.add(fl);
+    const under = new THREE.Mesh(new THREE.CapsuleGeometry(0.01, 2.6, 4, 8), glowMat(C.aqua, 3)); under.rotation.z = Math.PI / 2; under.position.set(0, -0.07, 0.72); g.add(under);
+    const rail = new THREE.Mesh(RB(3.0, 0.5, 0.03, 0.02), glassMat); rail.position.set(0, 0.32, 0.74); rail.renderOrder = 3; g.add(rail);
+    const cap = new THREE.Mesh(new THREE.CapsuleGeometry(0.014, 2.96, 4, 10), M.silver); cap.rotation.z = Math.PI / 2; cap.position.set(0, 0.58, 0.74); g.add(cap);
+    const dk = new THREE.Mesh(slab(1.0, 0.45, 0.04, 0.1, 0.015, 4), M.desk); dk.position.set(0.3, 0.5, -0.2); g.add(dk);
+    const mon = monitor(darkScreen); mon.g.scale.setScalar(0.7); mon.g.position.set(0.3, 0.52, -0.33); g.add(mon.g);
+    for (const s of [-1, 1]) { const l = new THREE.Mesh(new THREE.CapsuleGeometry(0.015, 0.42, 4, 8), M.silver); l.position.set(0.3 + s * 0.42, 0.27, -0.2); g.add(l); }
+    const mark = new THREE.Mesh(new THREE.CircleGeometry(0.16, 40), new THREE.MeshBasicMaterial({ map: pipMark, transparent: true, depthWrite: false })); mark.position.set(-0.9, 0.36, 0.76); g.add(mark);
+    onlyMain(under, mark);
+    const s = station("founder", g, stationHit("founder", 3.0, 0.9, 1.6, V(0, 0.3, 0)), V(0, 0.95, 0.4), { pos: V(0, 1.3, 3.6), look: V(0, 0.3, 0) });
+    s.on = false; g.visible = false; return s;
+  })();
+
+  // cables: each desk is wired to the tool wall; a broken tool lights its cable amber all the way from the desk
+  const cables = new Map(), cableMats = { ok: glowMat(C.aqua, 2.2), you: glowMat("#f2b02a", 3), pip: glowMat(C.lilac, 2.4), none: glowMat("#e8e4f4", 1) };
+  function placeStations() {
+    const zb = zBack(), fx = FX();
+    const front = ST.get("front"); front.grp.position.set(-fx, 0, FZ); meter.grp.position.set(fx, 0, FZ);
+    tools.grp.position.set(0, 0, zb);
+    comms.grp.position.set(-(PHONE() ? 2.55 : 3.1), 0, zb + 0.55); comms.grp.rotation.y = 0.62;
+    exit.grp.position.set(PHONE() ? 2.55 : 3.1, 0, zb + 0.55); exit.grp.rotation.y = -0.62;
+    loft.grp.position.set(0, 3.35, zb - 1.3);
+    for (const [id, c] of cables) { const d = desks.get(id); if (!d) { scene.remove(c.mesh); cables.delete(id); continue; } c.mesh.geometry.dispose(); c.mesh.geometry = cableGeo(d); }
+  }
+  function cableGeo(d) {
+    const x = d.grp.position.x, z = d.grp.position.z, s = Math.sign(x) || 1, zb = zBack();
+    const pts = [V(x * 0.72, 0.014, z + 0.45), V(s * 1.5, 0.014, z + 0.1), V(s * 1.27, 0.014, z - 0.5), V(s * 1.26, 0.014, zb + 0.6), V(s * 1.25, 0.06, zb + 0.28)];
+    return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, "catmullrom", 0.2), 64, 0.011, 6, false);
+  }
+  function syncCables(list) { // list: [{ id, state: ok | you | pip | none }]
+    const keep = new Set();
+    for (const c of list || []) {
+      const d = desks.get(c.id); if (!d || d.open) continue; keep.add(c.id);
+      let e = cables.get(c.id); if (!e) { e = { mesh: new THREE.Mesh(cableGeo(d), cableMats.none), state: null }; scene.add(e.mesh); onlyMain(e.mesh); cables.set(c.id, e); }
+      if (e.state !== c.state) { e.state = c.state; e.mesh.material = c.state === "you" ? cableMats.you.clone() : cableMats[c.state] || cableMats.none; e.t0 = T(); }
+    }
+    for (const [id, e] of cables) if (!keep.has(id)) { scene.remove(e.mesh); cables.delete(id); }
+  }
+
+  // the arrival: shown the first time each day, otherwise a short glide in
+  let arrive = null; // { t0, full }
+  const shotLift = () => (PHONE() ? { pos: V(0, 1.9, 14.6), look: V(0, 1.5, 4), fov: 62, tilt: 0 } : { pos: V(0, 1.72, 14.1), look: V(0, 1.45, 2), fov: 44, tilt: 0 });
+  function stepArrive(t) {
+    const open = arrive ? clamp((t - arrive.t0 - 0.35) / 0.75) : 1, e = ease(open);
+    lift.doors.forEach((d, i) => { d.position.x = (i ? 1 : -1) * (0.55 + e * 0.62); });
+    lift.g.visible = !!arrive || mode !== "floor" || !!flight; // the cab sits behind you once you are on the floor
+    if (arrive && t - arrive.t0 > 3.2) arrive = null;
+  }
+
+  // stations in the frame loop: the meter fills, bubbles rise, a broken cable breathes amber, the exit glows on hover
+  let stHover = null;
+  function stepStations(t) {
+    const m = meter.extra; m.shown = lerp(m.shown, m.frac, RM() ? 1 : 0.06);
+    const f = clamp(m.shown, 0.02, 1); m.liq.scale.y = f * 1.16; m.liq.position.y = 0.53 + (f * 1.16) / 2;
+    m.liqMat.emissive.set(m.warn ? "#f2b02a" : C.aqua); m.liqMat.color.set(m.warn ? "#ffe3a3" : "#bff5ee");
+    m.bubbles.forEach((b, i) => { const k = (t * (0.12 + i * 0.02) + i / 7) % 1; b.visible = k * 1.16 < f * 1.16 - 0.04; b.position.set(Math.sin(i * 2.1 + t) * 0.035, 0.55 + k * f * 1.16, 0.27 + Math.cos(i * 1.7) * 0.03); });
+    for (const e of cables.values()) if (e.state === "you") { const k = 0.55 + 0.45 * Math.sin(t * 3.2); e.mesh.material.color.set("#f2b02a").multiplyScalar(2 + k * 3.5); }
+    for (const b of tools.extra.blocks) if (b.userData.state === "you") b.userData.dot.material.color.set("#f2b02a").multiplyScalar(2 + 2.5 * (0.5 + 0.5 * Math.sin(t * 3.2)));
+    exit.extra.light.material.opacity = lerp(exit.extra.light.material.opacity, stHover === "exit" ? 0.5 : 0.12, 0.08);
+    for (const s of ST.values()) { const up = s.id === stHover ? 1 : 0; s.k = lerp(s.k || 0, up, 0.12); }
+  }
+
+  // where the camera stands to look at a station, with room for the panel that opens beside it
+  function shotStation(s) {
+    s.grp.updateMatrixWorld(true);
+    const pos = s.cam.pos.clone().applyMatrix4(s.grp.matrixWorld), look = s.cam.look.clone().applyMatrix4(s.grp.matrixWorld);
+    if (PHONE()) { // the panel rises from the bottom: stand further back and keep the station in the top half
+      const back = pos.clone().sub(look).multiplyScalar(0.55); pos.add(back); pos.y += 0.5; look.y -= 0.75; return { pos, look, fov: 56, tilt: 0 };
+    }
+    const fov = 40, dist = pos.distanceTo(look), half = Math.tan((fov * Math.PI) / 360) * dist, aspect = innerWidth / innerHeight;
+    const panel = Math.min(600, innerWidth - 28) + 14, free = innerWidth - panel, shiftPx = innerWidth / 2 - free / 2; // centre the station in the space left of the panel
+    const right = look.clone().sub(pos).cross(V(0, 1, 0)).normalize();
+    look.add(right.multiplyScalar((shiftPx / (innerWidth / 2)) * half * aspect));
+    return { pos, look, fov, tilt: 0 };
+  }
+  // what the Portal draws on top: each station's tag, placed like a desk's tag
+  const stTagEls = new Map();
+
   // ---------------- Pip, the floor manager ----------------
   const pip = buildMate({ team: C.violet, pip: true, headset: false });
   scene.add(pip.root);
@@ -2273,7 +2548,7 @@ function createOffice(THREE, X, opts) {
   }
 
   // ---------------- camera: the floor, a desk, and the flights between ----------------
-  const shotFloor = () => (PHONE() ? { pos: V(0, 4.4, 9.2), look: V(0, 0.55, -2.4), fov: 60, tilt: 0 } : { pos: V(0, 1.98, 7.9), look: V(0, 0.82, -4), fov: 41, tilt: 0 });
+  const shotFloor = () => (PHONE() ? { pos: V(0, 4.9, 11.4), look: V(0, 0.55, -2.2), fov: 60, tilt: 0 } : { pos: V(0, 2.42, 10.6), look: V(0, 0.86, -3.4), fov: 41, tilt: 0 }); // from the entrance: the front desk and meter at your sides, the team down the aisle
   function shotDesk(d) {
     d.grp.updateMatrixWorld(true); const m = d.grp.matrixWorld;
     // Over the shoulder: high enough that their round head never hides what is on the screen, close enough that the
@@ -2292,7 +2567,7 @@ function createOffice(THREE, X, opts) {
     return { pos, look: at.sub(right.multiplyScalar(innerWidth * sx * perPx)).add(V(0, -0.012 + innerHeight * sy * perPx, 0)), fov, tilt: 0 };
   }
   const shotEnter = () => ({ pos: V(0, 7.4, 16), look: V(0, 1.6, -12), fov: 48, tilt: 0 });
-  const cam = { pos: V(), look: V(), fov: 40, tilt: 0 }; let flight = null, mode = "floor", focusId = null, parallax = { x: 0, y: 0, tx: 0, ty: 0 };
+  const cam = { pos: V(), look: V(), fov: 40, tilt: 0 }; let flight = null, mode = "floor", focusId = null, stationId = null, parallax = { x: 0, y: 0, tx: 0, ty: 0 };
   function setCam(s) { cam.pos.copy(s.pos); cam.look.copy(s.look); cam.fov = s.fov; cam.tilt = s.tilt || 0; }
   function fly(to, dur = 1.5, lift = 0.6, aisle = false) {
     if (RM()) { setCam(to); flight = null; invalidate(); return Promise.resolve(); }
@@ -2322,11 +2597,17 @@ function createOffice(THREE, X, opts) {
 
   // ---------------- the lights come on: the entrance ----------------
   let enterT0 = -1, dim = false;
-  function enter() {
-    if (RM()) { enterT0 = -99; setCam(shotFloor()); invalidate(); return; }
-    enterT0 = T(); setCam(shotEnter()); rings.forEach((r) => (r.on = 0));
-    order.forEach((id, i) => { const d = desks.get(id); if (d) d.pop.t0 = enterT0 + 1.0 + i * 0.22; });
-    fly(shotFloor(), 2.6, 0).then(() => opts.onEntered && opts.onEntered());
+  function enter(full = true) {
+    if (RM()) { enterT0 = -99; setCam(shotFloor()); invalidate(); opts.onEntered && opts.onEntered(); return; }
+    enterT0 = T(); rings.forEach((r) => (r.on = 0));
+    if (full) { // the doors part, light spills in, your team looks up
+      arrive = { t0: enterT0 }; setCam(shotLift());
+      order.forEach((id, i) => { const d = desks.get(id); if (d) { d.pop.t0 = enterT0 + 0.9 + i * 0.16; d.react = { kind: "wave", t0: enterT0 + 1.3 + i * 0.12 }; } });
+      setTimeout(() => fly(shotFloor(), 1.9, 0.05).then(() => opts.onEntered && opts.onEntered()), 650);
+    } else {
+      enterT0 = T() - 1.2; const s = shotFloor(); setCam({ pos: s.pos.clone().add(V(0, 0.25, 1.6)), look: s.look.clone(), fov: s.fov + 3, tilt: 0 });
+      fly(s, 1.1, 0).then(() => opts.onEntered && opts.onEntered());
+    }
   }
   function stepRings(t) {
     const e = enterT0 < 0 ? 99 : t - enterT0, lvl = dim ? 0.28 : 1; let changed = false;
@@ -2344,7 +2625,7 @@ function createOffice(THREE, X, opts) {
   let bubbleEl = null, bubSz = { w: 320, h: 150 }, safe = { top: 0, bottom: 0 }, hudDirty = true;
   const bubRO = typeof ResizeObserver === "function" ? new ResizeObserver((es) => { for (const e of es) if (e.target === bubbleEl) bubSz = { w: e.target.offsetWidth, h: e.target.offsetHeight }; }) : null;
   function measureHud() { // reads first, all at once; placeHud then only writes
-    tagSz.clear(); for (const [id, el] of tagEls) tagSz.set(id, { w: el.offsetWidth, h: el.offsetHeight });
+    tagSz.clear(); for (const [id, el] of tagEls) tagSz.set(id, { w: el.offsetWidth, h: el.offsetHeight }); for (const [id, el] of stTagEls) tagSz.set("st:" + id, { w: el.offsetWidth, h: el.offsetHeight });
     safe = { top: opts.safeTop ? opts.safeTop() : 0, bottom: opts.safeBottom ? opts.safeBottom() : 0 };
     if (bubbleEl) bubSz = { w: bubbleEl.offsetWidth, h: bubbleEl.offsetHeight }; hudDirty = false;
   }
@@ -2361,6 +2642,11 @@ function createOffice(THREE, X, opts) {
       const w = V(0, d.a && d.a.look === "sleep" ? 1.62 : 1.8, d.open ? 0.6 : 0.05).applyMatrix4(d.grp.matrixWorld);
       const p = project(w), dist = camera.position.distanceTo(w), popK = d.open || d.pop.t0 < 0 ? 1 : clamp((t - d.pop.t0 - 0.2) / 0.4);
       list.push({ el, sz: tagSz.get(id) || { w: 200, h: 56 }, x: p.x, y: p.y, z: p.z, s: clamp(5.6 / dist, 0.66, 1) * (PHONE() ? 0.92 : 1), dist, popK });
+    }
+    for (const [id, el] of stTagEls) {
+      const st = ST.get(id); if (!st || !st.on || !st.grp.visible) { put(el, "opacity", "0"); put(el, "pointerEvents", "none"); continue; }
+      const w = st.anchor.clone().applyMatrix4(st.grp.matrixWorld), p = project(w), dist = camera.position.distanceTo(w);
+      list.push({ el, sz: tagSz.get("st:" + id) || { w: 150, h: 40 }, x: p.x, y: p.y, z: p.z, s: clamp(5.6 / dist, 0.66, 1) * (PHONE() ? 0.92 : 1), dist, popK: enterT0 < 0 ? 1 : clamp((t - enterT0 - 1.6) / 0.5) });
     }
     list.sort((m, n) => m.dist - n.dist);
     for (const L of list) {
@@ -2494,13 +2780,13 @@ function createOffice(THREE, X, opts) {
 
   // ---------------- pointing at desks with the mouse ----------------
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(); let hoverId = null;
-  function pick(ev) { ndc.set((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera); const hits = ray.intersectObjects([...desks.values()].map((d) => d.hit), false); return hits.length ? hits[0].object.userData.desk : null; }
+  function pick(ev) { ndc.set((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera); const hits = ray.intersectObjects([...desks.values()].map((d) => d.hit).concat([...ST.values()].filter((x) => x.on && x.grp.visible).map((x) => x.hit)), false); if (!hits.length) return null; const u = hits[0].object.userData; return u.station ? "st:" + u.station : u.desk; }
   function onMove(ev) {
     parallax.tx = (ev.clientX / innerWidth - 0.5) * 2; parallax.ty = (ev.clientY / innerHeight - 0.5) * -2;
     if (mode !== "floor" || flight || ev.target !== canvas) { if (hoverId) { hoverId = null; canvas.style.cursor = ""; } return; }
-    const id = pick(ev); if (id !== hoverId) { hoverId = id; canvas.style.cursor = id ? "pointer" : ""; if (id) hover(id); }
+    const id = pick(ev); if (id !== hoverId) { hoverId = id; canvas.style.cursor = id ? "pointer" : ""; stHover = id && id.startsWith("st:") ? id.slice(3) : null; if (id && !stHover) hover(id); kick(); }
   }
-  function onClick(ev) { if (mode !== "floor" || flight) return; const id = pick(ev); if (id && opts.onPick) opts.onPick(id); }
+  function onClick(ev) { if (mode !== "floor" || flight) return; const id = pick(ev); if (!id) return; if (id.startsWith("st:")) { if (opts.onStation) opts.onStation(id.slice(3)); } else if (opts.onPick) opts.onPick(id); }
   addEventListener("pointermove", onMove, { passive: true }); canvas.addEventListener("click", onClick);
   function hover(id) { const d = desks.get(id); if (!d || d.open || !d.a) return; const t = T(); if (d.hoverUntil < t) d.react = { kind: "wave", t0: t }; d.hoverUntil = t + 1.6; kick(); }
 
@@ -2511,7 +2797,7 @@ function createOffice(THREE, X, opts) {
   function kick() { if (!raf && active) raf = requestAnimationFrame(loop); }
   function frame(t, dt) {
     if (window.PIP_TEST && window.PIP_TEST.prof) { window.PIP_TEST.prof.f0 = performance.now(); renderer.info.autoReset = false; renderer.info.reset(); }
-    stepFlight(t); stepRings(t); stepFolder(t); stepConfetti(t, dt);
+    stepFlight(t); stepRings(t); stepFolder(t); stepConfetti(t, dt); stepArrive(t); stepStations(t);
     parallax.x = lerp(parallax.x, parallax.tx, 0.04); parallax.y = lerp(parallax.y, parallax.ty, 0.04);
     placeCamera(); sky();
     const kk = 1 - Math.exp(-dt * 9);
@@ -2520,7 +2806,8 @@ function createOffice(THREE, X, opts) {
       const a = d.a;
       if (!d.holo.visible) {
         const tgt = poseOf(d, t); if (!d.Y) d.Y = cloneY(tgt); else blendY(d.Y, tgt, RM() ? 1 : kk);
-        const popK = d.pop.t0 < 0 ? 1 : clamp((t - d.pop.t0) / 0.55); const s = 0.3 * (popK >= 1 ? 1 : back(popK, 2.2));
+        const popK = d.pop.t0 < 0 ? 1 : clamp((t - d.pop.t0) / 0.55); let s = 0.3 * (popK >= 1 ? 1 : back(popK, 2.2));
+        if (d.leaving) { const k = clamp((t - d.leaving) / 1.8); s *= 1 - ease(clamp((k - 0.45) / 0.55)); d.grp.scale.setScalar(1 - 0.08 * ease(clamp((k - 0.55) / 0.45))); if (k >= 1) d.grp.visible = false; }
         d.mate.root.scale.setScalar(Math.max(0.0001, s)); d.mate.apply(d.Y);
         const pr = d.pop.t0 < 0 ? 1 : clamp((t - d.pop.t0) / 0.7); d.popRing.material.opacity = pr > 0 && pr < 1 ? (1 - pr) * 0.9 : 0; d.popRing.scale.setScalar(0.4 + pr * 2.2);
       }
@@ -2600,12 +2887,12 @@ function createOffice(THREE, X, opts) {
   }
   let wasPhone = null;
   function resize() {
-    if (wasPhone !== PHONE()) { wasPhone = PHONE(); for (const d of desks.values()) d.grp.position.x = d.grp.userData.side * sideX(); placeRings(); }
+    if (wasPhone !== PHONE()) { wasPhone = PHONE(); for (const d of desks.values()) d.grp.position.x = d.grp.userData.side * sideX(); placeRings(); placeStations(); }
     renderer.setSize(innerWidth, innerHeight, false); css.setSize(innerWidth, innerHeight);
     if (composer) composer.setSize(innerWidth, innerHeight);
     if (reflector) reflector.getRenderTarget().setSize(Math.round(innerWidth * pr() * 0.5), Math.round(innerHeight * pr() * 0.5));
     hudDirty = true;
-    if (!flight) setCam(mode === "desk" && focusId && desks.has(focusId) ? shotDesk(desks.get(focusId)) : shotFloor());
+    if (!flight) setCam(mode === "desk" && focusId && desks.has(focusId) ? shotDesk(desks.get(focusId)) : mode === "station" && stationId && ST.has(stationId) ? shotStation(ST.get(stationId)) : shotFloor());
     skyHy = -1; if (cssObj && focusId) { const el = cssObj.element; mountScreen(focusId, el); } invalidate();
   }
   addEventListener("resize", resize);
@@ -2628,6 +2915,12 @@ function createOffice(THREE, X, opts) {
       }
     });
     order = ids;
+    placeStations();
+    const sm = model.stations || {};
+    meter.extra.frac = clamp(sm.meter ? sm.meter.frac : 0, 0, 1); meter.extra.warn = !!(sm.meter && sm.meter.warn);
+    setToolBlocks(sm.tools || []); syncCables(sm.cables || []);
+    loft.on = loft.grp.visible = !!sm.founder;
+    stTagEls.clear(); for (const [id, el] of sm.tags || []) stTagEls.set(id, el);
     tagEls.clear(); for (const [id, el] of model.tags || []) tagEls.set(id, el);
     if (bubRO && bubbleEl !== (model.bubble || null)) { if (bubbleEl) bubRO.unobserve(bubbleEl); if (model.bubble) bubRO.observe(model.bubble); }
     bubbleEl = model.bubble || null; hudDirty = true; hudHidden = false;
@@ -2657,7 +2950,10 @@ function createOffice(THREE, X, opts) {
     step() { if (window.PIP_TEST && window.PIP_TEST.now != null) { need = true; cancelAnimationFrame(raf); loop(); } }, // tests only: render one frame at PIP_TEST.now
     get mode() { return mode; }, get tier() { return tier; }, layer: css.domElement,
     get debug() { return window.PIP_TEST ? { scene, renderer, camera, THREE, get held() { return held; }, get prScale() { return prScale; }, get pace() { return JSON.parse(JSON.stringify({ ...pc, d: pc.d.length })); }, get lifted() { return lifted ? { k: lifted.k, moving: lifted.moving, dir: lifted.dir } : null; }, reshoot() { if (focusId) { setCam(shotDesk(desks.get(focusId))); if (cssObj) mountScreen(focusId, cssObj.element); } } } : null; }, // tests only
-    floor() { mode = "floor"; focusId = null; settleFolder(); return fly(shotFloor(), 1.35, 0.5); },
+    floor() { const was = mode; mode = "floor"; focusId = null; stationId = null; stHover = null; settleFolder(); return fly(shotFloor(), was === "station" ? 0.95 : 1.35, was === "station" ? 0.15 : 0.5); },
+    station(id) { const s = ST.get(id); if (!s || !s.on) return Promise.resolve(); if (mode === "station" && stationId === id && !flight) return Promise.resolve(); const was = mode; mode = "station"; stationId = id; focusId = null; settleFolder(); return fly(shotStation(s), was === "floor" ? 0.85 : 1.1, was === "floor" ? 0.12 : 0.4); },
+    letGo(id) { const d = desks.get(id); if (!d || d.open || d.leaving) return; d.leaving = T(); d.react = { kind: "wave", t0: T() }; burst(V(0, 1.4, 0.4).applyMatrix4(d.grp.matrixWorld)); kick(); }, // ready for the day "Let go" is wired to the backend
+    get station_() { return stationId; },
     desk(id) { const d = desks.get(id); if (!d || d.open) return Promise.resolve(); const was = mode; mode = "desk"; focusId = id; d.react = { kind: "wave", t0: T() + (was === "floor" ? 0.2 : 0) }; d.hoverUntil = 0; return fly(shotDesk(d), was === "floor" ? 1.6 : 1.5, was === "floor" ? 0.55 : 0.75, was === "desk"); },
     setActive(on) { active = !!on; canvas.style.display = on ? "" : "none"; css.domElement.style.display = on ? "" : "none"; if (on) { lastT = T(); invalidate(); } },
     pip: {
@@ -2854,11 +3150,14 @@ async function load() {
   if (S.data) celebrateChanges();
 }
 async function openBusiness(id) {
+  keepBiz(id); FLOOR.reenter = true; S.station = null; S.menu = null;
   S.bid = id; S.tab = "team"; S.op = null; S.opc = {}; S.log = null; S.logState = null; S.data = null; S.openTouched = false; S.openSlots = new Set(); S.focus = null; S.desk = false;
   history.replaceState(null, "", "?b=" + id);
   loadingView(); await load(); render();
 }
-function toList() { S.bid = null; S.data = null; history.replaceState(null, "", location.pathname); loadingView(); load().then(render); }
+function lastBiz(mine) { let v = null; try { v = localStorage.getItem("pip-portal:last"); } catch (e) { /* private mode */ } if (v && (S.me.founder || mine.some((b) => b.id === v))) return v; return mine.length && !S.me.founder ? mine[0].id : null; }
+function keepBiz(id) { try { localStorage.setItem("pip-portal:last", id); } catch (e) { /* private mode */ } }
+function toList() { S.station = null; S.menu = null; try { localStorage.removeItem("pip-portal:last"); } catch (e) { /* private mode */ } S.bid = null; S.data = null; history.replaceState(null, "", location.pathname); loadingView(); load().then(render); }
 async function signOut() { await sb.auth.signOut(); location.href = location.pathname; }
 
 // ---------- pieces ----------
@@ -2867,6 +3166,9 @@ const STEP = { needed: ["To do", "wait"], link_made: ["Finish sign-in", "wait"],
 const STATES = "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split(" ");
 const isOwner = () => S.data && (S.data.role === "owner" || S.data.role === "founder");
 const mateName = (a) => a.teammate || a.name;
+// a.needs lists every tool a teammate uses. What it still needs from you: the ones not connected yet that are on your side.
+const stepFor = (n) => (S.data ? S.data.checklist.find((x) => x.label === n || x.slot === n) : null);
+const youNeeds = (a) => a.needs.filter((n) => { const s = stepFor(n); return s ? s.status !== "active" && s.waiting_on !== "pip" && !["submitted", "unsupported"].includes(s.status) : false; });
 const isPaused = (a) => a.pauses.length > 0 || a.status === "paused";
 
 // where the business stands: building, priced, setup, ready, live, paused, disconnected
@@ -3244,21 +3546,36 @@ function stepBody(s, i) {
   return kids;
 }
 function setupTab() {
-  const d = S.data, b = d.business, id = S.bid, need = d.checklist.filter((s) => s.status !== "active"), locked = !d.setup_unlocked && d.role !== "founder";
+  const d = S.data, locked = !d.setup_unlocked && d.role !== "founder";
+  return [lockBar(), locationCard(), stepsCard(),
+    isOwner() && !locked && d.connect_on ? anyToolCard() : null,
+    isOwner() && d.setup_unlocked ? vaultCard() : null];
+}
+function lockBar() {
+  const d = S.data, b = d.business, locked = !d.setup_unlocked && d.role !== "founder";
+  return locked ? h("div", { class: "lockbar rise", style: { "--i": 0 } }, h("span", { class: "ic" }, icon("lock")), h("p", {}, h("b", {}, "Setup unlocks when you accept your price. "), "You can look around until then."), b.quote ? h("button", { class: "btn pri", "data-k": "see-price", "data-pip": "next", onclick: () => (floorOn() ? openStation("meter") : setTab("team")) }, "See your price", icon("arrow", "arr")) : null) : null;
+}
+function locationCard() {
+  const d = S.data, b = d.business, id = S.bid;
   const st = h("select", { class: "sel", id: "st-pick", "data-k": "st-pick" }, [h("option", { value: "" }, "Pick your state")].concat(STATES.map((x) => h("option", { value: x, selected: b.state === x }, x))));
-  const done = d.checklist.length - need.length;
-  return [
-    locked ? h("div", { class: "lockbar rise", style: { "--i": 0 } }, h("span", { class: "ic" }, icon("lock")), h("p", {}, h("b", {}, "Setup unlocks when you accept your price. "), "You can look around until then."), b.quote ? h("button", { class: "btn pri", "data-k": "see-price", "data-pip": "next", onclick: () => setTab("team") }, "See your price", icon("arrow", "arr")) : null) : null,
-    h("div", { class: "card" + (b.state ? "" : " warm") + " rise", style: { "--i": 1 } },
+  return h("div", { class: "card" + (b.state ? "" : " warm") + " rise", style: { "--i": 1 } },
       kick("Your location"), h("h2", { class: "h-s" , style: { marginTop: "10px" } }, "Where is your business?"), h("p", { class: "small", style: { marginTop: "6px" } }, "Call, text, recording and camera rules differ by state. Your teammates follow the rules for yours."),
-      isOwner() ? h("div", { class: "state-row" }, h("label", { class: "sr-only", for: "st-pick" }, "Your state"), st, h("button", { class: "btn " + (b.state ? "ghost" : "pri"), "data-k": "st-save", "data-pip": b.state ? null : "state", onclick: () => st.value && run(() => api("/business/" + id + "/profile", { state: st.value }), "Saved.") }, "Save")) : h("p", { class: "lead", style: { marginTop: "12px" } }, b.state || "Not set yet")),
-    h("section", { class: "card rise", style: { "--i": 2 }, "aria-label": "Setup steps" },
-      h("div", { class: "card-h" }, h("div", {}, kick(d.checklist.length ? done + " of " + d.checklist.length + " done" : "Setup"), h("h2", { class: "h-s" }, need.length || !d.checklist.length ? "Connect your tools" : "Every step is done")), d.checklist.length && !need.length ? pill("Done", "good") : null),
-      d.checklist.length ? null : h("p", { class: "small", style: { marginTop: "12px" } }, "Nothing to connect yet."),
-      h("div", { class: "steps", style: { marginTop: d.checklist.length ? "8px" : "0" } }, d.checklist.map((s, i) => {
+      isOwner() ? h("div", { class: "state-row" }, h("label", { class: "sr-only", for: "st-pick" }, "Your state"), st, h("button", { class: "btn " + (b.state ? "ghost" : "pri"), "data-k": "st-save", "data-pip": b.state ? null : "state", onclick: () => st.value && run(() => api("/business/" + id + "/profile", { state: st.value }), "Saved.") }, "Save")) : h("p", { class: "lead", style: { marginTop: "12px" } }, b.state || "Not set yet"));
+}
+// Setup steps. On the floor each part of the office shows only its own steps: the comms corner its phone, texting and
+// deliveries, the tool wall everything you sign in to.
+const COMMS_KINDS = ["number", "registration", "snippet", "hardware", "pip_side"];
+function stepsCard(pick, title) {
+  const d = S.data, list = pick ? d.checklist.filter(pick) : d.checklist, need = list.filter((s) => s.status !== "active"), allNeed = d.checklist.filter((s) => s.status !== "active"), locked = !d.setup_unlocked && d.role !== "founder";
+  if (pick && !list.length) return null;
+  const done = list.length - need.length;
+  return h("section", { class: "card rise", style: { "--i": 2 }, "aria-label": title || "Setup steps" },
+      h("div", { class: "card-h" }, h("div", {}, kick(list.length ? done + " of " + list.length + " done" : "Setup"), h("h2", { class: "h-s" }, need.length || !list.length ? title || "Connect your tools" : "Every step is done")), list.length && !need.length ? pill("Done", "good") : null),
+      list.length ? null : h("p", { class: "small", style: { marginTop: "12px" } }, "Nothing to connect yet."),
+      h("div", { class: "steps", style: { marginTop: list.length ? "8px" : "0" } }, list.map((s) => { const i = d.checklist.indexOf(s);
         const c = STEP[s.status] || [s.status, ""], wait = s.status !== "active" && s.waiting_on === "pip" && s.status !== "submitted";
-        const dflt = need[0] === s && d.setup_unlocked, open = S.openTouched ? S.openSlots.has(s.slot) : (dflt || !!(s.detail && s.detail.pending)); // a half-finished second sign-in opens by itself, so "check again" is in view
-        const cls = s.status === "active" ? "done" : locked ? "locked" : ["failed", "expired", "revoked"].includes(s.status) ? "bad" : need[0] === s ? "next" : "";
+        const dflt = allNeed[0] === s && d.setup_unlocked, open = S.openTouched ? S.openSlots.has(s.slot) : (dflt || !!(s.detail && s.detail.pending)); // a half-finished second sign-in opens by itself, so "check again" is in view
+        const cls = s.status === "active" ? "done" : locked ? "locked" : ["failed", "expired", "revoked"].includes(s.status) ? "bad" : allNeed[0] === s ? "next" : "";
         const det = h("details", { class: "step " + cls, id: "step-" + s.slot, open: open || null },
           h("summary", { "data-k": "sum-" + s.slot }, h("span", { class: "num", "aria-hidden": "true" }, s.status === "active" ? icon("check") : locked ? icon("lock") : String(i + 1)),
             h("span", { class: "lbl" }, s.label, h("small", {}, pill(wait ? "Waiting on Pip" : c[0], (wait ? "vio" : c[1]) + " p-in"), s.status === "active" ? againLink(s) : h("span", { class: "wait" }, "Usual wait: " + s.lead_time))),
@@ -3266,9 +3583,7 @@ function setupTab() {
           h("div", { class: "body" }, stepBody(s, i)));
         det.addEventListener("toggle", () => { if (!S.openTouched) { S.openTouched = true; S.openSlots = new Set(d.checklist.filter((x) => document.getElementById("step-" + x.slot) && document.getElementById("step-" + x.slot).open).map((x) => x.slot)); } else if (det.open) S.openSlots.add(s.slot); else S.openSlots.delete(s.slot); Pip.sync(); });
         return det;
-      }))),
-    isOwner() && !locked && d.connect_on ? anyToolCard() : null,
-    isOwner() && d.setup_unlocked ? vaultCard() : null];
+      })));
 }
 // ---------- any other tool: search for it and connect it without leaving setup ----------
 function anyToolCard() {
@@ -3355,34 +3670,46 @@ function peopleTab() {
 }
 
 function settingsTab() {
-  const d = S.data, b = d.business, id = S.bid, a = b.alert_prefs || {}, us = d.rules.find((r) => r.state === "US") || {}, st = d.rules.find((r) => r.state === b.state && r.state !== "US");
-  const mob = h("input", { class: "in", id: "mob", type: "tel", autocomplete: "tel", inputmode: "tel", placeholder: "Mobile for alerts", value: a.mobile || "" }), conf = h("input", { class: "in", id: "conf", autocomplete: "off", placeholder: b.name });
-  const rule = (txt, cls) => h("li", { class: cls }, icon("check"), h("span", {}, txt));
-  return [
-    h("section", { class: "card rise", style: { "--i": 1 }, "aria-label": "How your teammates behave" }, kick("Rules your team follows"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "How your teammates behave" + (b.state ? " in " + b.state : "")), h("ul", { class: "rules", style: { marginTop: "10px" } },
-      rule("They say they are an AI at the start of every call, text thread and chat."), rule("Every recorded call starts with a recording notice."),
-      rule("They only call or text people who wrote in first or agreed to it, and they honor STOP at once in every channel."),
-      us.outbound_hours ? rule("Outbound calls and texts only go out Monday to Saturday " + ((us.outbound_hours.mon_sat || []).join(" to ")) + " and Sunday " + ((us.outbound_hours.sun || []).join(" to ")) + ", your local time.") : null,
-      st && st.telemarketing ? rule(b.state + ": " + st.telemarketing, "st") : null, st && st.ai_disclosure ? rule(b.state + ": " + st.ai_disclosure, "st") : null, st && st.biometric ? rule(b.state + ": " + st.biometric, "st") : null),
-      h("p", { class: "fine", style: { marginTop: "10px" } }, "These defaults are being reviewed by a lawyer. They are not legal advice.")),
-    isOwner() ? h("section", { class: "card rise", style: { "--i": 2 }, "aria-label": "Alerts" }, kick("Alerts"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "When a teammate has to pause"), h("p", { class: "small", style: { marginTop: "6px" } }, "Pip emails you when a teammate has to pause. Text alerts start once Pip's texting is approved."),
-      h("label", { class: "field", for: "mob", style: { marginTop: "14px" } }, h("span", { class: "lab" }, "Mobile for alerts"), mob), h("div", { class: "btns" }, h("button", { class: "btn ghost", "data-k": "save-mob", onclick: () => run(() => api("/business/" + id + "/alerts", { mobile: mob.value }), "Saved.") }, "Save"))) : null,
+  const b = S.data.business;
+  return [rulesCard(), alertsCard(),
     isOwner() && b.status !== "disconnected" ? cardCard() : null,
     b.status !== "disconnected" ? usageCard() : null,
     S.data.role === "founder" && b.status !== "disconnected" ? termsCard() : null,
     b.status !== "disconnected" ? consentCard() : null,
-    isOwner() && b.status !== "disconnected" ? h("section", { class: "card warm danger-zone rise", style: { "--i": 4 }, "aria-label": "Disconnect everything" }, kick("Stop everything"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "Disconnect everything"), h("p", { class: "small", style: { marginTop: "6px" } }, "Revokes every tool sign-in and stops every agent right away. One thing only you can undo: call forwarding at your phone company."),
-      h("label", { class: "field", for: "conf", style: { marginTop: "14px" } }, h("span", { class: "lab" }, "Type the business name to confirm"), conf),
-      h("div", { class: "btns" }, h("button", { class: "btn danger", "data-k": "disconnect", onclick: () => run(() => api("/business/" + id + "/disconnect", { confirm: conf.value }), "Everything is disconnected.") }, icon("pause"), "Disconnect everything")), h("p", { class: "fine", style: { marginTop: "10px" } }, "Needs a sign-in from the last 15 minutes.")) : null,
-    isOwner() && b.status === "disconnected" ? deleteCard() : null,
-    h("div", { class: "row rise", style: { "--i": 6, justifyContent: "center", marginTop: "6px" } }, h("button", { class: "btn ghost", "data-k": "sign-out", onclick: signOut }, icon("out"), "Sign out"))];
+    disconnectCard(), signOutRow()];
 }
+function rulesCard() {
+  const d = S.data, b = d.business, us = d.rules.find((r) => r.state === "US") || {}, st = d.rules.find((r) => r.state === b.state && r.state !== "US");
+  const rule = (txt, cls) => h("li", { class: cls }, icon("check"), h("span", {}, txt));
+  return h("section", { class: "card rise", style: { "--i": 1 }, "aria-label": "How your teammates behave" }, kick("Rules your team follows"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "How your teammates behave" + (b.state ? " in " + b.state : "")), h("ul", { class: "rules", style: { marginTop: "10px" } },
+      rule("They say they are an AI at the start of every call, text thread and chat."), rule("Every recorded call starts with a recording notice."),
+      rule("They only call or text people who wrote in first or agreed to it, and they honor STOP at once in every channel."),
+      us.outbound_hours ? rule("Outbound calls and texts only go out Monday to Saturday " + ((us.outbound_hours.mon_sat || []).join(" to ")) + " and Sunday " + ((us.outbound_hours.sun || []).join(" to ")) + ", your local time.") : null,
+      st && st.telemarketing ? rule(b.state + ": " + st.telemarketing, "st") : null, st && st.ai_disclosure ? rule(b.state + ": " + st.ai_disclosure, "st") : null, st && st.biometric ? rule(b.state + ": " + st.biometric, "st") : null),
+      h("p", { class: "fine", style: { marginTop: "10px" } }, "These defaults are being reviewed by a lawyer. They are not legal advice."));
+}
+function alertsCard() {
+  if (!isOwner()) return null;
+  const id = S.bid, a = S.data.business.alert_prefs || {}, mob = h("input", { class: "in", id: "mob", type: "tel", autocomplete: "tel", inputmode: "tel", placeholder: "Mobile for alerts", value: a.mobile || "" });
+  return h("section", { class: "card rise", style: { "--i": 2 }, "aria-label": "Alerts" }, kick("Alerts"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "When a teammate has to pause"), h("p", { class: "small", style: { marginTop: "6px" } }, "Pip emails you when a teammate has to pause. Text alerts start once Pip's texting is approved."),
+      h("label", { class: "field", for: "mob", style: { marginTop: "14px" } }, h("span", { class: "lab" }, "Mobile for alerts"), mob), h("div", { class: "btns" }, h("button", { class: "btn ghost", "data-k": "save-mob", onclick: () => run(() => api("/business/" + id + "/alerts", { mobile: mob.value }), "Saved.") }, "Save")));
+}
+function disconnectCard() {
+  const b = S.data.business, id = S.bid;
+  if (!isOwner()) return null;
+  if (b.status === "disconnected") return deleteCard();
+  const conf = h("input", { class: "in", id: "conf", autocomplete: "off", placeholder: b.name });
+  return h("section", { class: "card warm danger-zone rise", style: { "--i": 4 }, "aria-label": "Disconnect everything" }, kick("Stop everything"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "Disconnect everything"), h("p", { class: "small", style: { marginTop: "6px" } }, "Revokes every tool sign-in and stops every agent right away. One thing only you can undo: call forwarding at your phone company."),
+      h("label", { class: "field", for: "conf", style: { marginTop: "14px" } }, h("span", { class: "lab" }, "Type the business name to confirm"), conf),
+      h("div", { class: "btns" }, h("button", { class: "btn danger", "data-k": "disconnect", onclick: () => run(() => api("/business/" + id + "/disconnect", { confirm: conf.value }), "Everything is disconnected.") }, icon("pause"), "Disconnect everything")), h("p", { class: "fine", style: { marginTop: "10px" } }, "Needs a sign-in from the last 15 minutes."));
+}
+const signOutRow = () => h("div", { class: "row rise", style: { "--i": 6, justifyContent: "center", marginTop: "6px" } }, h("button", { class: "btn ghost", "data-k": "sign-out", onclick: signOut }, icon("out"), "Sign out"));
 // ---------- billing: card on file and this month's usage ----------
 const UNIT = { conversation: ["chat", "chats"], sms: ["text", "texts"], voice_minute: ["call minute", "call minutes"] };
 const cents = (n) => "$" + Number(n).toFixed(2);
 const unitWord = (k, n) => { const w = UNIT[k] || [k.replace(/_/g, " "), k.replace(/_/g, " ")]; return Number(n) === 1 ? w[0] : w[1]; };
 const rateLine = (rates) => Object.keys(rates || {}).filter((k) => Number(rates[k]) > 0).map((k) => cents(rates[k]) + " per " + unitWord(k, 1)).join(", ");
-const lazy = (key, name) => { if (S[key] === undefined) { S[key] = null; rpc(name).then((r) => { S[key] = r; if (S.tab === "settings") render(); }).catch(() => { S[key] = { off: true }; if (S.tab === "settings") render(); }); } return S[key]; };
+const lazy = (key, name) => { if (S[key] === undefined) { S[key] = null; const again = () => { if (S.tab === "settings" || floorOn()) render(); }; rpc(name).then((r) => { S[key] = r; again(); }).catch(() => { S[key] = { off: true }; again(); }); } return S[key]; };
 function cardCard() {
   const got = lazy("bill", "billing_status"), bill = got || {}, locked = !S.data.setup_unlocked && S.data.role !== "founder", out = h("div", { "aria-live": "polite" });
   const late = bill.billing_status === "past_due" || bill.billing_status === "paused";
@@ -3550,7 +3877,7 @@ function setDock(on) {
   document.documentElement.classList.add("has-dock");
 }
 function setTab(k, slot, from) {
-  S.tab = k; S.op = null; say(null); if (floorOn()) { S.desk = true; S.focus = null; }
+  S.tab = k; S.op = null; say(null); if (floorOn()) { S.desk = true; S.focus = null; S.station = null; }
   render({ keepFocus: from ? "tab-" + from + "-" + k : null, scroll: "top" });
   if (slot) requestAnimationFrame(() => { const el = document.getElementById("step-" + slot); if (el) { el.open = true; el.scrollIntoView({ behavior: reduced() ? "auto" : "smooth", block: "start" }); const f = el.querySelector(".body button:not(:disabled), .body input, .body select"); if (f) setTimeout(() => f.focus({ preventScroll: true }), reduced() ? 0 : 450); } });
 }
@@ -3718,7 +4045,9 @@ async function boot() {
   if (!data.session) { signInView(q.get("e") || "", !!q.get("e") && !th); return; }
   try { S.me = await api("/me"); } catch (e) { await sb.auth.signOut(); signInView(q.get("e") || ""); return; }
   const want = q.get("b"), mine = S.me.businesses || [];
-  S.bid = want || (!S.me.founder && mine.length === 1 ? mine[0].id : null);
+  S.bid = want || lastBiz(mine);
+  if (!S.bid && S.me.founder) { try { S.founder = await api("/founder/businesses", {}); S.bid = (S.founder.businesses[0] || {}).id || null; } catch (e) { S.bid = null; } } // a founder lands on a floor too; the list is one tap away
+  if (S.bid) keepBiz(S.bid);
   const cameBack = !!(q.get("connected") && S.bid);
   if (cameBack) { S.tab = "setup"; try { await api("/business/" + S.bid + "/refresh", {}); } catch (e) { /* shown on load */ } history.replaceState(null, "", "?b=" + S.bid); }
   let cardNote = null;
@@ -3794,12 +4123,12 @@ async function startOffice() {
     const THREE = await loadThree();
     await Promise.all([document.fonts.load("600 44px Geist"), document.fonts.load("italic 400 120px 'Instrument Serif'")]).catch(() => null);
     if (!FLOOR.X) FLOOR.X = threeAddons(THREE);
-    FLOOR.office = createOffice(THREE, FLOOR.X, { host: document.getElementById("office"), cssHost: document.getElementById("office"), reduce: reduced, onPick: (id) => openMate(id), onEntered: () => { FLOOR.entered = true; }, safeTop: () => { const r = document.querySelector(".fl-head"); return r ? r.getBoundingClientRect().bottom : 0; }, safeBottom: () => { const r = document.querySelector(".fl-roster"); return r ? innerHeight - r.getBoundingClientRect().top : 0; },
+    FLOOR.office = createOffice(THREE, FLOOR.X, { host: document.getElementById("office"), cssHost: document.getElementById("office"), reduce: reduced, onPick: (id) => openMate(id), onStation: (id) => openStation(id), onEntered: () => { FLOOR.entered = true; }, safeTop: () => { const r = document.querySelector(".fl-head"); return r ? r.getBoundingClientRect().bottom : 0; }, safeBottom: () => { const r = document.querySelector(".fl-roster"); return r ? innerHeight - r.getBoundingClientRect().top : 0; },
       onReveal: (el) => { el.classList.add("on"); fitTargets(); setTimeout(fitTargets, 700); } });
     await FLOOR.office.ready; // every shader is compiled before the first frame, so the walk-in is smooth from the start
     document.documentElement.classList.add("office-live");
     if (window.PIP_TEST) window.__office = FLOOR.office;
-    if (floorOn()) { Pip.office(FLOOR.office.pip); FLOOR.shown = null; render(); FLOOR.office.enter(); } else FLOOR.office.setActive(false);
+    if (floorOn()) { Pip.office(FLOOR.office.pip); FLOOR.shown = null; render(); FLOOR.office.enter(firstToday()); } else FLOOR.office.setActive(false);
   } catch (e) { FLOOR.failed = true; FLOOR.office = null; document.documentElement.classList.remove("office-live"); if (S.data) render(); }
   FLOOR.starting = false;
 }
@@ -3810,7 +4139,7 @@ function mateLook(a) {
   if (d.business.status === "disconnected") return { look: "sleep", light: null, kind: "paused", text: "Off. Everything is disconnected." };
   if (isPaused(a)) return { look: "sleep", light: null, kind: "paused", text: a.pauses.length && a.status !== "paused" ? "Held" : "Paused" };
   if (building(a)) return { look: "build", light: "build", kind: "build", text: (AGENT[a.status] || ["Being built"])[0] + " by Pip" };
-  if (a.needs.length) return { look: "scratch", light: "needs", kind: "needs", text: "Needs you · " + lowerFirst(a.needs[0]) };
+  const yn = youNeeds(a); if (yn.length) return { look: "scratch", light: "needs", kind: "needs", text: "Needs you · " + lowerFirst(yn[0]) };
   if (a.status === "live") { const l = logFor(a)[0]; return { look: "work", light: "working", kind: "live", text: l ? shortSum(l.summary, mateName(a)) : "Working" }; }
   return { look: "idle", light: "ready", kind: "ready", text: (AGENT[a.status] || ["Ready"])[0] };
 }
@@ -3831,7 +4160,7 @@ function screenFor(a, decor) {
   if (d.business.status === "disconnected") title = "Switched off. Everything is disconnected.";
   else if (isPaused(a)) title = a.pauses.length ? "Paused: " + (a.pauses[0].detail || ({ owner: "by an owner", staff: "by staff", founder: "by Pip", expired_access: "a sign-in stopped working", disconnect: "everything was disconnected" }[a.pauses[0].reason] || a.pauses[0].reason)) : "Paused";
   else if (building(a)) title = a.status === "testing" ? "Being tested by Pip" : "Being built by Pip";
-  else if (a.needs.length) title = "Waiting on you: " + lowerFirst(a.needs[0]);
+  else if (youNeeds(a).length) title = "Waiting on you: " + lowerFirst(youNeeds(a)[0]);
   else if (a.status === "live") title = log[0] ? log[0].summary : "On the job. Nothing to report yet.";
   else if (a.status === "approved") title = "Ready for Brayden's final check";
   else title = "Ready. Starts once setup is done.";
@@ -3840,7 +4169,7 @@ function screenFor(a, decor) {
     : S.logState === "error" ? h("p", { class: "quiet" }, "I couldn't load the log just now.")
     : !log.length ? h("p", { class: "quiet" }, "Nothing yet. Every action shows here in plain words.")
     : h("ul", { class: "feed" }, log.slice(0, 4).map((l) => h("li", {}, h("time", {}, new Date(l.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })), h("span", {}, l.summary), l.outcome === "failed" ? pill("Failed", "warn") : l.outcome === "paused" ? pill("Paused", "warn") : null)));
-  const needs = a.needs.length ? h("div", { class: "chips" }, a.needs.map((n) => { const s = d.checklist.find((x) => x.label === n || x.slot === n); return s && !decor ? h("button", { class: "chip", type: "button", "data-k": "scr-need-" + s.slot, onclick: () => openDesk("setup", s.slot) }, n, icon("arrow")) : h("span", { class: "chip" }, n); }))
+  const needs = a.needs.length ? h("div", { class: "chips" }, a.needs.map((n) => { const s = d.checklist.find((x) => x.label === n || x.slot === n); return s && !decor ? h("button", { class: "chip", type: "button", "data-k": "scr-need-" + s.slot, onclick: () => openStation(COMMS_KINDS.includes(s.kind) ? "comms" : "tools", s.slot) }, n, icon("arrow")) : h("span", { class: "chip" }, n); }))
     : h("p", { class: "okline" }, h("span", { class: "tick" }, icon("check")), "Nothing right now.");
   const ctl = decor ? null : paused ? (isOwner() ? h("button", { class: "btn pri", "data-k": "res-" + a.spec_id, onclick: () => run(() => api("/business/" + S.bid + "/agents/" + a.spec_id + "/resume", {}), "Resumed.", () => Pip.happy()) }, icon("play"), "Resume") : h("p", { class: "fine" }, "An owner can resume."))
     : h("button", { class: "btn quiet", "data-k": "pau-" + a.spec_id, "aria-label": (a.status === "live" ? "Pause " : "Hold before go-live: ") + name, onclick: () => run(() => api("/business/" + S.bid + "/agents/" + a.spec_id + "/pause", {}), "Paused. The rest of your team keeps working.") }, icon("pause"), a.status === "live" ? "Pause" : "Hold before go-live");
@@ -3850,7 +4179,7 @@ function screenFor(a, decor) {
       h("section", { class: "now" }, h("p", { class: "eyebrow" }, h("span", { class: "rec " + L.kind }), eyebrow), h(decor ? "p" : "h2", { class: "title" }, title), k(h("h3", { class: "sub" }, "Recent")), feed),
       h("div", { class: "side" },
         h("div", { class: "card" }, h("p", { class: "eyebrow" }, "Activity"), h("div", { class: "stats" }, h("div", {}, h("b", {}, String(today)), h("span", {}, "today")), h("div", {}, h("b", {}, String(week)), h("span", {}, "this week")), h("div", {}, h("b", {}, String(rough)), h("span", {}, "needed a look")))),
-        h("div", { class: "card" + (a.needs.length ? " warm" : "") }, h("p", { class: "eyebrow" }, "Needs from you"), needs),
+        h("div", { class: "card" + (youNeeds(a).length ? " warm" : "") }, h("p", { class: "eyebrow" }, youNeeds(a).length ? "Needs from you" : "Tools it uses"), needs),
         steps.length ? h("div", { class: "card" }, h("p", { class: "eyebrow" }, "Tools"), h("ul", { class: "tools" }, steps.slice(0, 3).map((s) => h("li", {}, h("span", {}, s.label.replace(/^(Connect|Add|Register for)\s+(your\s+)?/i, "").replace(/^./, (c) => c.toUpperCase())), pill((STEP[s.status] || [s.status])[0], (STEP[s.status] || ["", ""])[1]))))) : null)),
     h("div", { class: "ctl" }, h("p", { class: "fine" }, a.teammate ? a.name : a.role || ""), ctl));
 }
@@ -3878,7 +4207,7 @@ function paperFor(a, i) {
   } else if (i === 1) {
     body = [head("Tools " + name + " uses", steps.length ? "Each one connects on the tool's own screen. Pip never sees your password." : null),
       steps.length ? h("ul", { class: "tl" }, steps.map((s) => h("li", {}, h("div", {}, h("b", {}, s.label), h("span", {}, "Usual wait: " + s.lead_time)), pill((STEP[s.status] || [s.status])[0], (STEP[s.status] || ["", ""])[1]),
-        s.status !== "active" && isOwner() ? h("button", { class: "btn link", type: "button", "data-k": "pp-step-" + s.slot, onclick: () => { S.paper = null; document.documentElement.classList.remove("fl-paper-on"); if (FLOOR.office) { FLOOR.office.hold(false); FLOOR.office.folderIn(); } const p = document.getElementById("paper"); p.close(); p.className = ""; openDesk("setup", s.slot); } }, "Open this step") : null)))
+        s.status !== "active" && isOwner() ? h("button", { class: "btn link", type: "button", "data-k": "pp-step-" + s.slot, onclick: () => { S.paper = null; document.documentElement.classList.remove("fl-paper-on"); if (FLOOR.office) { FLOOR.office.hold(false); FLOOR.office.folderIn(); } const p = document.getElementById("paper"); p.close(); p.className = ""; openStation(COMMS_KINDS.includes(s.kind) ? "comms" : "tools", s.slot); } }, "Open this step") : null)))
         : h("p", {}, name + " doesn't need any tools connected.")];
   } else if (i === 2) {
     body = [head("House rules", "Every teammate follows these" + (d.business.state ? " in " + d.business.state : "") + "."), h("ul", {}, rulesList().map((x) => h("li", {}, x))), h("p", { class: "fine" }, "These defaults are being reviewed by a lawyer. They are not legal advice.")];
@@ -3966,31 +4295,110 @@ addEventListener("resize", () => {
   // crossing into or out of the compact layout (a phone turning, a window shrinking, zooming to 200%) moves the screen between the monitor and the sheet
   const n = narrow(); if (FLOOR.wasNarrow != null && n !== FLOOR.wasNarrow && floorOn()) { FLOOR.focusShown = null; render(); } FLOOR.wasNarrow = n;
 });
-function openMate(id) { if (!S.data.agents.some((a) => a.spec_id === id)) return; S.focus = id; S.desk = false; render({ keepFocus: "fl-back" }); }
-function closeMate() { const id = S.focus; S.focus = null; render({ keepFocus: "fl-m-" + id }); }
+function openMate(id) { if (!S.data.agents.some((a) => a.spec_id === id)) return; S.focus = id; S.desk = false; S.station = null; S.menu = null; S.letGo = null; render({ keepFocus: "fl-back" }); }
+function closeMate() { const id = S.focus; S.focus = null; S.letGo = null; render({ keepFocus: "fl-m-" + id }); }
 function walk(dir) { const ag = S.data.agents, i = ag.findIndex((a) => a.spec_id === S.focus); if (i < 0 || !ag.length) return; openMate(ag[(i + dir + ag.length) % ag.length].spec_id); }
-function openDesk(tab, slot) { const was = S.desk; S.desk = true; S.focus = null; S.deskFocus = !was && !slot; if (slot) { S.openTouched = true; S.openSlots = new Set([slot]); } setTab(tab || S.tab || "team", slot); }
-function closeDesk() { S.desk = false; render({ keepFocus: "fl-desk" }); }
+function openDesk(tab, slot) { const was = S.desk && !S.station; S.desk = true; S.focus = null; S.station = null; S.menu = null; S.deskFocus = !was && !slot; if (slot) { S.openTouched = true; S.openSlots = new Set([slot]); } setTab(tab || S.tab || "team", slot); }
+function closeDesk() { const st = S.station; S.desk = false; S.station = null; render({ keepFocus: st ? "fl-st-" + st : "fl-office" }); }
 document.addEventListener("keydown", (e) => {
   if (!floorOn() || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
   const ae = document.activeElement, typing = ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);
   if (typing || document.querySelector("dialog[open]")) return;
   if (e.key === "Escape" && S.paper) { e.preventDefault(); closePaper(); return; } // a paper is on its way: Esc sends it back
-  if (e.key === "Escape") { if (S.desk) { e.preventDefault(); closeDesk(); } else if (S.focus) { e.preventDefault(); closeMate(); } }
+  if (e.key === "Escape") { if (S.letGo) { e.preventDefault(); S.letGo = null; render({ keepFocus: "fl-letgo" }); } else if (S.menu) { e.preventDefault(); S.menu = null; render({ keepFocus: "fl-office" }); } else if (S.desk) { e.preventDefault(); closeDesk(); } else if (S.focus) { e.preventDefault(); closeMate(); } }
   else if (/^[1-9]$/.test(e.key) && !S.desk) { const a = S.data.agents[+e.key - 1]; if (a) { e.preventDefault(); openMate(a.spec_id); } }
   else if (S.focus && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !(ae && ae.closest && ae.closest("[role=tablist]"))) { e.preventDefault(); walk(e.key === "ArrowRight" ? 1 : -1); }
 });
 
 // the one next thing to do, on Pip's bubble
 function floorCta() {
-  const d = S.data, st = stageOf(d), nx = nextStep(d), owner = isOwner(), ps = d.agents.filter(isPaused), needy = d.agents.find((a) => a.needs.length && !isPaused(a));
-  if (st === "priced") return owner ? { label: "See your price", go: () => openDesk("team") } : null;
-  if (st === "setup") return { label: owner ? "Start this step" : "See setup", go: () => openDesk("setup", nx && nx.slot) };
+  const d = S.data, st = stageOf(d), nx = nextStep(d), owner = isOwner(), ps = d.agents.filter(isPaused), needy = d.agents.find((a) => youNeeds(a).length && !isPaused(a));
+  if (st === "priced") return owner ? { label: "See your price", go: () => openStation("meter") } : null;
+  if (st === "setup") return { label: owner ? "Start this step" : "See setup", go: () => openStation(nx && COMMS_KINDS.includes(nx.kind) ? "comms" : "tools", nx && nx.slot) };
   if (st === "paused") return { label: "Go to " + mateName(ps[0]) + "'s desk", go: () => openMate(ps[0].spec_id) };
-  if (st === "disconnected") return owner ? { label: "Open settings", go: () => openDesk("settings") } : null;
+  if (st === "disconnected") return owner ? { label: "Go to the exit", go: () => openStation("exit") } : null;
   if (st === "live") return { label: "See what they did", go: () => openDesk("activity") };
   if (needy) return { label: "Go to " + mateName(needy) + "'s desk", go: () => openMate(needy.spec_id) };
   return null;
+}
+
+// ---------- the rest of the office: one floor, front to back ----------
+// Every station opens only the cards that belong there. The same cards still live under "Everything", so nothing moved
+// out of reach: this is a way in, not a second copy of the Portal.
+const notOff = () => S.data.business.status !== "disconnected";
+const STATIONS = {
+  front: { name: "Front desk", line: "People, alerts and rules", ico: "people", body: () => [peopleTab(), alertsCard(), locationCard(), rulesCard(), notOff() ? consentCard() : null] },
+  meter: { name: "Usage meter", line: "Your price, card and this month", ico: "activity", body: () => [stageCard(), isOwner() && notOff() ? cardCard() : null, notOff() ? usageCard() : null, S.data.role === "founder" && notOff() ? termsCard() : null] },
+  tools: { name: "Tool wall", line: "Every tool your team uses", ico: "setup", body: () => [lockBar(), stepsCard((x) => !COMMS_KINDS.includes(x.kind), "Your tools"), isOwner() && (S.data.setup_unlocked || S.data.role === "founder") && S.data.connect_on ? anyToolCard() : null] },
+  comms: { name: "Comms corner", line: "Phone, texting, logins, deliveries", ico: "phone", body: () => [lockBar(), stepsCard((x) => COMMS_KINDS.includes(x.kind), "Phone, texting and deliveries"), isOwner() && S.data.setup_unlocked ? vaultCard() : null] },
+  exit: { name: "Exit", line: "Disconnect or close the office", ico: "out", body: () => [isOwner() ? disconnectCard() : h("div", { class: "card empty rise", style: { "--i": 1 } }, h("p", { class: "lead" }, "Only an owner can disconnect or close the office.")), signOutRow()] },
+  founder: { name: "Your office", line: "Founder only", ico: "grid", body: () => [founderCard(), ...founderLoft()] },
+};
+const stationList = () => Object.keys(STATIONS).filter((k) => k !== "founder" || (S.data && S.data.role === "founder"));
+function openStation(id, slot) {
+  if (!STATIONS[id] || (id === "founder" && S.data.role !== "founder")) return;
+  if (id === "founder" && !S.founder) api("/founder/businesses", {}).then((r) => { S.founder = r; if (S.station === "founder") render(); }).catch(() => null);
+  S.station = id; S.desk = true; S.focus = null; S.menu = null; S.letGo = null; say(null);
+  if (slot) { S.openTouched = true; S.openSlots = new Set([slot]); }
+  render({ keepFocus: slot ? null : "fl-desk-x", scroll: "top" });
+  if (slot) requestAnimationFrame(() => { const el = document.getElementById("step-" + slot); if (el) { el.open = true; el.scrollIntoView({ behavior: reduced() ? "auto" : "smooth", block: "start" }); } });
+}
+function founderLoft() { // the founder home's switches, reports and every business, without its own Pip
+  if (!S.founder) return [h("p", { class: "small" }, "Loading every business…")];
+  return founderHome().slice(1, -1);
+}
+function stationStatus(id) { // the short line under each station's name on the floor
+  const d = S.data, steps = d.checklist, u = S.usage, b = d.business, mine = (k) => steps.filter((x) => (k === "comms") === COMMS_KINDS.includes(x.kind));
+  const left = (k) => { const l = mine(k), you = l.filter((x) => x.status !== "active" && x.waiting_on !== "pip" && !["submitted", "unsupported"].includes(x.status)).length, pip = l.filter((x) => x.status !== "active").length - you;
+    return you ? [you + " need" + (you === 1 ? "s" : "") + " you", "needs"] : pip ? ["Waiting on Pip", "build"] : l.length ? ["All connected", "live"] : ["Nothing to connect", "ready"]; };
+  if (id === "tools" || id === "comms") return left(id);
+  if (id === "meter") { if (b.quote && !b.price_accepted_at) return ["Your price is ready", "needs"]; if (u && !u.off && u.started) return [cents(u.value_usd || 0) + " of " + money(u.included_usd) + " used", Number(u.beyond_plan_usd) > 0 ? "needs" : "live"]; return [b.price_accepted_at ? "Price accepted" : "Price on its way", "ready"]; }
+  if (id === "front") { const n = (d.people || []).length; return [n ? n + (n === 1 ? " person" : " people") + " · alerts" : "People and alerts", "ready"]; }
+  if (id === "exit") return [b.status === "disconnected" ? "Everything is off" : "Disconnect or close", "ready"];
+  if (id === "founder") return ["Every business", "ready"];
+  return ["", "ready"];
+}
+function stationModel() {
+  const d = S.data, u = lazy("usage", "usage"), bill = isOwner() ? lazy("bill", "billing_status") : null;
+  const frac = u && !u.off && Number(u.included_usd) > 0 ? Number(u.value_usd || 0) / Number(u.included_usd) : 0;
+  const late = bill && (bill.billing_status === "past_due" || bill.billing_status === "paused");
+  const stateOf = (x) => (x.status === "active" ? "ok" : ["failed", "expired", "revoked"].includes(x.status) ? "you" : x.waiting_on === "pip" || ["submitted", "unsupported"].includes(x.status) ? "pip" : "you");
+  const tools = d.checklist.filter((x) => !COMMS_KINDS.includes(x.kind)).concat(d.extra_tools || []).map((x) => ({ short: shortTool(x.label || x.name || x.toolkit || "Tool"), hex: toolHex(x), state: x.slot ? stateOf(x) : x.status === "active" ? "ok" : "you" }));
+  const cables = d.agents.filter((a) => !building(a)).map((a) => { const st = a.needs.map(stepFor).filter(Boolean).map(stateOf); return { id: a.spec_id, state: isPaused(a) ? "none" : st.includes("you") ? "you" : st.includes("pip") ? "pip" : "ok" }; });
+  return { meter: { frac, warn: !!late || (u && Number(u.beyond_plan_usd) > 0) }, tools, cables, founder: d.role === "founder" };
+}
+const shortTool = (l) => { const w = String(l).replace(/^(A|An|Your)\s+/i, "").replace(/ from your address/i, "").split(/\s+/); const t = w[0].length > 9 || w.length === 1 ? w[0] : w.slice(0, 2).join(" "); return t.length > 11 ? t.slice(0, 10) + "…" : t.charAt(0).toUpperCase() + t.slice(1); };
+const TOOL_HEX = { google: "#5b9dff", calendly: "#5eead9", acuity: "#9b86ff", square: "#8f93b8", microsoft: "#5eead9" };
+const toolHex = (x) => { const p = (x.choices && x.choices[0] && x.choices[0].provider) || x.provider || ""; return TOOL_HEX[p] || ["#ff9ac0", "#ffc861", "#9b86ff", "#5eead9", "#8fd8bb"][String(x.slot || x.toolkit || x.label).length % 5]; };
+function firstToday() { const k = new Date().toDateString(); let seen = null; try { seen = localStorage.getItem("pip-portal:arrived"); localStorage.setItem("pip-portal:arrived", k); } catch (e) { /* private mode */ } return seen !== k; }
+
+// "Let go": the confirm card is real, the action is not wired yet. Pressing "Let go" does nothing on purpose.
+// When the backend can end one teammate, call it from letGoNow and then FLOOR.office.letGo(spec_id) for the goodbye.
+function letGoCard(a) {
+  const name = mateName(a);
+  return h("div", { class: "fl-letgo-wrap", role: "presentation", onclick: (e) => { if (e.target === e.currentTarget) { S.letGo = null; render({ keepFocus: "fl-letgo" }); } } },
+    h("section", { class: "fl-letgo glass", role: "alertdialog", "aria-modal": "true", "aria-labelledby": "lg-t", "aria-describedby": "lg-d" },
+      h("span", { class: "fl-letgo-av", style: { "--c": hexOf(a) }, "aria-hidden": "true" }),
+      h("h2", { class: "h-m", id: "lg-t" }, "Let " + name + " go?"),
+      h("p", { class: "small", id: "lg-d" }, name + " stops working today and is no longer billed."),
+      h("div", { class: "btns" },
+        h("button", { class: "btn ghost", type: "button", "data-k": "lg-keep", onclick: () => { S.letGo = null; render({ keepFocus: "fl-letgo" }); } }, "Keep " + name),
+        h("button", { class: "btn pri", type: "button", "data-k": "lg-go", onclick: letGoNow }, "Let go", icon("arrow", "arr")))));
+}
+function letGoNow() { /* not wired yet: Brayden ties the backend action here later */ }
+
+function floorsMenu() { // the founder's (and a multi-business owner's) elevator between floors
+  const list = S.me.founder ? ((S.founder && S.founder.businesses) || []) : (S.me.businesses || []);
+  if (S.me.founder && !S.founder) api("/founder/businesses", {}).then((r) => { S.founder = r; if (S.menu === "floors") render(); }).catch(() => null);
+  return h("div", { class: "fl-menu fl-floors glass", role: "menu", "aria-label": "Floors" },
+    list.length ? list.map((b) => h("button", { type: "button", role: "menuitem", class: b.id === S.bid ? "on" : "", "aria-current": b.id === S.bid ? "true" : null, onclick: () => (b.id === S.bid ? (S.menu = null, render()) : openBusiness(b.id)) }, h("span", { class: "fl-fl-dot", "aria-hidden": "true" }), h("span", { class: "tx" }, h("b", {}, b.name), b.domain ? h("small", {}, b.domain) : null)))
+      : h("p", { class: "small", style: { padding: "10px 12px" } }, "Loading…"),
+    S.me.founder ? h("button", { type: "button", role: "menuitem", class: "all", onclick: () => { S.menu = null; toList(); } }, icon("grid"), "All businesses") : null);
+}
+function officeMenu() { // every place on the floor, and everything at once
+  return h("div", { class: "fl-menu fl-office-menu glass", role: "menu", "aria-label": "The office" },
+    stationList().map((k) => { const st = STATIONS[k], [line, kind] = stationStatus(k); return h("button", { type: "button", role: "menuitem", "data-k": "fl-om-" + k, onclick: () => openStation(k) }, h("span", { class: "ico", "aria-hidden": "true" }, icon(st.ico)), h("span", { class: "tx" }, h("b", {}, st.name), h("small", { class: "k-" + kind }, line))); }),
+    h("button", { type: "button", role: "menuitem", class: "all", "data-k": "fl-om-all", onclick: () => openDesk(S.tab) }, icon("grid"), "Everything, as a list"));
 }
 
 // ---------- painting the floor ----------
@@ -4010,8 +4418,8 @@ function renderFloor(opts = {}) {
   const acct = document.getElementById("acct");
   const head = h("header", { class: "fl-head glass" },
     h("span", { class: "fl-mark", "aria-hidden": "true" }),
-    multi ? h("button", { class: "fl-icon", "data-k": "back", "aria-label": "All businesses", onclick: toList }, icon("back")) : null,
     h("div", { class: "fl-title" }, h("h1", {}, b.name), h("span", {}, kickTxt)),
+    multi ? h("div", { class: "fl-floors-wrap" }, h("button", { class: "fl-view fl-floors-btn", type: "button", "data-k": "fl-floors", "aria-haspopup": "menu", "aria-expanded": S.menu === "floors" ? "true" : "false", onclick: () => { S.menu = S.menu === "floors" ? null : "floors"; render({ keepFocus: "fl-floors" }); } }, icon("team"), h("span", {}, "Floors"), icon("chev")), S.menu === "floors" ? floorsMenu() : null) : null,
     counts.length ? h("ul", { class: "fl-counts", "aria-label": "Your team right now" }, counts.map(([k, c, w]) => h("li", { class: "c-" + k }, h("i", { "aria-hidden": "true" }), c + " " + (c === 1 && w === "need you" ? "needs you" : w)))) : null,
     h("button", { class: "fl-view", "data-k": "fl-list", onclick: () => setView("list") }, icon("grid"), h("span", {}, "List view")),
     acct);
@@ -4025,12 +4433,15 @@ function renderFloor(opts = {}) {
   });
   tags.set("~open", h("a", { class: "tag open", href: "/", tabindex: "-1", "aria-hidden": "true" }, h("span", { class: "row" }, h("b", {}, "Open desk")), h("span", { class: "doing" }, h("span", { class: "tx" }, "Room for one more · see the Marketplace"))));
 
+  const stTags = new Map(stationList().map((k) => { const st = STATIONS[k], [line, kind] = stationStatus(k);
+    return [k, h("button", { class: "tag glass st k-" + kind, type: "button", tabindex: "-1", "aria-hidden": "true", onclick: () => openStation(k) },
+      h("span", { class: "row" }, h("span", { class: "st-ico", "aria-hidden": "true" }, icon(st.ico)), h("b", {}, st.name)), h("span", { class: "doing" }, kind === "needs" ? h("span", { class: "chip" }, line) : [h("i", { class: "dot k-" + kind }), h("span", { class: "tx" }, line)]))]; }));
   const cta = floorCta();
   const say = h("div", { class: "fl-say" }, h("p", { class: "say fl", "aria-hidden": "true" }, h("span", { class: "b" }, h("span", { class: "who" }, h("i"), "Pip, floor manager"), h("span", { class: "t" }))),
     cta ? h("button", { class: "btn pri", type: "button", "data-k": "fl-cta", onclick: cta.go }, cta.label, icon("arrow", "arr")) : null);
 
   const roster = h("nav", { class: "fl-roster glass", "aria-label": "Your team" },
-    h("button", { class: "fl-mydesk", type: "button", "data-k": "fl-desk", "aria-expanded": S.desk ? "true" : "false", "aria-controls": "fl-desk", onclick: () => (S.desk ? closeDesk() : openDesk(S.tab)) }, h("span", { class: "ico", "aria-hidden": "true" }, icon("grid")), h("span", { class: "tx" }, h("b", {}, "Your desk"), h("small", {}, "Plan, setup, activity, people, settings"))),
+    h("div", { class: "fl-office-wrap" }, h("button", { class: "fl-mydesk", type: "button", "data-k": "fl-office", "aria-haspopup": "menu", "aria-expanded": S.menu === "office" ? "true" : "false", onclick: () => { if (S.desk) { closeDesk(); return; } S.menu = S.menu === "office" ? null : "office"; render({ keepFocus: "fl-office" }); } }, h("span", { class: "ico", "aria-hidden": "true" }, icon("grid")), h("span", { class: "tx" }, h("b", {}, "The office"), h("small", {}, S.desk ? "Back to the floor" : "Front desk, tools, billing and more"))), S.menu === "office" ? officeMenu() : null),
     ag.length ? h("ul", {}, ag.map((a, i) => { const L = looks.get(a.spec_id); return h("li", {}, h("button", { class: "fl-mate k-" + L.kind, type: "button", "data-k": "fl-m-" + a.spec_id, "aria-current": S.focus === a.spec_id ? "true" : null, onclick: () => openMate(a.spec_id), onpointerenter: () => FLOOR.office && FLOOR.office.hover(a.spec_id), onfocus: () => FLOOR.office && FLOOR.office.hover(a.spec_id) },
       avatar(a), h("span", { class: "tx" }, h("b", {}, mateName(a)), h("small", {}, L.text)), i < 9 ? h("kbd", { "aria-hidden": "true" }, String(i + 1)) : null)); }))
       : h("p", { class: "fl-empty" }, "Your teammates will show here."));
@@ -4044,6 +4455,7 @@ function renderFloor(opts = {}) {
     pov = h("section", { class: "fl-pov" + (office3d ? " on3d" : ""), "aria-label": "At " + name + "'s desk" },
       h("div", { class: "fl-pov-top" },
         h("button", { class: "btn ghost glass", type: "button", "data-k": "fl-back", onclick: closeMate }, icon("back"), "The floor"),
+        isOwner() ? h("button", { class: "btn ghost glass fl-letgo-btn", type: "button", "data-k": "fl-letgo", onclick: () => { S.letGo = a.spec_id; render({ keepFocus: "lg-keep" }); } }, h("span", { class: "lg-long" }, "Let " + name + " go"), h("span", { class: "lg-short", "aria-hidden": "true" }, "Let go")) : null,
         h("p", { class: "fl-who glass" }, avatar(a), h("b", {}, name), a.role ? h("span", { class: "role" }, a.role) : null, h("span", { class: "st k-" + L.kind }, h("i", { "aria-hidden": "true" }), L.kind === "needs" ? "Needs you" : L.kind === "live" ? "Working" : L.kind === "build" ? (AGENT[a.status] || ["Being built"])[0] : L.kind === "paused" ? "Paused" : "Ready")),
         ag.length > 1 ? h("div", { class: "fl-walk" },
           h("button", { class: "btn ghost glass", type: "button", "data-k": "fl-prev", "aria-label": "Previous desk: " + mateName(prev), onclick: () => walk(-1) }, h("span", { "aria-hidden": "true" }, "‹"), avatar(prev), h("span", { class: "lbl" }, mateName(prev))),
@@ -4051,11 +4463,18 @@ function renderFloor(opts = {}) {
       h("div", { class: "fl-scr-host", id: "fl-scr-host" }, office3d ? null : screenEl),
       h("div", { class: "fl-folders glass", role: "group", "aria-label": "Folders on " + name + "'s desk" }, h("p", { class: "lab" }, "On " + name + "'s desk"),
         h("div", { class: "row" }, FOLDERS.map((f, k) => h("button", { class: "fl-folder", type: "button", "data-k": "fl-f-" + k, style: { "--c": hexOf(a) }, onclick: () => openPaper(a.spec_id, k), onpointerenter: () => FLOOR.office && FLOOR.office.hoverFolder(a.spec_id, k), onpointerleave: () => FLOOR.office && FLOOR.office.hoverFolder(a.spec_id, -1), onfocus: () => FLOOR.office && FLOOR.office.hoverFolder(a.spec_id, k), onblur: () => FLOOR.office && FLOOR.office.hoverFolder(a.spec_id, -1) }, h("span", { class: "fi", "aria-hidden": "true" }), f)))),
-      h("p", { class: "fl-keys glass", "aria-hidden": "true" }, h("kbd", {}, "Esc"), "back to the floor", h("kbd", {}, "←"), h("kbd", {}, "→"), "next desk"));
+      h("p", { class: "fl-keys glass", "aria-hidden": "true" }, h("kbd", {}, "Esc"), "back to the floor", h("kbd", {}, "←"), h("kbd", {}, "→"), "next desk"),
+      S.letGo === a.spec_id ? letGoCard(a) : null);
   }
 
   let desk = null;
-  if (S.desk) {
+  if (S.desk && S.station) {
+    const st = STATIONS[S.station];
+    desk = h("aside", { class: "fl-desk fl-station", id: "fl-desk", "aria-labelledby": "desk-t" },
+      h("div", { class: "fl-desk-h" }, h("div", {}, kick(st.line), h("h2", { class: "h-m", id: "desk-t" }, st.name)), h("button", { class: "fl-icon", type: "button", "data-k": "fl-desk-x", "aria-label": "Back to the floor", onclick: closeDesk }, icon("x"))),
+      h("div", { class: "tabpanel stack-l" + (opts.scroll === "top" ? " enter" : ""), id: "panel", role: "region", "aria-label": st.name, tabindex: "-1" }, st.body(),
+        h("button", { class: "btn link fl-everything", type: "button", "data-k": "fl-all", onclick: () => openDesk(S.tab) }, "Everything, as a list")));
+  } else if (S.desk) {
     const tabName = TABS.find(([k]) => k === S.tab)[1], body = { team: teamTab, setup: setupTab, activity: activityTab, people: peopleTab, settings: settingsTab }[S.tab]();
     desk = h("aside", { class: "fl-desk", id: "fl-desk", "aria-labelledby": "desk-t" },
       h("div", { class: "fl-desk-h" }, h("div", {}, kick("Your desk"), h("h2", { class: "h-m", id: "desk-t" }, b.name)), h("button", { class: "fl-icon", type: "button", "data-k": "fl-desk-x", "aria-label": "Close your desk", onclick: closeDesk }, icon("x"))),
@@ -4067,16 +4486,17 @@ function renderFloor(opts = {}) {
   const fk = opts.keepFocus || (document.activeElement && document.activeElement.dataset && document.activeElement.dataset.k);
   paint("floor:" + S.bid, [h("div", { class: "floor" + (FLOOR.office ? " live" : "") },
     h("div", { class: "fl-load", "aria-hidden": "true" }, h("div", { class: "pipslot fl-pipslot" })),
-    head, h("div", { class: "fl-tags", "aria-hidden": "true" }, [...tags.values()]), say, roster, pov, desk)], plan, Object.assign({}, opts, { scroll: "top" }));
+    head, h("div", { class: "fl-tags", "aria-hidden": "true" }, [...tags.values()], [...stTags.values()]), say, roster, pov, desk)], plan, Object.assign({}, opts, { scroll: "top" }));
 
   // tell the 3D floor what to show
   FLOOR.wasNarrow = narrow();
   const o = FLOOR.office;
   if (o) {
-    const pipPoint = st === "paused" ? (ag.find(isPaused) || {}).spec_id : (ag.find((a) => a.needs.length && !isPaused(a)) || {}).spec_id;
+    const pipPoint = st === "paused" ? (ag.find(isPaused) || {}).spec_id : (ag.find((a) => youNeeds(a).length && !isPaused(a)) || {}).spec_id;
     o.sync({ dim: b.status === "disconnected", agents: ag.map((a, i) => { const L = looks.get(a.spec_id), p = propOf((a.role || "") + " " + a.name);
-      return { id: a.spec_id, look: L.look, light: L.light, hex: hexOf(a), prop: p === "headset" || p === "glasses" ? "letters" : p || "letters", phone: p === "headset", sticky: L.kind === "needs" ? "Needs you: " + lowerFirst(a.needs[0]) : null, ph: i * 1.3 + 0.3 }; }),
-      tags: [...tags.entries()], bubble: narrow() ? null : say, pipPoint: pipPoint || null });
+      return { id: a.spec_id, look: L.look, light: L.light, hex: hexOf(a), prop: p === "headset" || p === "glasses" ? "letters" : p || "letters", phone: p === "headset", sticky: L.kind === "needs" ? "Needs you: " + lowerFirst(youNeeds(a)[0]) : null, ph: i * 1.3 + 0.3 }; }),
+      tags: [...tags.entries()], bubble: narrow() ? null : say, pipPoint: pipPoint || null, stations: Object.assign(stationModel(), { tags: [...stTags.entries()] }) });
+    if (FLOOR.reenter) { FLOOR.reenter = false; o.enter(false); }
     if (S.focus) {
       const go = FLOOR.focusShown !== S.focus || o.mode !== "desk";
       FLOOR.focusShown = S.focus;
@@ -4088,8 +4508,12 @@ function renderFloor(opts = {}) {
       const host = document.getElementById("fl-scr-host"), home = document.getElementById("office"), layer = o.layer;
       if (!narrow() && host && layer.parentElement !== host) host.append(layer);
       else if (narrow() && home && layer.parentElement !== home) home.append(layer);
+    } else if (S.station) {
+      if (FLOOR.focusShown) { FLOOR.focusShown = null; o.mountScreen(null, null); }
+      o.station(S.station);
+      const home = document.getElementById("office"); if (home && o.layer.parentElement !== home) home.append(o.layer);
     } else {
-      if (FLOOR.focusShown || o.mode === "desk") { FLOOR.focusShown = null; o.mountScreen(null, null); o.floor(); }
+      if (FLOOR.focusShown || o.mode === "desk" || o.mode === "station") { FLOOR.focusShown = null; o.mountScreen(null, null); o.floor(); }
       const home = document.getElementById("office"); if (home && o.layer.parentElement !== home) home.append(o.layer);
     }
   }
