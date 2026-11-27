@@ -65,6 +65,9 @@ with sync_playwright() as p:
         check(card.locator(f'[data-k="note-{N2}"] button').count() == 0, tag + "owner: a note with no suggestion has no buttons")
         check("You said: no thanks" in card.locator(f'[data-k="note-{N3}"]').inner_text() and card.locator(f'[data-k="note-{N3}"] button').count() == 0, tag + "owner: an answered suggestion shows the answer and no buttons")
         check(fits(pg), tag + "owner: the card fits the width")
+        lay = pg.evaluate("""()=>{const c=document.querySelector('section[aria-label="Notes from your team"]'), cr=c.getBoundingClientRect(); let out=0; c.querySelectorAll('p,button,b').forEach(e=>{const r=e.getBoundingClientRect(); if(r.right>cr.right+1||r.left<cr.left-1) out++}); const tops=[...c.querySelector('.note').children].map(e=>Math.round(e.getBoundingClientRect().top)); return {out, stacked: tops.every((t,i)=>i===0||t>tops[i-1])}}""")
+        check(lay["out"] == 0 and lay["stacked"], tag + "owner: the suggestion reads top to bottom and nothing spills outside the card")
+        check(pg.locator('#legal a[href="/privacy"]').count() == 1 and pg.locator('#legal a[href="/terms"]').count() == 1, tag + "owner: privacy and terms are linked at the foot of the Portal")
         card.locator(f'[data-k="note-{N1}"] [data-k="note-yes"]').click(); pg.wait_for_timeout(2000)
         sent = [c for c in calls if c[1] == f"pip-portal/business/{BIZ}/note"]
         check(len(sent) == 1 and sent[0][2] == {"note": N1, "decision": "good_idea"}, tag + "owner: Good idea sends one answer for that note and nothing else")
