@@ -36,6 +36,7 @@ import { sendOut } from "../_shared/edges.ts";
 import { addsToCalendar, busyTimes, inviteKeys, withoutInvites } from "../_shared/calendar.ts";
 import { firstText, gate as outboundGate, phone, refusal as sendRefusal } from "../_shared/outbound.ts";
 import { canText } from "../_shared/line.ts";
+import { honest } from "../_shared/call-notices.ts";
 import { isOperatorRun, operatorSend } from "../_shared/operate-run.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!, SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -213,7 +214,7 @@ const refusal = (who: unknown, tool: string, why: string) => cut(`${who} asked f
 // ---------- the model ----------
 /** On a phone call every second of silence is felt. A spoken answer is one or two sentences, so the model is told so and is not given room to write more. */
 const VOICE_MAX_TOKENS = 320;
-const VOICE_RULES = "\n\nTHIS IS A PHONE CALL. The caller hears your words read aloud. Answer in one or two short sentences. No lists, no headings, no web addresses read out, no \"as an AI\" more than once. Ask one question at a time. If you need a tool, use it at once without saying you are about to.";
+const VOICE_RULES = "\n\nTHIS IS A PHONE CALL. The caller hears your words read aloud. Answer in one or two short sentences. No lists, no headings, no web addresses read out. Never say or imply you are a person; if the caller asks whether they are talking to a person or a machine, say plainly that you are an AI assistant, once, and carry on. Ask one question at a time. If you need a tool, use it at once without saying you are about to.";
 async function claude(system: string, messages: J[], tools: J[], maxTokens = 1600): Promise<J | null> {
   const key = Deno.env.get("ANTHROPIC_API_KEY");
   if (!key) return null;
@@ -662,6 +663,8 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
     reply = reply || `Thanks for reaching out to ${c.name}! A team member will get back to you shortly.`;
   }
   if (first && !AI_RE.test(reply)) reply = `This is ${c.teammate}, an AI assistant for ${c.name}. ${reply}`;
+  // On every channel and in every state: never a claim to be a person, and "an AI" whenever the customer asks.
+  reply = honest(reply, message, String(c.name ?? "").replace(/\s*[(\[][^)\]]*[)\]]/g, "").trim());
   reply = clean(reply).slice(0, channel === "sms" ? 700 : 1400);
 
   await db.from("messages").insert([{ conversation_id: conv, role: "user", content: message }, { conversation_id: conv, role: "assistant", content: reply, actions }]);

@@ -642,6 +642,30 @@ test("a tool switched off in the catalog is not offered", async () => {
 });
 
 // ---------- what the customer is told ----------
+// A conversation that is already under way: the opening line was said earlier, so "first" is false.
+const CONV = "55555555-5555-4555-8555-555555555555";
+const underway = () => { const tables = baseTables(); tables.conversations.push({ id: CONV, spec_id: IDS.spec, channel: "web_chat" }); tables.messages.push({ id: 1, conversation_id: CONV, role: "user", content: "hi", actions: [] }, { id: 2, conversation_id: CONV, role: "assistant", content: "Thanks for getting in touch with TEST Fork. How can I help?", actions: [] }); return tables; };
+
+test("asked whether it is a person, the reply always says it is an AI, at any point in a conversation", async () => {
+  const t = await boot({ tables: underway(), model: [says("We open at 9, and we close at 10.")] });
+  const r = await t.turn("wait, am I talking to a real person? and when do you close", { conversation: CONV });
+  assert.equal(r.json.reply, "I'm an AI assistant for TEST Fork. We open at 9, and we close at 10.");
+});
+
+test("a reply that claims to be a person never reaches the customer", async () => {
+  const t = await boot({ tables: underway(), model: [says("Yes, I'm a real person. How can I help?")] });
+  const r = await t.turn("are you real?", { conversation: CONV });
+  assert.match(r.json.reply, /^I'm an AI assistant for TEST Fork\./);
+  assert.doesNotMatch(r.json.reply, /real person/);
+  assert.doesNotMatch(JSON.stringify(t.inserts("messages")), /real person/, "nor is it kept in the conversation");
+});
+
+test("when nobody asks and nothing false is said, a later reply is left as the teammate wrote it", async () => {
+  const t = await boot({ tables: underway(), model: [says("We close at 10.")] });
+  const r = await t.turn("and when do you close?", { conversation: CONV });
+  assert.equal(r.json.reply, "We close at 10.");
+});
+
 test("the first reply always says it is an AI, even when the model forgets", async () => {
   const t = await boot({ model: [says("Sure, we open at 9.")] });
   const r = await t.turn("when do you open?");

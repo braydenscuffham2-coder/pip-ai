@@ -5,7 +5,9 @@
 
 ## How Pip uses this table
 
-Pip does not vary its behavior by state. In every state a teammate says it is an AI at the start and announces recording on every recorded call. The database's default row (`jurisdiction_rules`, state `US`) is set to all-party consent, and the stricter of the default and the state row applies. So this table is a check that the single rule is strict enough, and a list of where the law is moving. Nothing in the code reads the recording column yet, because calls are not live.
+**Changed November 27, 2026 for inbound phone calls:** the opening line now follows the business's state and the caller's area code (see `legal/notices.md` section 2 and the `call_*` columns of `jurisdiction_rules`). Texts, chat and email are unchanged. The paragraph below describes those channels and the table as it was first drawn up.
+
+Pip does not vary its behavior by state on those channels. In every state a teammate says it is an AI at the start and announces recording on every recorded call. The database's default row (`jurisdiction_rules`, state `US`) is set to all-party consent, and the stricter of the default and the state row applies. So this table is a check that the single rule is strict enough, and a list of where the law is moving. Nothing in the code reads the recording column yet, because calls are not live.
 
 ## 1. Call recording consent
 

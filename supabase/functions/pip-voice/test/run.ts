@@ -12,10 +12,12 @@ const sha = async (s: string) => [...new Uint8Array(await crypto.subtle.digest("
 const world: any = {};
 function reset() {
   Object.assign(world, {
-    lines: { "+12085550100": { ok: true, business: "b1", name: "TEST Fork & <Co> (end-to-end check)", spec: "3b5b8524-c712-4cee-82ec-97e1565f33ff", teammate: "Hallie", spec_status: "sandbox" }, "+12085550101": { ok: true, business: "b2", name: "TEST Empty", spec: null } },
+    lines: { "+12085550100": { ok: true, business: "b1", name: "TEST Fork & <Co> (end-to-end check)", spec: "3b5b8524-c712-4cee-82ec-97e1565f33ff", teammate: "Hallie", spec_status: "sandbox", state: "ID", health: false, ai_notice: "law", voice: null }, "+12085550101": { ok: true, business: "b2", name: "TEST Empty", spec: null } },
     calls: {} as Record<string, any>, alerts: [] as any[], said: [] as any[], usage: [] as any[], turns: [] as any[], registered: [] as any[],
     el: "ok", turn: { delay: 0, reply: "We are open until nine tonight.", actions: [], fail: false }, handoff: { allowed: false }, twilioCalls: {} as Record<string, any>,
     agent: "agent_test0000000000",
+    rules: [{ state: "US", call_ai_notice: "always", call_notes_notice: true }, { state: "ME", call_ai_notice: "always", call_ai_from: "2025-09-24", call_notes_notice: false },
+      { state: "ID", call_ai_notice: "on_request", call_notes_notice: false }, { state: "CA", call_ai_notice: "on_request", call_notes_notice: true }, { state: "UT", call_ai_notice: "health", call_notes_notice: false }] as any[] | null,
   });
 }
 const byId = (id: string) => Object.values(world.calls).find((c: any) => c.id === id) as any;
@@ -28,7 +30,7 @@ const rpc: Record<string, (a: any) => any> = {
     if (x.paused) return { ok: false, reason: "paused" };
     const old = world.calls[a.p_call_sid];
     if (old) { if (old.state !== "ringing") return { ok: false, reason: "already_started" }; old.pass_hash = a.p_pass_hash; return { ok: true, call: old.id, again: true }; }
-    const c = { id: crypto.randomUUID(), sid: a.p_call_sid, pass_hash: a.p_pass_hash, state: "ringing", spec: x.spec, conversation: crypto.randomUUID(), turns: 0, turn_open: 0, next: null, outcome: null, greeting: a.p_greeting, billed: false, hint: a.p_from.slice(-4) };
+    const c = { id: crypto.randomUUID(), sid: a.p_call_sid, pass_hash: a.p_pass_hash, state: "ringing", spec: x.spec, conversation: crypto.randomUUID(), turns: 0, turn_open: 0, next: null, outcome: null, greeting: a.p_greeting, billed: false, hint: a.p_from.slice(-4), wording: a.p_wording, ai: a.p_ai_notice, notes: a.p_notes_notice, why: a.p_why };
     world.calls[a.p_call_sid] = c;
     return { ok: true, call: c.id, conversation: c.conversation, spec: c.spec };
   },
@@ -69,6 +71,7 @@ Deno.serve({ port: MOCK, hostname: "127.0.0.1", onListen() {} }, async (req) => 
   const u = new URL(req.url), p = u.pathname;
   const j = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "content-type": "application/json" } });
   if (p.startsWith("/rest/v1/rpc/")) { const f = rpc[p.slice(13)]; return f ? j(f(await req.json())) : j({ message: "no such function" }, 404); }
+  if (p === "/rest/v1/jurisdiction_rules") return world.rules ? j(world.rules) : j({ message: "down" }, 500);
   if (p === "/rest/v1/forge_settings") return j(u.searchParams.get("key") === "eq.voice" && world.agent ? { value: { agent_id: world.agent } } : null);
   if (p === "/rest/v1/voice_calls") {
     if (req.method === "GET") { const c = world.calls[(u.searchParams.get("call_sid") ?? "").replace("eq.", "")]; return j(c ? { id: c.id, contact_hint: c.hint } : null); }
@@ -114,8 +117,8 @@ async function twilio(path: string, params: Record<string, string>, opt: { token
   return { status: r.status, text: await r.text() };
 }
 const SID = (n: number) => "CA" + n.toString(16).padStart(32, "0");
-async function ring(n: number, to = "+12085550100") {
-  const r = await twilio("/twilio/voice", { CallSid: SID(n), From: "+12085551234", To: to });
+async function ring(n: number, to = "+12085550100", from = "+12085551234") {
+  const r = await twilio("/twilio/voice", { CallSid: SID(n), From: from, To: to });
   const reg = world.registered.at(-1);
   return { ...r, pass: reg?.body?.conversation_initiation_client_data?.dynamic_variables?.secret__pip_pass as string, reg };
 }
@@ -152,8 +155,8 @@ await test("A call comes in", async () => {
   ok("Twilio is handed the ElevenLabs connection", r.status === 200 && r.text.includes("<Stream"));
   ok("with an address to ask when the speaking side closes", r.text.includes(`<Connect action="${SELF}/twilio/after" method="POST">`), r.text);
   const c = world.calls[SID(1)];
-  ok("the greeting says AI in its first sentence", /^Hi, this is Hallie, an AI assistant for TEST Fork & <Co>\./.test(c.greeting), c.greeting);
-  ok("the greeting says written notes are kept", /written notes/.test(c.greeting));
+  ok("an Idaho caller to an Idaho business hears the plain greeting", c.greeting === "Thanks for calling TEST Fork & <Co>, this is Hallie. How can I help?", c.greeting);
+  ok("the database is told that neither notice was said, and why", c.ai === false && c.notes === false && c.wording === "v2-by-state" && c.why?.business === "ID" && c.why?.caller === "ID" && c.why?.ai === "not_required", JSON.stringify(c.why));
   ok("a note in brackets after the business name is not spoken", !/end-to-end/.test(c.greeting));
   ok("ElevenLabs is given the greeting to speak", r.reg.body.conversation_initiation_client_data.dynamic_variables.pip_greeting === c.greeting);
   ok("the pass goes to ElevenLabs as a secret variable, 64 hex characters", /^[0-9a-f]{64}$/.test(r.pass));
@@ -324,6 +327,39 @@ await test("A caller who keeps talking gets one answer to the whole sentence, no
   ok("the dropped middle request never reached the teammate", world.turns.length === 2 && world.turns[0].message === "I'd like a table for, um" && world.turns[1].message === "I'd like a table for, um, six people on Friday", JSON.stringify(world.turns.map((t: any) => t.message)));
   const again = await speak(p, "thanks");
   ok("the line is free for the next turn straight away", again.done && again.total < 2500 + 1500 && world.turns.length === 3, `${again.total} ms`);
+});
+
+await test("What a call opens with follows the business's state and the caller's", async () => {
+  reset();
+  let c: any;
+  await ring(30, "+12085550100", "+12075550100"); c = world.calls[SID(30)];
+  ok("a Maine caller is told it is an AI, first", c.ai === true && c.notes === false && /^Thanks for calling TEST Fork & <Co>\. This is Hallie, an AI assistant\. /.test(c.greeting) && c.why.ai === "caller_from_ME", c.greeting);
+  await ring(31, "+12085550100", "+12135550100"); c = world.calls[SID(31)];
+  ok("a California caller is told the call is transcribed, and nothing else", c.ai === false && c.notes === true && c.greeting === "Thanks for calling TEST Fork & <Co>, this is Hallie. This call is transcribed. How can I help?", c.greeting);
+  await ring(32, "+12085550100", "anonymous"); c = world.calls[SID(32)];
+  ok("a caller whose state cannot be told is told the call is transcribed", c.notes === true && c.ai === false && c.why.notes === "caller_state_not_known", JSON.stringify(c.why));
+  world.lines["+12085550100"].ai_notice = "always";
+  await ring(33); c = world.calls[SID(33)];
+  ok("a line set to always say it is an AI says so", c.ai === true && /an AI assistant/.test(c.greeting) && c.why.ai === "line_set_to_always");
+  world.lines["+12085550100"].ai_notice = "law"; world.lines["+12085550100"].state = "UT"; world.lines["+12085550100"].health = true;
+  await ring(34); c = world.calls[SID(34)];
+  ok("a health business in Utah says it is an AI", c.ai === true && c.why.ai === "business_in_UT");
+  world.lines["+12085550100"].state = null; world.lines["+12085550100"].health = false;
+  await ring(35); c = world.calls[SID(35)];
+  ok("a business with no state on file says both", c.ai === true && c.notes === true && /an AI assistant, and this call is transcribed/.test(c.greeting), c.greeting);
+  ok("the greeting spoken is always the one that was logged", world.registered.at(-1).body.conversation_initiation_client_data.dynamic_variables.pip_greeting === c.greeting);
+});
+
+await test("A line's own voice", async () => {
+  reset();
+  await ring(36);
+  ok("with no voice set, the agent's own voice is used", !("conversation_config_override" in world.registered.at(-1).body.conversation_initiation_client_data));
+  world.lines["+12085550100"].voice = "g6xIsTj2HwM6VR4iXFCw";
+  await ring(37);
+  ok("a line's voice is passed for that call", world.registered.at(-1).body.conversation_initiation_client_data.conversation_config_override?.tts?.voice_id === "g6xIsTj2HwM6VR4iXFCw");
+  world.lines["+12085550100"].voice = "not a voice id!";
+  await ring(38);
+  ok("anything that is not a voice id is ignored", !("conversation_config_override" in world.registered.at(-1).body.conversation_initiation_client_data));
 });
 
 await test("Billing", async () => {

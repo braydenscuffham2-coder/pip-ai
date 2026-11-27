@@ -21,13 +21,14 @@
 // Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ELEVENLABS_API_KEY, TWILIO_AUTH_TOKEN, TWILIO_ACCOUNT_SID.
 // Setting: forge_settings 'voice' = {"agent_id":"agent_..."} (the ElevenLabs agent that speaks; not a secret).
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { decide, greeting as openingLine, type Rule } from "../_shared/call-notices.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!, SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const db = createClient(SB_URL, SERVICE, { auth: { persistSession: false, autoRefreshToken: false } });
 const SELF = `${SB_URL}/functions/v1/pip-voice`;
 const EL = (Deno.env.get("ELEVENLABS_BASE_URL") || "https://api.elevenlabs.io").replace(/\/+$/, "");
 const TW = (Deno.env.get("TWILIO_BASE_URL") || "https://api.twilio.com").replace(/\/+$/, "");
-const WORDING = "v1-strict"; // the greeting below. Lane 10 supplies wording per state; until then this one everywhere.
+const WORDING = "v2-by-state"; // the opening line is chosen per call by _shared/call-notices.ts from jurisdiction_rules
 const HOLD_MS = 700; // how long the caller waits in silence before a holding phrase
 const HOLD = ["One moment.", "Let me check.", "Okay, one second.", "Sure, just a moment."];
 const TURN_TIMEOUT_MS = 20000;
@@ -83,8 +84,16 @@ async function settings() {
 }
 
 // ---------- what a caller hears before and without the teammate ----------
-const greeting = (teammate: string, name: string) =>
-  `Hi, this is ${teammate}, an AI assistant for ${name}. I keep written notes of this call so the team can follow up. How can I help?`;
+// The opening line itself is built by _shared/call-notices.ts: it says it is an AI, or that the call is transcribed,
+// only where the business's state or the caller's state requires it. The rules are rows in jurisdiction_rules.
+let rulesAt = 0, rulesNow: Rule[] | null = null;
+async function rules(): Promise<Rule[] | null> {
+  if (rulesNow && Date.now() - rulesAt < 300_000) return rulesNow;
+  const { data, error } = await db.from("jurisdiction_rules").select("state,call_ai_notice,call_ai_from,call_notes_notice");
+  if (error || !Array.isArray(data) || !data.length) return rulesNow; // not read: decide() then says both notices
+  rulesNow = data as Rule[]; rulesAt = Date.now();
+  return rulesNow;
+}
 const DOWN = (name: string) => `Thanks for calling ${name}. This is an automated message. Our phone assistant is not available right now. Please call back in a few minutes.`;
 const CLOSED = (name: string) => `Thanks for calling ${name}. This is an automated message. Nobody can take your call on this line right now. Please try again later.`;
 const NO_LINE = "This is an automated message. This number is not in service.";
@@ -114,8 +123,9 @@ async function incoming(req: Request) {
   const spoken = String(line.name ?? "").replace(/\s*[(\[][^)\]]*[)\]]/g, "").trim().slice(0, 120) || "the business";
   if (!line.spec) return sayBye(CLOSED(spoken));
   const pass = hex(crypto.getRandomValues(new Uint8Array(32)));
-  const hello = greeting(String(line.teammate || "the assistant").slice(0, 60), spoken);
-  const { data: start, error } = await db.rpc("voice_call_start", { p_to: to, p_from: from, p_call_sid: sid, p_pass_hash: await sha256(pass), p_greeting: hello, p_wording: WORDING });
+  const notices = decide({ businessState: line.state, health: line.health === true, from, rules: await rules(), today: new Date().toISOString().slice(0, 10), line: line.ai_notice });
+  const hello = openingLine(String(line.teammate || "the front desk").slice(0, 60), spoken, notices);
+  const { data: start, error } = await db.rpc("voice_call_start", { p_to: to, p_from: from, p_call_sid: sid, p_pass_hash: await sha256(pass), p_greeting: hello, p_wording: WORDING, p_ai_notice: notices.ai, p_notes_notice: notices.notes, p_why: notices.why });
   if (error || !start?.ok) {
     if (error) console.error("[voice] start", error.message.slice(0, 160));
     return sayBye(start?.reason === "paused" || start?.reason === "no_teammate" ? CLOSED(spoken) : DOWN(spoken));
@@ -131,7 +141,11 @@ async function incoming(req: Request) {
         body: JSON.stringify({
           agent_id: agent, from_number: from, to_number: to, direction: "inbound",
           // The pass is a secret variable: ElevenLabs puts it only in the header of its requests back to this function.
-          conversation_initiation_client_data: { dynamic_variables: { pip_greeting: hello, secret__pip_pass: pass } },
+          conversation_initiation_client_data: {
+            dynamic_variables: { pip_greeting: hello, secret__pip_pass: pass },
+            // A line may have its own voice (phone_lines.voice_id). Without one the agent's own voice speaks.
+            ...(typeof line.voice === "string" && /^[A-Za-z0-9]{15,40}$/.test(line.voice) ? { conversation_config_override: { tts: { voice_id: line.voice } } } : {}),
+          },
         }),
         signal: AbortSignal.timeout(4000),
       });

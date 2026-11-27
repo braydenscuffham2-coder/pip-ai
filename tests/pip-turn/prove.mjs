@@ -36,6 +36,7 @@ const BREAKS = [
   ["inactive connections are used", 'conn.status !== "active" ||', ""],
   ["tools not given to the teammate can run", 'if (!meta) return { text: "That tool is not available.", error: true };', 'if (!meta) { actions.push({ tool: name, status: "done" }); return { text: "Done." }; }'],
   ["no AI disclosure on the first reply", "if (first && !AI_RE.test(reply))", "if (false)"],
+  ["a claim to be a person reaches the customer, and a question about it goes unanswered", "reply = honest(reply, message,", "reply = ((r) => r)(reply, message,"],
   ["no AI line on outgoing email", 'if (meta.row.guard === "email") {', "if (false) {"],
   ["a draft teammate answers", '!["live", "approved", "sandbox"].includes(c.s.status)', "false"],
   ["a disconnected business is served", '["disconnected", "cancelled"].includes(c.biz.status)', "false"],

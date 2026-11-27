@@ -14,7 +14,9 @@ How a call to a business's Pip number works, what is enforced where, and how to 
 
 | Rule | Where |
 | --- | --- |
-| Every call opens with "Hi, this is NAME, an AI assistant for BUSINESS. I keep written notes of this call so the team can follow up." | `greeting()` in `pip-voice`; logged to `compliance_events` by `voice_call_start` |
+| What a call opens with: "Thanks for calling BUSINESS, this is NAME. How can I help?", plus "an AI assistant" and "this call is transcribed" only where the business's state or the caller's area code requires them. The stricter state wins; a state that cannot be told gets the careful answer | `decide()` and `greeting()` in `_shared/call-notices.ts`, from the `call_*` columns of `jurisdiction_rules`. `voice_call_start` logs what was really said and why (`voice_calls.detail`) |
+| A teammate never says it is a person, and says it is an AI whenever asked, on every channel | `honest()` in `_shared/call-notices.ts`, applied to every reply in `pip-turn` |
+| A line can be set to always say it is an AI, and can have its own voice | `phone_lines.ai_notice` (`law` or `always`), `phone_lines.voice_id` |
 | No audio is recorded | ElevenLabs agent setting; no Twilio recording is ever started |
 | A caller's number is stored only as a one-way code and its last four digits | `voice_call_start` |
 | The teammate, its tools and its limits | `pip-turn`, unchanged. ElevenLabs' own model, prompt, tools and fallback model are off |
@@ -83,5 +85,6 @@ Not covered: a new number cannot send texts until it is registered with the carr
 
 ## Not proven yet
 
-- Anything on a real phone line.
+- The new opening lines on a real call (built November 27; the first two real calls used the old wording).
+- That an area code is a good enough stand-in for where a caller is. A mobile number keeps its area code when its owner moves.
 - That ElevenLabs sends the pass header and the greeting the way its docs describe, and that its "end call" closes the line so Twilio asks `/twilio/after`. Both come from the vendors' current docs, not from a live call.

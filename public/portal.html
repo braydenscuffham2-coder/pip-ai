@@ -2200,7 +2200,7 @@ function settingsTab() {
   const rule = (txt, cls) => h("li", { class: cls }, icon("check"), h("span", {}, txt));
   return [
     h("section", { class: "card rise", style: { "--i": 1 }, "aria-label": "How your teammates behave" }, kick("Rules your team follows"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "How your teammates behave" + (b.state ? " in " + b.state : "")), h("ul", { class: "rules", style: { marginTop: "10px" } },
-      rule("They say they are an AI at the start of every call, text thread and chat."), rule("Every recorded call starts with a recording notice."),
+      rule("They never say they are a person, and they say they are an AI whenever a customer asks."), rule("Every text thread and chat starts by saying it is an AI. A phone call says so at the start wherever the law requires it."), rule("No call audio is kept. A caller is told the call is transcribed wherever the law requires it."),
       rule("They only call or text people who wrote in first or agreed to it, and they honor STOP at once in every channel."),
       us.outbound_hours ? rule("Outbound calls and texts only go out Monday to Saturday " + ((us.outbound_hours.mon_sat || []).join(" to ")) + " and Sunday " + ((us.outbound_hours.sun || []).join(" to ")) + ", your local time.") : null,
       st && st.telemarketing ? rule(b.state + ": " + st.telemarketing, "st") : null, st && st.ai_disclosure ? rule(b.state + ": " + st.ai_disclosure, "st") : null, st && st.biometric ? rule(b.state + ": " + st.biometric, "st") : null),
