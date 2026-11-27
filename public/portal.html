@@ -1847,6 +1847,7 @@ function teamTab() {
   return [stageCard(),
     // A job waiting on the owner (a yes before saving, or a sign-in) is shown first, where they land.
     isOwner() ? workCard(true) : null,
+    isOwner() ? notesCard() : null,
     d.agents.length ? h("section", { class: "stack", "aria-label": "Your team" }, h("div", { class: "row", style: { justifyContent: "space-between", marginTop: "6px" } }, h("h2", { class: "h-s" }, "Your team"), h("span", { class: "fine" }, d.agents.length === 1 ? "1 teammate" : d.agents.length + " teammates")), h("div", { class: "team" }, d.agents.map(mateCard)))
       : h("div", { class: "card dash empty rise", style: { "--i": 2 }, "data-pip-empty": "" }, h("p", { class: "h-s" }, "Your teammates will show here.")),
     d.business.health_lane ? h("div", { class: "card warm rise", style: { "--i": 4 } }, kick("Health agreements"), h("p", { class: "lead", style: { marginTop: "10px", fontSize: "15.5px" } }, "No health teammate goes live until each of these is signed."),
@@ -1964,6 +1965,29 @@ function setupTab() {
     isOwner() && (d.setup_unlocked || d.role === "founder") ? vaultCard() : null,
     isOwner() ? doorsCard() : null,
     isOwner() ? workCard() : null];
+}
+// ---------- weekly notes: what each teammate did last week, what went wrong, and one suggestion at most ----------
+// A suggestion is only words. "Good idea" and "No thanks" record what the owner thinks and tell Pip's builder; neither
+// changes the teammate.
+function notesCard() {
+  const notes = S.data.notes || [], id = S.bid;
+  if (!notes.length) return null;
+  const answer = (n, decision) => run(() => api("/business/" + id + "/note", { note: n.id, decision }), decision === "good_idea" ? "Noted. Pip's builder has been told." : "Noted. Nothing will change.");
+  const week = (iso) => { const d = new Date(iso + "T12:00:00Z"); return "Week of " + d.toLocaleDateString(undefined, { month: "long", day: "numeric" }); };
+  const one = (n) => h("li", { "data-k": "note-" + n.id, style: { padding: "14px 0", borderTop: "1px solid var(--line, rgba(11,13,31,.1))" } },
+    h("div", { class: "row", style: { alignItems: "baseline", gap: "8px", flexWrap: "wrap" } }, h("b", {}, n.teammate), h("span", { class: "fine" }, week(n.week_start))),
+    h("p", { class: "small", style: { marginTop: "6px" } }, n.did),
+    n.wrong ? h("p", { class: "small", style: { marginTop: "6px" } }, h("b", {}, "What went wrong: "), n.wrong) : null,
+    n.proposal ? h("div", { class: "note", style: { marginTop: "10px" } },
+      h("p", { class: "small" }, h("b", {}, "One suggestion: "), n.proposal.change), h("p", { class: "small", style: { marginTop: "4px" } }, n.proposal.why),
+      n.decision ? h("p", { class: "fine", style: { marginTop: "8px" } }, "You said: " + (n.decision === "good_idea" ? "good idea" : "no thanks") + ". Nothing changes by itself.")
+        : h("div", {}, h("div", { class: "btns", style: { marginTop: "8px" } },
+            h("button", { class: "btn ghost", type: "button", "data-k": "note-yes", onclick: () => answer(n, "good_idea") }, "Good idea"),
+            h("button", { class: "btn link", type: "button", "data-k": "note-no", onclick: () => answer(n, "no_thanks") }, "No thanks")),
+          h("p", { class: "fine", style: { marginTop: "6px" } }, "This is only a suggestion. Your answer goes to Pip's builder. Nothing changes by itself."))) : null);
+  return h("section", { class: "card dash rise", style: { "--i": 2 }, "aria-label": "Notes from your team" },
+    h("h2", { class: "h-s" }, "Notes from your team"), h("p", { class: "small", style: { marginTop: "6px" } }, "Once a week each teammate writes down what it did and what went wrong."),
+    h("ul", { style: { listStyle: "none", padding: 0, margin: "10px 0 0" } }, notes.map(one)));
 }
 // ---------- pieces: small software Pip built for this business ----------
 // Everyone at the business sees the records, adds one and moves one between the piece's own stages. There is no delete.
