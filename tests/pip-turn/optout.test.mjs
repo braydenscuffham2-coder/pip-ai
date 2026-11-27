@@ -148,7 +148,8 @@ test("on a phone call the teammate is told to answer in a sentence or two and is
   await t.turn("What time do you open on Friday?", { channel: "voice" });
   const call = t.world.model.calls[0];
   assert.equal(call.max_tokens, 320);
-  assert.match(call.system[0].text, /THIS IS A PHONE CALL\. The caller hears your words read aloud\. Answer in one or two short sentences\./);
+  assert.match(call.system[0].text, /THIS IS A PHONE CALL on the business.s main line\. The caller hears your words spoken aloud\./);
+  assert.match(call.system[0].text, /One or two short sentences, then stop\./);
   t.restore();
   const w = await boot({ model: [says("We open at 5 PM on Friday.")] });
   await w.turn("What time do you open on Friday?");
