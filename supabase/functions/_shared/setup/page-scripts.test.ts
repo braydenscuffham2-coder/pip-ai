@@ -1,5 +1,5 @@
 // The scripts the Setup Agent runs inside the tool's page, run here in a simulated page (jsdom).
-// Skips itself when jsdom is not installed (npm i --no-save jsdom to run it).
+// jsdom is a dev dependency, so these run in CI. They still skip themselves if it is missing.
 //   node --test supabase/functions/_shared/setup/page-scripts.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
