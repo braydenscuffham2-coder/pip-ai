@@ -158,11 +158,13 @@ function createOffice(THREE, X, opts) {
   const desks = []; // { g, side, screen, tex, cv, note, lamp, seat, monC, monN, hit, mate }
 
   // ---------- the team's floor: two rows of desks, each turned toward you, one per teammate plus an open desk ----------
-  const ROWS = [10.0, 13.6, 17.2], ROW_X = 2.5, TURN = THREE.MathUtils.degToRad(65);
+  // three rows; each row has an inner pair by the aisle and, for bigger teams, an outer pair further out
+  const ROWS = [10.0, 13.6, 17.2], ROW_X = 2.5, OUTER_X = 5.0, TURN = THREE.MathUtils.degToRad(65), MAX_DESKS = 12;
+  const SLOTS = []; for (const x of [ROW_X, OUTER_X]) for (const y of ROWS) for (const side of [-1, 1]) SLOTS.push({ x: side * x, y, side });
   const tpl = {};
   function deskAt(i) {
-    const row = Math.floor(i / 2), side = i % 2 ? 1 : -1, g = new THREE.Group();
-    g.position.copy(B(side * ROW_X, ROWS[row] || ROWS[ROWS.length - 1] + 3.6 * (row - ROWS.length + 1), 0));
+    const sl = SLOTS[i], side = sl.side, g = new THREE.Group();
+    g.position.copy(B(sl.x, sl.y, 0));
     g.rotation.y = side < 0 ? TURN : -TURN; if (side > 0) g.scale.x = -1; // the right-hand row is the left one in a mirror
     scene.add(g);
     mesh("desk", tpl.desk, g);
@@ -350,8 +352,8 @@ function createOffice(THREE, X, opts) {
   const lookOf = (a) => { const base = TEAM[colorName(a.hex)];
     return { name: a.id, lite: true, core: base, flank: shade(base, 0.62), belly: shade(base, 0.34), stalk: shade(base, 0.1), acc: a.acc || null }; };
   function syncCast() {
-    const list = model.agents.filter((a) => a.look !== "open").slice(0, 11), keep = new Set();
-    layoutDesks(list.length + 1);
+    const list = model.agents.filter((a) => a.look !== "open").slice(0, MAX_DESKS), keep = new Set();
+    layoutDesks(Math.min(MAX_DESKS, list.length + 1));
     list.forEach((a, i) => {
       keep.add(a.id); const d = desks[i], lk = lookOf(a), k = JSON.stringify(lk);
       let m = mates.get(a.id);
@@ -367,18 +369,19 @@ function createOffice(THREE, X, opts) {
       m.actor.A.task = a.kind === "paused" ? "sleep" : a.kind === "needs" ? "needs" : a.kind === "live" || a.kind === "build" ? "type" : null;
       m.actor.acts.mood(a.kind === "needs" ? "concerned" : "calm");
       m.rig.skin.transparent = a.kind === "build"; m.rig.skin.opacity = a.kind === "build" ? 0.55 : 1;
-      d.note.visible = a.kind === "needs"; if (a.kind === "needs") paintNote(d.note.material.map, a.sticky || a.line || "");
+      d.note.visible = a.kind === "needs"; const ns = a.sticky || a.line || ""; if (a.kind === "needs" && d.noteSig !== ns) { d.noteSig = ns; paintNote(d.note.material.map, ns); }
       d.lamp.material.color.set(a.kind === "paused" ? "#d9dbe0" : a.kind === "needs" ? "#ffb84d" : "#ffe2b0").multiplyScalar(a.kind === "paused" ? 0.9 : 1.1);
       const wk = (a.work && a.work.length ? a.work : [a.line]).filter(Boolean), sig = a.kind + "|" + a.name + "|" + wk.join("|");
       d.data = a; if (d.sig !== sig) { d.sig = sig; d.work = wk; d.typed = 0; d.wi = 0; d.doneAt = 0; paintScreen(d, a, a.kind === "live" ? "" : null, 0); }
     });
     for (const [id, m] of mates) if (!keep.has(id)) { scene.remove(m.a); mates.delete(id); const j = hits.findIndex((h) => h.id === id); if (j >= 0) hits.splice(j, 1); }
-    const open = desks[list.length]; if (open) { open.mate = null; open.data = null; open.note.visible = false; open.lamp.material.color.set("#fff6e8");
-      paintScreen(open, { name: "Open desk", role: "Room for one more", line: "A new teammate can sit here.", kind: "ready", hex: "#2fc4b2" }, null, 0); }
+    const open = list.length < MAX_DESKS ? desks[list.length] : null; if (open) { open.mate = null; open.data = null; open.note.visible = false; open.lamp.material.color.set("#fff6e8");
+      if (open.sig !== "open") { open.sig = "open"; paintScreen(open, { name: "Open desk", role: "Room for one more", line: "A new teammate can sit here.", kind: "ready", hex: "#2fc4b2" }, null, 0); } }
     const tools = (model.stations && model.stations.tools) || [];
     const order = [4, 5, 6, 7, 0, 1, 2, 3, 8, 9, 10, 11];
-    devices.forEach((v) => { const k = order.indexOf(v.i), tool = tools[k] || null; v.tool = tool; paintFace(v.ft, tool); });
-    if (meterTex) paintMeter(meterTex, meterOf(model.stations));
+    devices.forEach((v) => { const k = order.indexOf(v.i), tool = tools[k] || null, sig = tool ? tool.short + "|" + tool.state : "";
+      v.tool = tool; if (v.sig !== sig) { v.sig = sig; paintFace(v.ft, tool); } }); // repaint only what changed: uploads are what stutter
+    const ms = JSON.stringify(meterOf(model.stations)); if (meterTex && ms !== meterSig) { meterSig = ms; paintMeter(meterTex, meterOf(model.stations)); }
     if (mode === "floor" && !travel && !pipTravel) { const to = pipSpot(STOPS.floor()); if (to.distanceTo(pip.a.position) > 0.05) pipGo(to, 900); }
   }
   function meterOf(st) { const m = st && st.meter; if (!m) return null; return { k: m.frac || 0, big: Math.round((m.frac || 0) * 100) + "%" }; }
@@ -430,7 +433,8 @@ function createOffice(THREE, X, opts) {
       orb.classList.toggle("hl-hide", !vis || !still);
     }
     for (const [id, el] of model.tags || []) { const m = mates.get(id); if (!m || el.parentElement !== pins) continue;
-      const vis = place(m.desk.seat.clone().add(V(0, 0.36, 0)), el, 0, 0); el.classList.toggle("hl-hide", !vis || mode !== "floor" || !!travel || entering); }
+      const show = mates.size <= 5 || m.data.kind === "needs" || (hovered && (hovered.id === id || (hovered.d && hovered.d.mate === m)));
+      const vis = place(m.desk.seat.clone().add(V(0, 0.36, 0)), el, 0, 0); el.classList.toggle("hl-hide", !vis || !show || mode !== "floor" || !!travel || entering); }
   }
 
   // ---------- a teammate's screen: the real HTML, glued to their monitor, sharp at any size ----------
@@ -558,7 +562,7 @@ function createOffice(THREE, X, opts) {
   }
 
   // ---------- the frame loop ----------
-  let raf = 0, active = true, held = false, last = performance.now(), slow = 0, nextGlance = 0, zoomed = false, meterTex = null;
+  let meterSig = null, raf = 0, active = true, held = false, last = performance.now(), slow = 0, nextGlance = 0, zoomed = false, meterTex = null;
   const amber = new THREE.Color("#ffb84d"), aqua = new THREE.Color("#5fd6c8"), violet = new THREE.Color("#9b86ff");
   function loop(now) {
     raf = 0; if (!active || document.hidden) return;

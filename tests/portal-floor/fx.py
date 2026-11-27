@@ -30,6 +30,13 @@ def business(scn: str, role: str):
         b["terms_version"] = "2026-11-19"
         b["terms_accepted_at"] = "2026-11-20T18:00:00+00:00"
         b["status"] = "setup"
+    if scn == "big":  # a full floor: twelve teammates, all live
+        import uuid
+        base = agents[:]; names = ["Nora", "Maya", "Ellie", "Theo", "Ruby", "Owen", "Iris", "Jude", "Lena"]
+        for i, nm in enumerate(names):
+            a = copy.deepcopy(base[i % len(base)]); a["spec_id"] = str(uuid.UUID(int=i + 1000)); a["teammate"] = nm; a["name"] = nm + " " + a["name"].split(" ", 1)[-1] if " " in a["name"] else nm
+            agents.append(a)
+        scn = "live"
     if scn in ("live", "mixed"):
         for s in cl:
             s["status"] = "active"; s["waiting_on"] = "nobody"
