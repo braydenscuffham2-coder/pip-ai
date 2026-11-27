@@ -320,12 +320,15 @@ function brainText(brain: J, business: string): string {
 async function load(specId: string) {
   const { data: s } = await db.from("skill_specs").select("id,status,skill_id,spec,brain,order_id,business").eq("id", specId).maybeSingle();
   if (!s) return null;
-  let biz: J = null;
-  if (s.order_id) {
-    const { data: o } = await db.from("build_orders").select("business_id").eq("id", s.order_id).maybeSingle();
-    if (o?.business_id) biz = (await db.from("businesses").select("id,name,status,timezone,composio_user_id,owner_email,basics").eq("id", o.business_id).maybeSingle()).data;
-  }
-  const { data: man } = await db.from("agent_manifests").select("manifest").eq("spec_id", specId).maybeSingle();
+  // The business and the manifest do not depend on each other, so they are read at the same time (a caller is waiting).
+  const [biz, { data: man }] = await Promise.all([
+    (async (): Promise<J> => {
+      if (!s.order_id) return null;
+      const { data: o } = await db.from("build_orders").select("business_id").eq("id", s.order_id).maybeSingle();
+      return o?.business_id ? (await db.from("businesses").select("id,name,status,timezone,composio_user_id,owner_email,basics").eq("id", o.business_id).maybeSingle()).data : null;
+    })(),
+    db.from("agent_manifests").select("manifest").eq("spec_id", specId).maybeSingle(),
+  ]);
   const board = s.spec?.board?.seats?.gate?.system_prompt;
   const classic = !!s.spec?.agent;
   // A teammate with declared jobs and no chat instructions (a counter, a nightly report) can still do its jobs: each
@@ -344,15 +347,35 @@ async function turn(body: J, trace: boolean) {
   const id = typeof body?.skill === "string" ? body.skill : "";
   // Card numbers, SSNs, passwords, one-time codes and bank numbers come out here, before the words are stored, sent to
   // the model or copied into an owner alert. The teammate's "pii_scrub" tool is only a name; this is the code that does it.
+  const T0 = Date.now(), lap: Record<string, number> = {};
   const { text: message, kinds: redacted } = redact(typeof body?.message === "string" ? body.message.trim().slice(0, 1000) : "");
   const channel = ["web_chat", "sms", "voice", "email"].includes(body?.channel) ? body.channel : "web_chat";
   if (!/^[0-9a-f-]{36}$/i.test(id) || !message) return json({ error: "bad_request" }, 400);
   const c = await load(id);
+  lap.load = Date.now() - T0;
   if (!c || !["live", "approved", "sandbox"].includes(c.s.status)) return json({ error: "not_found" }, 404);
   if (!c.runnable || !c.chat) return json({ error: "not_runnable" }, 409);
   if (c.biz && ["disconnected", "cancelled"].includes(c.biz.status)) return json({ error: "not_found" }, 404);
   // What was removed is logged by kind only, never the value.
   if (redacted.length && c.biz?.id) await db.from("compliance_events").insert({ business_id: c.biz.id, spec_id: id, kind: "pii_redacted", channel, detail: { kinds: redacted } });
+
+  // Reads that depend only on which teammate and business this is are started now and collected where they are used,
+  // so they run while the conversation is found and its history is read. Nothing is decided here: each result is
+  // checked exactly where it was checked before. (Measured Nov 27, 2026: a call turn spent longer on these reads, one
+  // after another, than the model spent answering.)
+  const onCall = channel === "voice";
+  const settingsP = Promise.all([
+    db.from("forge_settings").select("value").eq("key", "act_sandbox_businesses").maybeSingle(),
+    onCall ? db.from("forge_settings").select("value").eq("key", "voice_model").maybeSingle() : Promise.resolve({ data: null }),
+  ]);
+  const found = jobsOf(c.s.spec, c.man, c.s.brain);
+  const job = jobForMessage(found.jobs, channel);
+  const catalogP = job && c.biz?.id && c.biz.composio_user_id ? Promise.all([
+    db.from("business_connections").select("id,slot,status,choice,connected_account_id,detail").eq("business_id", c.biz.id),
+    db.from("connection_catalog").select("slot,label,blocks"),
+    db.from("tool_catalog").select("*").eq("enabled", true),
+    db.from("agent_pauses").select("job").eq("spec_id", id).is("resumed_at", null).not("job", "is", null),
+  ]) : null;
 
   // conversation and history
   let conv = typeof body?.conversation === "string" && /^[0-9a-f-]{36}$/i.test(body.conversation) ? body.conversation : null;
@@ -386,11 +409,8 @@ async function turn(body: J, trace: boolean) {
   // may this teammate act for real right now?
   // On a call the model can be chosen without a deploy (forge_settings.voice_model = {"model": "..."}), so a faster or
   // a smarter one can be tried on real calls. Only a model whose price Pip knows is accepted; anything else is ignored.
-  const onCall = channel === "voice";
-  const [{ data: sb }, vm] = await Promise.all([
-    db.from("forge_settings").select("value").eq("key", "act_sandbox_businesses").maybeSingle(),
-    onCall ? db.from("forge_settings").select("value").eq("key", "voice_model").maybeSingle() : Promise.resolve({ data: null }),
-  ]);
+  lap.history = Date.now() - T0;
+  const [{ data: sb }, vm] = await settingsP;
   const asked = (vm as J)?.data?.value?.model;
   const turnModel = typeof asked === "string" && Object.hasOwn(PRICE, asked) ? asked : MODEL;
   const real = c.s.status === "live" || (Array.isArray(sb?.value) && !!c.biz && sb.value.includes(c.biz.id));
@@ -399,8 +419,6 @@ async function turn(body: J, trace: boolean) {
   // A teammate built before the contract gets the implied job: what a turn already allowed, and nothing wider.
   // A spec whose job list is broken has no jobs, and a channel may have no job: then the model is not called, the
   // customer gets the plain holding reply and the owner is told.
-  const found = jobsOf(c.s.spec, c.man, c.s.brain);
-  const job = jobForMessage(found.jobs, channel);
   if (!job) console.error("[turn] no job answers", channel, cut(found.errors[0] ?? "", 200));
   /** The one permission check, then the money question again under the name of the product really connected. */
   const may = (ask: Ask, products: unknown[] = []): Verdict => {
@@ -420,13 +438,8 @@ async function turn(body: J, trace: boolean) {
   }
   let sheet: J = null;
   const unavailable: string[] = [];
-  if (job && c.biz?.id && c.biz.composio_user_id) {
-    const [{ data: conns }, { data: cat }, { data: catalog }, { data: pauses }] = await Promise.all([
-      db.from("business_connections").select("id,slot,status,choice,connected_account_id,detail").eq("business_id", c.biz.id),
-      db.from("connection_catalog").select("slot,label,blocks"),
-      db.from("tool_catalog").select("*").eq("enabled", true),
-      db.from("agent_pauses").select("job").eq("spec_id", id).is("resumed_at", null).not("job", "is", null),
-    ]);
+  if (job && catalogP) {
+    const [{ data: conns }, { data: cat }, { data: catalog }, { data: pauses }] = await catalogP;
     const paused = new Set((pauses ?? []).map((p: J) => p.job));
     for (const row of catalog ?? []) allowTool(row.toolkit, row.slug);
     /** One catalog tool on one working connection, in the job's terms. Null when the job may not have it. */
@@ -654,7 +667,7 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
   }
 
   for (let round = 0; round < 5 && Date.now() < deadline && body?.limited !== true && job; round++) {
-    const t0 = Date.now();
+    const t0 = Date.now(); lap.ready ??= t0 - T0;
     const r = await claude(onCall ? system + voiceRules(tools.some((x: J) => (MESSAGE_TOOLS as readonly string[]).includes(x.name))) : system, msgs, tools, onCall ? { maxTokens: VOICE_MAX_TOKENS, voice: true, model: turnModel } : { model: turnModel });
     if (!r) break;
     usedModel = true; cost += costOf(r.usage, turnModel);
@@ -704,9 +717,12 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
   reply = honest(reply, message, String(c.name ?? "").replace(/\s*[(\[][^)\]]*[)\]]/g, "").trim());
   reply = clean(reply).slice(0, channel === "sms" ? 700 : 1400);
 
-  await db.from("messages").insert([{ conversation_id: conv, role: "user", content: message }, { conversation_id: conv, role: "assistant", content: reply, actions }]);
-  if (c.biz?.id && cost > 0) await db.from("usage_events").insert({ business_id: c.biz.id, spec_id: id, unit: channel === "sms" ? "sms" : channel === "voice" ? "voice_minute" : "conversation", qty: 0, cost_usd: Math.round(cost * 1e5) / 1e5, provider: "anthropic", meta: { conversation: conv, model: turnModel } });
-  return json({ conversation: conv, reply, actions, live: usedModel, first, real, ...(trace ? { steps, offered: tools.map((t) => t.name), unavailable } : {}) });
+  lap.answered = Date.now() - T0;
+  // The words and the cost are stored at the same time; both are finished before the reply goes back.
+  await Promise.all([db.from("messages").insert([{ conversation_id: conv, role: "user", content: message }, { conversation_id: conv, role: "assistant", content: reply, actions }]),
+    c.biz?.id && cost > 0 ? db.from("usage_events").insert({ business_id: c.biz.id, spec_id: id, unit: channel === "sms" ? "sms" : channel === "voice" ? "voice_minute" : "conversation", qty: 0, cost_usd: Math.round(cost * 1e5) / 1e5, provider: "anthropic", meta: { conversation: conv, model: turnModel } }) : null]);
+  lap.total = Date.now() - T0;
+  return json({ conversation: conv, reply, actions, live: usedModel, first, real, ...(trace ? { steps, offered: tools.map((t) => t.name), unavailable, timing: lap } : {}) });
 }
 
 // ---------- one try at a job that started on its own ----------
