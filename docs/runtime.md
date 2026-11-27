@@ -100,6 +100,28 @@ Browserbase's Free plan gives one browser hour a month, sessions of at most 15 m
 enough to prove the runtime and not enough to run a business on. Every job closes its browser the moment it ends or
 needs a person. The session length is the setting `setup_session_minutes` (15 by default).
 
+### The other limit, measured Nov 27: one connection, and the browser ends when it drops
+
+On the Free plan a browser ends the moment a connection to it closes ("keep alive" is a paid setting). We measured it
+with `setup-run /probe` on a throwaway browser: a second program connected, ran one command and left; five seconds
+later the browser was no longer running and the first connection was dead.
+
+What that breaks today, and what it does not:
+
+| Path | Works on the Free plan? | Why |
+| --- | --- | --- |
+| A background job that finishes inside one worker turn (every Part C proof) | Yes, proven live | One connection, opened and closed by the same request. A job that spans turns reopens a browser on the saved state. |
+| The Setup Agent (the owner signs in while watching) | **No.** Broke at step one on the first live run | Each step is its own request and its own connection. The holder added in PR #109 keeps one connection open, but the next step's connection closing still ends the browser. |
+| A silent re-sign-in from the vault (`vault-writer /fill`, `/code`) | **No, never run live** | The worker holds one connection and the vault writer needs its own to type the login. |
+
+Two ways forward (Brayden's decision, parked as the last step on Nov 27):
+
+1. Browserbase Developer, $20 a month: set `keepAlive: true` when a session is made and everything above works as
+   built. It also gives 100 browser hours instead of 1.
+2. Stay on Free: rebuild sign-in so one request holds the only connection and does everything, with the owner's page
+   talking to that one request over a live socket, and the vault writer doing a whole sign-in in a browser of its own.
+   A sign-in attempt is then limited to about five minutes (the longest one request may live).
+
 ## The Forge Board is optional
 
 Builds used to wait up to six hours for the Forge Board on Brayden's computer before the API-key engine on Pip's

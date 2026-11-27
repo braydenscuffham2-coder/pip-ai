@@ -33,6 +33,7 @@ export const READ_ONLY_RECORDS = ["busy_time", "count"] as const;
 /** Pip's own actions, written as records of the tool "pip". All are add-only. */
 export const PIP_RECORDS: Record<string, string> = {
   owner_alert: "notify_owner", lead: "capture_lead", booking_request: "request_booking", handoff: "handoff", draft: "draft_for_approval",
+  outbound_post: "post_out", // post to an outbound door: an address in the owner's own system that the owner set (pip-edge)
 };
 export const POLICIES = ["buying"] as const;
 /**
@@ -53,7 +54,9 @@ export const MONEY_TOOLS = /(stripe|square|paypal|quickbooks|xero|shopify|braint
 /** Is this tool name a money tool? Callers that turn a building block into a real product must ask again with the product's name. */
 export const isMoneyTool = (tool: unknown): boolean => typeof tool === "string" && MONEY_TOOLS.test(tool.toLowerCase());
 export const PURPOSES = ["reply", "transactional", "marketing"] as const;
-export const EVENTS = ["record_added", "record_changed", "lead_added", "missed_call", "conversation_ended", "count_changed"] as const;
+export const EVENTS = ["record_added", "record_changed", "lead_added", "missed_call", "conversation_ended", "count_changed", "webhook_received", "email_received", "form_submitted"] as const;
+/** What Pip itself can say happened. The last three are Pip's doors (pip-edge): another system posted, mail arrived, a form was filled in. */
+export const PIP_EVENTS = ["lead_added", "missed_call", "conversation_ended", "webhook_received", "email_received", "form_submitted"] as const;
 export const DECISIONS = ["booking_request", "draft"] as const;
 
 /** The most any job may ask for. Fixed in code; a spec above a ceiling is refused. */
@@ -160,7 +163,7 @@ function checkTrigger(t: J, w: string, errors: string[]): Trigger | null {
     if (!(EVENTS as readonly string[]).includes(t.event)) errors.push(`${w}: event must be one of ${EVENTS.join(", ")}.`);
     const own = t.from === "pip" || t.from === "box";
     if (!own && !["record_added", "record_changed"].includes(t.event)) errors.push(`${w}: a tool can only send record_added or record_changed.`);
-    if (t.from === "pip" && !["lead_added", "missed_call", "conversation_ended"].includes(t.event)) errors.push(`${w}: Pip itself only sends lead_added, missed_call and conversation_ended.`);
+    if (t.from === "pip" && !(PIP_EVENTS as readonly string[]).includes(t.event)) errors.push(`${w}: Pip itself only sends ${PIP_EVENTS.join(", ")}.`);
     if (t.from === "box" && t.event !== "count_changed") errors.push(`${w}: a box only sends count_changed.`);
     if (!own && !(typeof t.records === "string" && known(t.records))) errors.push(`${w}: records must name the kind of record that starts the job.`);
     if (own && t.records !== undefined) errors.push(`${w}: records is only for events from a tool.`);
@@ -483,6 +486,7 @@ const TOOL_WORDS: Record<string, string> = {
 const PIP_WORDS: Record<string, string> = {
   owner_alert: "Alert you when something needs a person.", lead: "Save a lead for you.", booking_request: "Ask you to confirm a booking. It does not confirm one itself.",
   handoff: "Hand a conversation to a person.", draft: "Write a draft for you to approve before anything is sent.",
+  outbound_post: "Post information to another system of yours, at an address you set. It cannot post anywhere else.",
 };
 const CHANNEL_WORDS: Record<string, string> = { web_chat: "website chat", sms: "text", voice: "the phone", email: "email" };
 const DAY_WORDS: Record<string, string> = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
@@ -502,7 +506,7 @@ function startWords(t: Trigger, names: Record<string, string>): string {
   }
   if (t.type === "event") {
     const cond = t.if ? ` and its ${t.if.field.replace(/[_.]/g, " ")} ${t.if.is !== undefined ? `is ${String(t.if.is)}` : t.if.over !== undefined ? `goes over ${t.if.over}` : `goes under ${t.if.under}`}` : "";
-    if (t.from === "pip") return at({ lead_added: "When a new lead is saved.", missed_call: "When a call is missed.", conversation_ended: "When a conversation ends." }, t.event) ?? "";
+    if (t.from === "pip") return at({ lead_added: "When a new lead is saved.", missed_call: "When a call is missed.", conversation_ended: "When a conversation ends.", webhook_received: "When another system you connected tells Pip something happened.", email_received: "When an email arrives at your Pip address.", form_submitted: "When someone fills in your Pip form." }, t.event) ?? "";
     if (t.from === "box") return `When the count from your on-site box changes${cond}.`;
     return `When ${t.event === "record_added" ? "a new" : "a"} ${t.records!.replace(/_/g, " ")} ${t.event === "record_added" ? "is added" : "changes"} in ${where(t.from, names)}${cond}.`;
   }

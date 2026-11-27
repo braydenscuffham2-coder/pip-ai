@@ -1961,7 +1961,40 @@ function setupTab() {
     isOwner() && !locked && d.connect_on ? anyToolCard() : null,
     // The founder can reach setup help on a TEST business before its price is accepted (the server allows the same).
     isOwner() && (d.setup_unlocked || d.role === "founder") ? vaultCard() : null,
+    isOwner() ? doorsCard() : null,
     isOwner() ? workCard() : null];
+}
+// ---------- doors: how the owner's own tools start a teammate, and where a teammate may post ----------
+// The list never holds a secret. "Show the secret" asks the server for it once (a fresh sign-in is needed) and it is
+// kept only on this screen until the owner hides it or leaves.
+function doorsCard() {
+  const doors = S.data.doors || [], id = S.bid;
+  if (!doors.length) return null;
+  const copy = (text, what) => h("button", { class: "btn link", type: "button", onclick: async () => { try { await navigator.clipboard.writeText(text); say(what + " copied.", "ok"); } catch (e) { say("Select it and copy it by hand.", "err"); } } }, "Copy");
+  const line = (label, value, what) => h("p", { class: "small", style: { marginTop: "8px", overflowWrap: "anywhere" } }, h("b", {}, label + ": "), h("code", {}, value), " ", copy(value, what));
+  const shown = S.doorSecret && doors.some((d) => d.id === S.doorSecret.id) ? S.doorSecret : null;
+  const KIND = { form: "A form your customers fill in", email: "An email address for this business", webhook: "Another system tells Pip something happened", out: "Your team posts to a system of yours", zapier: "A connection for Zapier or a similar app" };
+  const item = (d) => {
+    const secretBtn = ["webhook", "out", "zapier"].includes(d.kind) ? h("button", { class: "btn ghost", type: "button", "data-k": "door-secret-" + d.name, onclick: () => run(async () => { const r = await api("/business/" + id + "/door", { door: d.id, action: "secret" }); S.doorSecret = { id: d.id, secret: r.secret, header: r.header }; }) }, d.kind === "out" ? "Show the signing key" : "Make and show a new secret") : null;
+    const secret = shown && shown.id === d.id ? h("div", { class: "note", style: { marginTop: "10px" } },
+      h("p", { class: "small" }, d.kind !== "out" ? "Send this in the header " + shown.header + ". This is the only time it is shown. Making a new one stops the old one." : "Pip signs every post with this key (header " + shown.header + "). Use it to check a post really came from Pip."),
+      line(d.kind !== "out" ? "Secret" : "Signing key", shown.secret, d.kind !== "out" ? "Secret" : "Key"),
+      h("button", { class: "btn link", type: "button", "data-k": "door-hide", onclick: () => { S.doorSecret = null; render(); } }, "Hide it")) : null;
+    return h("li", { class: "door", "data-k": "door-" + d.name, style: { padding: "14px 0", borderTop: "1px solid var(--line, rgba(11,13,31,.1))" } },
+      h("div", { class: "row", style: { alignItems: "baseline", flexWrap: "wrap", gap: "8px" } }, h("b", {}, d.label), h("span", { class: "small" }, KIND[d.kind] || ""), d.enabled ? null : h("span", { class: "chip" }, "Closed")),
+      d.kind === "form" ? line("Link", d.page, "Link") : null,
+      d.kind === "email" ? line("Address", d.address, "Address") : null,
+      d.kind === "webhook" ? line("Post to", d.post_to, "Address") : null,
+      d.kind === "zapier" ? line("Connection ID", d.id, "Connection ID") : null,
+      d.kind === "out" ? h("p", { class: "small", style: { marginTop: "8px" } }, h("b", {}, "Posts to: "), d.host) : null,
+      h("p", { class: "fine", style: { marginTop: "6px" } }, d.last_at ? "Last used " + new Date(d.last_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + "." : "Not used yet."),
+      secret,
+      h("div", { class: "btns", style: { marginTop: "8px" } }, secretBtn,
+        h("button", { class: "btn link", type: "button", "data-k": "door-toggle-" + d.name, onclick: () => run(() => api("/business/" + id + "/door", { door: d.id, action: d.enabled ? "close" : "open" }), d.enabled ? "Closed. Nothing comes through it now." : "Open again.") }, d.enabled ? "Close this door" : "Open this door")));
+  };
+  return h("div", { class: "card dash rise", style: { "--i": 4 }, "aria-label": "Doors" },
+    h("div", { class: "row", style: { alignItems: "flex-start" } }, h("span", { class: "ic" }, icon("refresh")), h("div", { class: "grow" }, h("h2", { class: "h-s" }, "Doors"), h("p", { class: "small", style: { marginTop: "6px" } }, "Ways your own tools and customers start your team without you. What comes through a door is treated as information, never as instructions."))),
+    h("ul", { style: { listStyle: "none", padding: 0, margin: "12px 0 0" } }, doors.map(item)));
 }
 // ---------- any other tool: search for it and connect it without leaving setup ----------
 function anyToolCard() {

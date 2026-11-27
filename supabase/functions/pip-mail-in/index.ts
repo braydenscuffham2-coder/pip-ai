@@ -1,4 +1,4 @@
-// pip-mail-in: tells the founder when mail arrives in a Pip inbox.
+// pip-mail-in: tells the founder when mail arrives in a Pip inbox, and passes mail for a business's Pip door to pip-edge.
 //
 // Resend receives mail for hirepip.com and posts a short "email.received" event here. That event is NOT trusted:
 // anyone can post to this address. So the function takes only the message id from it, then asks Resend for the message
@@ -12,6 +12,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { noticeFor } from "../_shared/mail-in.ts";
+import { doorAddress } from "../_shared/edges.ts";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 const KEY = Deno.env.get("RESEND_API_KEY") ?? "";
@@ -28,7 +29,16 @@ Deno.serve(async (req) => {
     const r = await fetch(`https://api.resend.com/emails/receiving/${encodeURIComponent(id)}`, { headers: { authorization: `Bearer ${KEY}` } });
     if (r.status === 404) return json({ ok: true, ignored: true });
     if (!r.ok) { console.error("[mail-in] could not read the message", r.status); return json({ ok: false, error: "mail_api", status: r.status }, 502); }
-    const notice = noticeFor(await r.json());
+    const mail = await r.json();
+    // Mail for a business's Pip door ("in-…@hirepip.com") is not the founder's: it goes to pip-edge, which treats it
+    // as information for that business's teammates (and records a STOP as an opt-out). pip-edge counts each message once.
+    const door = doorAddress(mail);
+    if (door) {
+      const e = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/pip-edge/mail`, { method: "POST", headers: { authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "content-type": "application/json" }, body: JSON.stringify({ address: door, id, mail }), signal: AbortSignal.timeout(40000) });
+      const j = await e.json().catch(() => ({}));
+      return json({ ok: e.ok, door: true, started: j?.started ?? 0, ...(j?.opted_out ? { opted_out: true } : {}) }, e.ok || e.status === 404 ? 200 : 502);
+    }
+    const notice = noticeFor(mail);
     if (!notice) return json({ ok: true, ignored: true });
     const { data: seen } = await db.from("events").select("id").eq("kind", "mail_in").eq("detail->>id", id).limit(1);
     if (seen?.length) return json({ ok: true, already: true });

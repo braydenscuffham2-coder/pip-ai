@@ -16,6 +16,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { connectionGate } from '../_shared/golive-connections.ts';
 import { BUILDER_NOTE, type Catalog, declares, goLive, loadCatalog, NO_CATALOG, OLDER_SHAPE, saveBuild } from '../_shared/forge-check.ts';
+import { pickRung, pickWords, READY_TODAY } from '../_shared/ladder.ts';
 
 const SB_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SB_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -615,6 +616,69 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
       await insert('client_connections', { order_id: id, toolkit: slug, composio_user_id: user, connected_account_id: cut(link.connected_account_id, 80) || null, status: 'link_made', link_expires_at: link.expires_at || null });
       await insert('events', { kind: 'client_connect_link', domain: null, detail: { order: id, toolkit: slug } }).catch(() => {});
       return { ok: true, order: order.code, toolkit: slug, link: link.redirect_url, expires_at: link.expires_at ?? null, note: 'Send this link to the owner yourself. It opens a Composio sign-in page; nothing goes live until you approve it.' };
+    },
+  },
+  ladder_pick: {
+    description: "Decide how Pip reaches one of a business's tools, by the integration ladder (1 the tool's own API or sign-in, 2 a sync partner, 3 the owner's own Zapier, 4 email, webhooks, forms and exports, 5 screen work, 6 the on-site box or a desktop connector, 7 Pip builds the piece). Picks the highest rung that fits AND that Pip can run today, names any better rung that is not ready yet, lists what is not known instead of guessing, and writes the decision down for that business. Pass only facts you have checked; leave the rest out. Pip's catalog and the tool's recorded terms are looked up here.",
+    inputSchema: { type: 'object', properties: {
+      business_id: { type: 'string' }, tool: { type: 'string', description: "The tool's name as the owner says it, e.g. Vagaro" },
+      facts: { type: 'object', description: 'Checked facts only: no_software, partner (name), on_zapier, owner_uses_zapier, can_email, has_webhooks, has_export, web_sign_in, desktop_only (true or false each).', additionalProperties: true },
+      save: { type: 'boolean', description: 'Write the decision down (default true).' },
+    }, required: ['business_id', 'tool'], additionalProperties: false },
+    async run(a) {
+      const id = uuid(a?.business_id); if (!id) throw new Error('business_id must be a business id');
+      const tool = cut(a?.tool, 80); if (tool.length < 2) throw new Error('tool is the name of the tool');
+      const key = tool.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+      const given = a?.facts && typeof a.facts === 'object' ? a.facts : {};
+      const tri = (v: unknown) => (v === true || v === false ? v : undefined);
+      const [cat, terms, ready] = await Promise.all([
+        rows(`tool_catalog?enabled=is.true&toolkit=eq.${encodeURIComponent(key.replace(/-/g, ''))}&select=toolkit&limit=1`),
+        rows(`tool_terms?tool_key=eq.${encodeURIComponent(key)}&select=automation&limit=1`),
+        rows('forge_settings?key=eq.ladder_ready&select=value'),
+      ]);
+      const facts = { tool, no_software: given.no_software === true, composio_toolkit: cat?.[0]?.toolkit ?? null, partner: typeof given.partner === 'string' ? cut(given.partner, 60) : null,
+        on_zapier: tri(given.on_zapier), owner_uses_zapier: tri(given.owner_uses_zapier), can_email: tri(given.can_email), has_webhooks: tri(given.has_webhooks), has_export: tri(given.has_export),
+        web_sign_in: tri(given.web_sign_in), desktop_only: tri(given.desktop_only), terms: (['allowed', 'forbidden'].includes(terms?.[0]?.automation) ? terms[0].automation : 'unknown') as 'allowed' | 'forbidden' | 'unknown' };
+      const pick = pickRung(facts, { ...READY_TODAY, ...(ready?.[0]?.value && typeof ready[0].value === 'object' ? ready[0].value : {}) });
+      if (a?.save !== false) {
+        const r = await fetch(`${SB_URL}/rest/v1/tool_routes?on_conflict=business_id,tool_key`, { method: 'POST', headers: { apikey: SB_KEY, authorization: `Bearer ${SB_KEY}`, 'content-type': 'application/json', prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify({ business_id: id, tool_key: key, tool, rung: pick.rung, why: pick.why.slice(0, 600), decision: pick, facts, decided_by: 'forge', decided_at: now() }) });
+        await r.body?.cancel();
+        if (!r.ok) return { ...pick, words: pickWords(pick), saved: false };
+      }
+      return { ...pick, words: pickWords(pick), saved: a?.save !== false };
+    },
+  },
+  door_make: {
+    description: "Make a door for a business (Pip's edges): a way its own world starts a teammate's job, or an address a teammate may post to. kind: webhook (another system posts JSON to Pip), zapier (one connection for Zapier or a similar app: it posts in like a webhook and reads what teammates left for it), email (mail to a per-business Pip address), form (a form Pip hosts for the business's customers), out (an https address in the owner's own system). A teammate's job listens with a trigger { type: 'event', from: 'pip', event: 'webhook_received' | 'email_received' | 'form_submitted', if: { field: 'door', is: '<name>' } } and posts out with the pip record 'outbound_post'. This never returns a secret: the owner reads a webhook's secret or an out door's signing key once, in their Portal.",
+    inputSchema: { type: 'object', properties: {
+      business_id: { type: 'string' }, kind: { type: 'string', enum: ['webhook', 'email', 'form', 'out', 'zapier'] },
+      name: { type: 'string', description: 'Short lowercase name, letters, digits and underscores, e.g. refill_form' }, label: { type: 'string', description: 'What the owner sees, e.g. Refill requests' },
+      form: { type: 'object', description: 'For a form: { title, intro?, done?, consent?, fields: [{ id, label, type: text|email|phone|longtext|number|date|choice|yes, required?, options? }] }. Never a password, card or code field.' },
+      url: { type: 'string', description: 'For out: the https address to post to.' },
+    }, required: ['business_id', 'kind', 'name', 'label'], additionalProperties: false },
+    async run(a) {
+      const id = uuid(a?.business_id); if (!id) throw new Error('business_id must be a business id');
+      const r = await fetch(`${SB_URL}/functions/v1/pip-edge/make`, { method: 'POST', headers: { authorization: `Bearer ${SB_KEY}`, 'content-type': 'application/json' }, body: JSON.stringify({ business: id, kind: a.kind, name: a.name, label: a.label, form: a.form, url: a.url, by: 'forge' }), signal: AbortSignal.timeout(20000) });
+      const j: any = await r.json().catch(() => ({}));
+      if (!j?.ok) return { ok: false, error: j?.error ?? 'failed', ...(j?.errors ? { errors: j.errors } : {}), ...(j?.message ? { message: j.message } : {}) };
+      return { ok: true, id: j.id, kind: a.kind, name: a.name,
+        ...(j.address ? { address: j.address } : {}),
+        ...(a.kind === 'form' ? { page: `https://www.hirepip.com/form.html?f=${j.id}` } : {}),
+        ...(a.kind === 'webhook' || a.kind === 'zapier' ? { post_to: `${SB_URL}/functions/v1/pip-edge/hook/${j.id}`, note: 'The secret goes in the header x-pip-secret. The owner reads it once in their Portal (Setup, Doors, Show the secret).' } : {}),
+        ...(a.kind === 'out' ? { note: 'Posts are signed (x-pip-signature). The owner reads the signing key in their Portal.' } : {}) };
+    },
+  },
+  door_list: {
+    description: "List a business's doors and what came through each in the last day. Names, kinds, addresses and counts only, never a secret or what arrived.",
+    inputSchema: { type: 'object', properties: { business_id: { type: 'string' } }, required: ['business_id'], additionalProperties: false },
+    readOnly: true,
+    async run(a) {
+      const id = uuid(a?.business_id); if (!id) throw new Error('business_id must be a business id');
+      const doors = (await rows(`edges?business_id=eq.${id}&select=id,kind,name,label,address,enabled,last_at,created_at&order=created_at.asc`)) ?? [];
+      const since = new Date(Date.now() - 864e5).toISOString();
+      const ev = (await rows(`edge_events?business_id=eq.${id}&received_at=gte.${since}&select=edge_id,status,started&limit=1000`)) ?? [];
+      return { doors: doors.map((d: any) => { const mine = ev.filter((e: any) => e.edge_id === d.id); return { ...d, ...(d.address ? { address: `${d.address}@hirepip.com` } : {}), last_day: { knocks: mine.length, started_jobs: mine.reduce((n: number, e: any) => n + (e.started || 0), 0), failed: mine.filter((e: any) => e.status === 'failed').length } }; }) };
     },
   },
   client_connections: {

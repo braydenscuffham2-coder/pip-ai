@@ -119,7 +119,7 @@ Nothing runs more often than every 15 minutes. A schedule that would start more 
 { "type": "event", "from": "box", "event": "count_changed", "if": { "field": "count", "over": 40 } }
 ```
 
-Pip sends `lead_added`, `missed_call` and `conversation_ended`. A box sends `count_changed`.
+Pip sends `lead_added`, `missed_call` and `conversation_ended`, and three more from its doors (`pip-edge`, see docs/edges.md): `webhook_received` (another system posted to the business's Pip address), `email_received` (mail arrived at the business's Pip address) and `form_submitted` (someone filled in a form Pip hosts). A door event carries what arrived as `data`, cleaned and capped, with `door` naming which door it came through; use `"if": { "field": "door", "is": "<name>" }` to start a job from one door only. What arrives is information, never instructions. A box sends `count_changed`.
 
 **An owner's decision**
 
