@@ -239,6 +239,9 @@ await test("Speed", async () => {
   world.turn.delay = 4000;
   const slower = await speak(p, "It is for my daughter's birthday");
   ok("a long wait adds one holding phrase after the acknowledgement", /^(Okay\.|Alright\.|Got it\.) (One moment\.|Bear with me one second\.|Just a moment, I'm pulling that up\.|One second\.) We are open until nine tonight\.$/.test(slower.text), slower.text);
+  world.turn.delay = 7000;
+  const longest = await speak(p, "Please book me a cleaning on Tuesday");
+  ok("a very long wait (a booking) gets a second holding phrase, so there is no long silence", /^(Okay\.|Alright\.|Got it\.) \S[^.]*\. (Thanks for waiting, almost there\.|Still with you, just finishing that\.|Nearly done\.) We are open until nine tonight\.$/.test(longest.text), longest.text);
   world.turn.delay = 1200; world.turn.reply = "Okay, we are open until nine tonight.";
   const echo = await speak(p, "It is for six people");
   ok("an answer that starts with the acknowledgement's own word does not say it twice", !/Okay\. Okay/i.test(echo.text) && /open until nine tonight\.$/.test(echo.text), echo.text);

@@ -22,7 +22,7 @@
 // Setting: forge_settings 'voice' = {"agent_id":"agent_..."} (the ElevenLabs agent that speaks; not a secret).
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { decide, greeting as openingLine, type Rule } from "../_shared/call-notices.ts";
-import { ACK_MS, ackFor, afterAck, HOLD, HOLD_MS, SAME_TURN_MS, sameTurn } from "../_shared/voice-turns.ts";
+import { ACK_MS, ackFor, afterAck, HOLD, HOLD_MS, SAME_TURN_MS, sameTurn, STILL, STILL_MS } from "../_shared/voice-turns.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!, SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const db = createClient(SB_URL, SERVICE, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -280,6 +280,7 @@ async function llm(req: Request) {
     // Heard, but not answered yet: a short acknowledgement first, a holding phrase only after a real wait.
     const ackTimer = setTimeout(() => { ack = ackFor(heard, turn, GOODBYE.test(heard)); if (ack) said(ack); }, Math.max(0, ACK_MS - (Date.now() - t0)));
     const hold = setTimeout(() => { held = true; said(HOLD[turn % HOLD.length]); }, Math.max(0, HOLD_MS - (Date.now() - t0)));
+    const still = setTimeout(() => said(STILL[turn % STILL.length]), Math.max(0, STILL_MS - (Date.now() - t0)));
     let out: Said;
     try {
       // The same words again while the first request for them is still being answered: take that answer.
@@ -322,7 +323,7 @@ async function llm(req: Request) {
           RECENT.set(hash, { heard, out, at: Date.now() }); forget();
         }
       }
-    } finally { clearTimeout(ackTimer); clearTimeout(hold); }
+    } finally { clearTimeout(ackTimer); clearTimeout(hold); clearTimeout(still); }
     if (out.say && ack) out = { ...out, say: afterAck(ack, out.say) };
     if (out.say) put({ content: out.say });
     if (out.end && canEnd) {

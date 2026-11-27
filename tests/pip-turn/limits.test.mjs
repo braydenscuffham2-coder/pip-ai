@@ -883,3 +883,12 @@ test("a calendar with no working connection is still called unavailable", async 
   assert.match(sys, /Not available right now: [^\n]*Calendar/);
   assert.ok(!offeredTo(t).includes("GOOGLECALENDAR_EVENTS_LIST"));
 });
+
+test("a teammate whose calendar is down is told never to say what it shows or that something was booked", async () => {
+  const tables = baseTables();
+  for (const c of tables.business_connections) if (c.slot === "calendar") c.status = "expired";
+  const t = await boot({ tables, model: [says("I am an AI assistant. I will pass that on.")] });
+  await t.turn("is Tuesday at 10 open?");
+  const sys = t.world.model.calls[0].system.map((x) => x.text).join("\n");
+  assert.match(sys, /Never say what it shows \(that a time is open, free or taken\) and never say something was booked, added or sent through it\./);
+});
