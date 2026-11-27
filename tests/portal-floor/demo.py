@@ -15,7 +15,7 @@ ROLE = sys.argv[3] if len(sys.argv) > 3 else "owner"
 PUB = os.path.join(os.path.dirname(__file__), "..", "..", "public")
 
 shutil.rmtree(OUT, ignore_errors=True)
-os.makedirs(OUT + "/portal-art/sc")
+os.makedirs(OUT + "/portal-art")
 
 DATA = {
     "me": fx.me(ROLE), "business": fx.business(SCN, ROLE), "usage": fx.usage(), "billing": fx.billing_status(SCN),
@@ -74,6 +74,4 @@ open(OUT + "/portal-office.js", "w").write(off)
 shutil.copy(PUB + "/portal-pip.js", OUT + "/portal-pip.js")
 for f in os.listdir(PUB + "/portal-art"):
     if f.endswith(".webp") or f.endswith(".glb"): shutil.copy(PUB + "/portal-art/" + f, OUT + "/portal-art/" + f)
-for f in os.listdir(PUB + "/portal-art/sc"):
-    if f.endswith(".webp") and not f.startswith("agent-"): shutil.copy(PUB + "/portal-art/sc/" + f, OUT + "/portal-art/sc/" + f)
-print(OUT, len(os.listdir(OUT + "/portal-art/sc")), "scene files")
+print(OUT, sorted(os.listdir(OUT + "/portal-art")))

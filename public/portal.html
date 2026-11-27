@@ -1196,6 +1196,7 @@ html:not(.office-live) .fl-say{left:12px;transform:none!important}
   .fl-letgo-btn .lg-long{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
   .fl-letgo-btn{padding:0 12px;flex:none}
 }
+.office-starting .fl-say,.office-starting .pipslot,.office-starting .fl-tags{visibility:hidden}
 </style>
 </head>
 <body>
@@ -1244,7 +1245,7 @@ function loadPart(name) {
   if (!PARTS[name]) PARTS[name] = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "/" + name + ".js?v=" + PART_V; sc.async = true; sc.onload = res; sc.onerror = () => { delete PARTS[name]; rej(new Error(name)); }; document.head.append(sc); });
   return PARTS[name];
 }
-const PART_V = "11";
+const PART_V = "12";
 function loadThree() {
   if (!threeP) { const l = document.createElement("link"); l.rel = "modulepreload"; l.href = THREE_URL; l.integrity = THREE_SRI; l.crossOrigin = "anonymous"; document.head.append(l); threeP = import(THREE_URL); threeP.catch(() => { threeP = null; }); }
   return threeP;
@@ -2526,19 +2527,19 @@ function ensureLog() {
 }
 async function startOffice() {
   if (FLOOR.office || FLOOR.starting || FLOOR.failed) return;
-  FLOOR.starting = true;
+  FLOOR.starting = true; document.documentElement.classList.add("office-starting"); // nothing floats on a blank page while the office loads
   try {
     const [THREE] = await Promise.all([loadThree(), loadPart("portal-pip"), loadPart("portal-office")]);
     await Promise.all([document.fonts.load("600 44px Geist"), document.fonts.load("italic 400 120px 'Instrument Serif'")]).catch(() => null);
     if (!FLOOR.X) FLOOR.X = threeAddons(THREE);
-    FLOOR.office = createOffice(THREE, FLOOR.X, { host: document.getElementById("office"), cssHost: document.getElementById("office"), reduce: reduced, onPick: (id) => openMate(id), onStation: (id, slot) => openStation(id, slot), room: "/portal-art/hall.glb?v=" + PART_V, face: (id) => { const a = S.data && S.data.agents.find((x) => x.spec_id === id); return a ? face(mateName(a), (a.role || "") + " " + a.name) : null; }, onEntered: () => { FLOOR.entered = true; }, safeTop: () => { const r = document.querySelector(".fl-head"); return r ? r.getBoundingClientRect().bottom : 0; }, safeBottom: () => { const r = document.querySelector(".fl-roster"); return r ? innerHeight - r.getBoundingClientRect().top : 0; },
+    FLOOR.office = createOffice(THREE, FLOOR.X, { host: document.getElementById("office"), cssHost: document.getElementById("office"), reduce: reduced, onPick: (id) => openMate(id), onStation: (id, slot) => openStation(id, slot), room: "/portal-art/office.glb?v=" + PART_V, face: (id) => { const a = S.data && S.data.agents.find((x) => x.spec_id === id); return a ? face(mateName(a), (a.role || "") + " " + a.name) : null; }, onEntered: () => { FLOOR.entered = true; }, safeTop: () => { const r = document.querySelector(".fl-head"); return r ? r.getBoundingClientRect().bottom : 0; }, safeBottom: () => { const r = document.querySelector(".fl-roster"); return r ? innerHeight - r.getBoundingClientRect().top : 0; },
       onReveal: (el) => { el.classList.add("on"); fitTargets(); setTimeout(fitTargets, 700); } });
     await FLOOR.office.ready; // every shader is compiled before the first frame, so the walk-in is smooth from the start
     document.documentElement.classList.add("office-live");
     if (window.PIP_TEST) window.__office = FLOOR.office;
     if (floorOn()) { Pip.office(FLOOR.office.pip); FLOOR.shown = null; render(); const full = firstToday(); FLOOR.office.enter(full); if (full) setTimeout(() => { if (floorOn() && !S.desk && !S.focus) Pip.wave("Welcome back. Your team is here."); }, reduced() ? 0 : 2300); } else FLOOR.office.setActive(false);
   } catch (e) { console.error("office", e); FLOOR.failed = true; FLOOR.office = null; document.documentElement.classList.remove("office-live"); if (S.data) render(); }
-  FLOOR.starting = false;
+  FLOOR.starting = false; document.documentElement.classList.remove("office-starting");
 }
 
 // how each teammate looks on the floor, from the Portal's own fields
@@ -2978,7 +2979,7 @@ function renderFloor(opts = {}) {
     o.sync({ dim: b.status === "disconnected", agents: ag.map((a, i) => { const L = looks.get(a.spec_id), p = propOf((a.role || "") + " " + a.name);
       const fk = colorOf(mateName(a)) + ":" + propOf((a.role || "") + " " + a.name), slot = FLOOR.faces || (FLOOR.faces = new Map()); // the same rigged head stays put between renders
       if (!slot.has(a.spec_id) || slot.get(a.spec_id).k !== fk) slot.set(a.spec_id, { k: fk, el: face(mateName(a), (a.role || "") + " " + a.name) });
-      return { id: a.spec_id, name: mateName(a), role: a.role || "", line: L.text, acc: propOf((a.role || "") + " " + a.name), face: slot.get(a.spec_id).el, faceKey: fk, look: L.look, light: L.light, kind: L.kind, variant: deskVariant(a), hex: hexOf(a), prop: p === "headset" || p === "glasses" ? "letters" : p || "letters", phone: p === "headset", sticky: L.kind === "needs" ? "Needs you: " + lowerFirst(youNeeds(a)[0]) : null, ph: i * 1.3 + 0.3 }; }),
+      return { id: a.spec_id, name: mateName(a), role: a.role || "", line: L.text, acc: propOf((a.role || "") + " " + a.name), face: slot.get(a.spec_id).el, faceKey: fk, look: L.look, light: L.light, kind: L.kind, variant: deskVariant(a), hex: hexOf(a), work: logFor(a).slice(0, 4).map((l) => l.summary).filter(Boolean), prop: p === "headset" || p === "glasses" ? "letters" : p || "letters", phone: p === "headset", sticky: L.kind === "needs" ? "Needs you: " + lowerFirst(youNeeds(a)[0]) : null, ph: i * 1.3 + 0.3 }; }),
       tags: [...tags.entries()], bubble: narrow() ? null : say, pipPoint: pipPoint || null, stations: Object.assign(stationModel(), { tags: [...stTags.entries()], priced: stageOf(d) === "priced" }), cards: sceneCards() });
     if (o.panel) o.panel(!!(S.desk && S.station) && !narrow());
     if (FLOOR.reenter) { FLOOR.reenter = false; o.enter(false); }
