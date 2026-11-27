@@ -512,6 +512,7 @@ ${S}
 - A teammate only counts as personal if it wouldn't make sense for every business in the same industry. If it would, cut it or make it specific to a moment here.
 - Every idea names the moment it answers, uses only ids from the list above in "uses", and backs each claim with evidence and an honest status ("seen", "inferred", "unknown").
 - Ideas that need hardware on site or custom code are welcome when the moment deserves them; the owner decides. Say what they need.
+- Do not shrink an idea to fit the list. If the best version of an idea needs a part that is not in the list above (working inside the owner's own software through its screens, a small tracker, form or public page made for them, reading a device or an exported log, anything else), keep the idea, use the closest ids for the rest, and name the missing part in "new_capability" in one plain sentence. Pip builds new parts. Leave it null when the list is enough.
 - Do not pad. Return ${s.count[0]} to ${s.count[1]} ideas, most promising first.
 ${n ? `
 These shapes have been offered to many businesses like this one lately. Do not repeat them unless the evidence here is unusually strong:
@@ -524,7 +525,7 @@ MOMENTS
 ${JSON.stringify(t)}
 
 Return JSON:
-{"ideas":[{"id": short-kebab-id, "name": a memorable 2-3 word name for the job, made for this business, "moment": a moment id, "power": "answers"|"booking"|"phone"|"reviews"|"followup"|"assistant"|"other", "uses":[primitive ids], "claims":[{"text": one factual claim this idea depends on, "status":"seen"|"inferred"|"unknown", "evidence":[{"quote": exact words under 120 characters, "source":"review"|"site"|"competitor"|"google"|"dns"|"ads"|"jobs"|"social"}]}], "data_needed":[what the owner would have to share or connect], "why_personal": one sentence on why this wouldn't make sense for every business in the industry}]}`;
+{"ideas":[{"id": short-kebab-id, "name": a memorable 2-3 word name for the job, made for this business, "moment": a moment id, "power": "answers"|"booking"|"phone"|"reviews"|"followup"|"assistant"|"other", "uses":[primitive ids], "claims":[{"text": one factual claim this idea depends on, "status":"seen"|"inferred"|"unknown", "evidence":[{"quote": exact words under 120 characters, "source":"review"|"site"|"competitor"|"google"|"dns"|"ads"|"jobs"|"social"}]}], "data_needed":[what the owner would have to share or connect], "new_capability": null, or one plain sentence naming the part Pip would have to build for this idea, "why_personal": one sentence on why this wouldn't make sense for every business in the industry}]}`;
 }
 var de = [
   { tier: "opus", lenses: ["journey", "money", "rival"], count: [7, 10] },
@@ -553,7 +554,8 @@ function ce(e, t, s, r, n, o) {
   return `You are Pip, a senior AI solutions designer. Develop ONE AI skill for THIS business from the idea below, designed from scratch for them: its name, job, wording, story and demo must be about their real services, customers, reviews, tools and competition. No generic products: a skill that would make sense for any business in their industry is not personal enough.
 
 THE IDEA
-${JSON.stringify({ name: s.name, power: s.power, uses: r.repaired_uses ?? s.uses, claims: s.claims, why_personal: s.why_personal, moment: n })}
+${JSON.stringify({ name: s.name, power: s.power, uses: r.repaired_uses ?? s.uses, claims: s.claims, why_personal: s.why_personal, moment: n, ...(typeof s.new_capability === "string" && s.new_capability.trim().length > 8 ? { new_part: s.new_capability.trim().slice(0, 300) } : {}) })}
+If the idea has "new_part": Pip builds this part before go-live. Never write as if it exists today. "how" says what the teammate does once the part is built, and "wont" says plainly what it cannot do until then.
 Lane: ${r.lane}. Tier: ${r.tier}. Risk flags: ${r.risk.join(", ") || "none"}. The owner will need: ${r.needs.join("; ") || "nothing special"}.
 Keep "uses" exactly as given. Teammate names already taken by this business's other skills: ${o.join(", ") || "none"}.
 
@@ -716,7 +718,7 @@ async function ge(e, t) {
         let _ = i.gate.repaired_uses ?? i.candidate.uses, a = i.candidate.claims.some((l) => l.status === "seen");
         u[i.candidate.id] = {
           ...y,
-          id: y.id || i.candidate.id,
+          id: i.candidate.id,
           uses: _,
           fixes: a ? Array.isArray(y.fixes) ? y.fixes : [] : [],
           match: F(i.score, w),
@@ -725,7 +727,9 @@ async function ge(e, t) {
           risk: i.gate.risk,
           needs: i.gate.needs,
           moment: i.candidate.moment,
-          wild: i === o.wild
+          wild: i === o.wild,
+          // A part Pip has to build for this idea, in the Brain's own words. The order carries it to the Forge as "builds".
+          ...(typeof i.candidate.new_capability === "string" && i.candidate.new_capability.trim().length > 8 ? { builds: i.candidate.new_capability.trim().slice(0, 300) } : {})
         };
       });
       let f = [...n.people ?? [], ...Object.keys(n.competition?.edges ?? {})].join(" "), h = Y(Object.entries(u).map(([i, p]) => ({ key: i, ...p })), `${r} ${f}`);

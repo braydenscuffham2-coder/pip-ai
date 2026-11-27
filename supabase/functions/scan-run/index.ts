@@ -14,7 +14,7 @@
 // Optional: BRAIN_MONTHLY_CAP_USD (300), BRAIN_SCAN_BUDGET_USD (2), BRAIN_PER_IP_PER_HOUR (6).
 // deno-lint-ignore-file no-explicit-any
 import { newState, runStage, siteResult, toOutput, PRIMITIVES } from './brain.js';
-import { applyCritique, bench as criticBench, criticPrompt, readCritique } from '../_shared/critic.ts';
+import { applyCritique, bench as criticBench, criticPrompt, dedupe, readCritique } from '../_shared/critic.ts';
 
 // The Messages API adapter lives here (not in brain.js) so the price table can be corrected without rebuilding the bundle.
 // List prices per million tokens, platform.claude.com/docs/en/about-claude/pricing, read Nov 4 2026. Budget guard only.
@@ -173,9 +173,11 @@ async function brainStep(job: Job): Promise<'again' | 'done' | 'failed'> {
     let answer = null;
     try { answer = readCritique(await model(criticPrompt({ profile: brain.profile, moments: brain.moments ?? [], selected: brain.selection.selected, bench: criticBench(brain.scored ?? [], brain.selection) }), 'sonnet', 'critic')); } catch { answer = null; }
     const c = applyCritique(brain.selection, brain.scored ?? [], answer, new Date().toISOString(), Math.round((Date.now() - t0) / 100) / 10);
-    brain.selection = c.selection; brain.critique = c.critique;
+    // The same idea twice is caught in code, after the critic, whatever the critic said.
+    const dd = dedupe(c.selection, brain.scored ?? []);
+    brain.selection = dd.selection; brain.critique = { ...c.critique, duplicates: dd.duplicates, revised: c.critique.revised || dd.duplicates.length > 0 };
     for (const u of usage) await db('events', { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ kind: 'brain_usage', domain: job.domain, detail: { scanId: job.id, ...u } }) }).then((r) => r.body?.cancel());
-    await event(job.id, job.domain, 'critic', { revised: c.critique.revised, swapped: c.critique.swapped.map((x) => `${x.out} > ${x.in}`), kept: c.selection.selected.length - c.critique.swapped.length, generic: c.critique.verdicts.filter((v) => v.generic).length, thin: c.critique.verdicts.filter((v) => v.evidence !== 'strong').length, seconds: c.critique.seconds });
+    await event(job.id, job.domain, 'critic', { revised: c.critique.revised || dd.duplicates.length > 0, duplicates: dd.duplicates.map((x) => `${x.dropped} = ${x.twin_of}${x.replaced_with ? ` > ${x.replaced_with}` : ''}`), swapped: c.critique.swapped.map((x) => `${x.out} > ${x.in}`), kept: c.selection.selected.length - c.critique.swapped.length, generic: c.critique.verdicts.filter((v) => v.generic).length, thin: c.critique.verdicts.filter((v) => v.evidence !== 'strong').length, seconds: c.critique.seconds });
     await patchJob(job.id, { stage: 'render', attempts: 0, state: { ...job.state, brain, spent: Number(job.state?.spent ?? 0) + usage.reduce((a, u) => a + u.usd, 0) } });
     return 'again';
   }
