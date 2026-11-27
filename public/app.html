@@ -16330,12 +16330,13 @@ dialog.pl-dlg :focus-visible{outline:2px solid #2580dc;outline-offset:2px;border
     other.textContent = "Read the " + o.title; other.dataset.plGo = o.id;
     d.querySelector(".pl-body").scrollTop = 0;
   }
-  function open(which){
-    var d = ensureDialog();
-    if (d.inert) d.inert = false; /* the opening page marks other body children inert; the reader must stay usable */
-    show(which || "terms");
-    if (!d.open) { try { d.showModal(); } catch (e) { d.setAttribute("open", ""); } }
-    d.querySelector(".pl-close").focus();
+  /* Nov 27, 2026: the text built into this page was the November 8 draft (no mailing address, a blank contact email).
+     The current Terms and Privacy Policy live at /terms and /privacy, so every entry point opens those. A press opens
+     a new tab so the visitor keeps their place; a #terms or #privacy address (no press) goes there in this tab. */
+  function open(which, sameTab){
+    var url = "/" + (which === "privacy" ? "privacy" : "terms");
+    if (sameTab) { location.href = url; return; }
+    try { window.open(url, "_blank", "noopener"); } catch (e) { location.href = url; }
   }
   window.PipLegal = { open: open, docs: DOCS, config: C };
 
@@ -16346,7 +16347,7 @@ dialog.pl-dlg :focus-visible{outline:2px solid #2580dc;outline-offset:2px;border
     document.querySelectorAll("header.p3-top .p3-tools").forEach(function(tools){
       if (tools.querySelector(".pl-btn")) return;
       var b = el("button", "v2-icon pl-btn", ICON);
-      b.type = "button"; b.setAttribute("aria-label", "Terms of Service and Privacy Policy"); b.title = "Terms & privacy"; b.setAttribute("aria-haspopup", "dialog");
+      b.type = "button"; b.setAttribute("aria-label", "Terms of Service and Privacy Policy (opens in a new tab)"); b.title = "Terms & privacy";
       b.addEventListener("click", function(){ open("terms"); });
       tools.appendChild(b);
     });
@@ -16371,8 +16372,8 @@ dialog.pl-dlg :focus-visible{outline:2px solid #2580dc;outline-offset:2px;border
     inject();
     new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
     var h = (location.hash || "").replace("#", "").toLowerCase();
-    if (h === "terms" || h === "privacy") setTimeout(function(){ open(h); }, 400);
-    window.addEventListener("hashchange", function(){ var k = (location.hash || "").replace("#", "").toLowerCase(); if (k === "terms" || k === "privacy") open(k); });
+    if (h === "terms" || h === "privacy") { open(h, true); return; }
+    window.addEventListener("hashchange", function(){ var k = (location.hash || "").replace("#", "").toLowerCase(); if (k === "terms" || k === "privacy") open(k, true); });
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
