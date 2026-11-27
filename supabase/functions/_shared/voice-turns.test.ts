@@ -1,14 +1,17 @@
-import { assert, assertEquals } from "jsr:@std/assert@1";
+// One answer per thing said, and what the caller hears while the teammate works.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+const assertEquals = (a: unknown, b: unknown) => assert.deepEqual(a, b);
 import { ackFor, afterAck, alike, sameTurn } from "./voice-turns.ts";
 
-Deno.test("the pairs the phone side really sent twice are one turn", () => {
+test("the pairs the phone side really sent twice are one turn", () => {
   assert(sameTurn("Can I book an appointment for Tuesday at 7:00 p.m.?", "Can I book an appointment for Tuesday at seven p.m.?"));
   assert(sameTurn("Brayden Scuffham.", "Brayden Scuffum."));
   assert(sameTurn("What time do you guys open?", "what time do you guys open"));
   assert(sameTurn("Hi.", "Hi"));
 });
 
-Deno.test("something new, a correction, or more words is not the same turn", () => {
+test("something new, a correction, or more words is not the same turn", () => {
   assert(!sameTurn("I'd like a table", "I'd like a table for six on Friday"));
   assert(!sameTurn("Tuesday", "Thursday"));
   assert(!sameTurn("Yes.", "No."));
@@ -19,14 +22,14 @@ Deno.test("something new, a correction, or more words is not the same turn", () 
   assert(!sameTurn("...", "..."), "nothing heard twice is not a sentence said twice");
 });
 
-Deno.test("alike is 1 for the same words and falls with every changed letter", () => {
+test("alike is 1 for the same words and falls with every changed letter", () => {
   assertEquals(alike("We OPEN at five!", "we open at five"), 1);
   assert(alike("scuffham", "scuffum") > 0.7);
   assert(alike("tuesday", "thursday") < 0.85);
   assertEquals(alike("", "x"), 0);
 });
 
-Deno.test("the acknowledgement fits what was heard, rotates, and is skipped when it would be odd", () => {
+test("the acknowledgement fits what was heard, rotates, and is skipped when it would be odd", () => {
   assertEquals(ackFor("What time do you open?", 0, false), "Let's see.");
   assertEquals(ackFor("do you take walk ins", 1, false), "Okay.");
   assertEquals(ackFor("It's Dana, 208-555-0142.", 0, false), "Okay.");
@@ -37,7 +40,7 @@ Deno.test("the acknowledgement fits what was heard, rotates, and is skipped when
   for (let t = 0; t < 12; t++) assert(!/sure|yes|no\b/i.test(ackFor("can I bring a cake?", t, false)), "never a word that sounds like an answer");
 });
 
-Deno.test("an answer does not repeat the acknowledgement it follows", () => {
+test("an answer does not repeat the acknowledgement it follows", () => {
   assertEquals(afterAck("Okay.", "Okay, we open at five."), "We open at five.");
   assertEquals(afterAck("Got it.", "Got it. What's the best number?"), "What's the best number?");
   assertEquals(afterAck("Okay.", "We open at five."), "We open at five.");
