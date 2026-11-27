@@ -177,7 +177,7 @@ function createOffice(THREE, X, opts) {
     }
     const live = tool.state === "ok", logos = (tool.logos || []).slice(0, 3), n = logos.length;
     const box = n <= 1 ? 236 : n === 2 ? 168 : 124, gap = 22, total = n * box + (n - 1) * gap;
-    g.save(); if (!live) { g.filter = "grayscale(1)"; g.globalAlpha = 0.42; }
+    g.save(); if (!live) { g.filter = "grayscale(0.85)"; g.globalAlpha = 0.62; }
     logos.forEach((k, i) => {
       const x = W / 2 - total / 2 + i * (box + gap), y = n <= 1 ? 92 : 128;
       if (k.charAt(0) === "~") { // no file for this one: its initial, quietly
@@ -353,9 +353,9 @@ function createOffice(THREE, X, opts) {
 
   // ---------- Pip leads: he moves first, drifts in an arc, and turns back to check you're following ----------
   let pipTo = V(), pipTravel = null, pipSide = -1;
-  function pipSpot(stop, side = pipSide, dist = TALL() ? 4.3 : 3.0) { // on a phone he stands further off, above the sheet // left or right third, a couple of metres ahead of where the camera will stand
+  function pipSpot(stop, side = pipSide, dist = TALL() ? 4.3 : 3.0, wide = 1.02) { // on a phone he stands further off, above the sheet // left or right third, a couple of metres ahead of where the camera will stand
     const f = stop.look.clone().sub(stop.pos).setY(0).normalize(), r = V(-f.z, 0, f.x);
-    return stop.pos.clone().add(f.multiplyScalar(dist)).add(r.multiplyScalar(side * (PHONE() ? 0.38 : 1.02))).setY(0);
+    return stop.pos.clone().add(f.multiplyScalar(dist)).add(r.multiplyScalar(side * (PHONE() ? 0.38 : wide))).setY(0);
   }
   function pipGo(to, dur) {
     const far = to.distanceTo(pip.a.position) > 0.6; if (far && !RM()) pip.actor.acts.crouch && pip.actor.acts.crouch();
@@ -840,7 +840,7 @@ function createOffice(THREE, X, opts) {
       if (!(id in STOPS) || (mode === "station" && stationId === id)) return Promise.resolve();
       mode = "station"; stationId = id; focusId = null; zoomed = false; syncPins();
       return ready.then(() => { const s = STOPS[id](); pipSide = id === "front" || id === "meter" || id === "comms" ? -1 : 1;
-        if (!RM()) pip.actor.acts.beckon(PLACE[id].clone()); pipGo(pipSpot(s, pipSide, 3.1), 1500); // "this way", and he leads
+        if (!RM()) pip.actor.acts.beckon(PLACE[id].clone()); pipGo(pipSpot(s, pipSide, 2.7, 1.5), 1500); // off to the side, clear of what you came to see // "this way", and he leads
         return go(s).then(() => { if (mode === "station" && stationId === id) pip.actor.acts.present(PLACE[id].clone(), 1.8); }); });
     },
     desk(id) {
