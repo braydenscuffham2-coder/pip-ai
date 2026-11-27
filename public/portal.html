@@ -409,6 +409,17 @@ html.has-dock{--dock-h:78px}
 .knows-list{display:grid;grid-template-columns:1fr;gap:4px 16px;margin-top:14px}
 .knows-list dt{font:500 11px/1.2 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2);margin-top:10px}
 .knows-list dd{margin:0;line-height:1.45}
+.inbox-list{list-style:none;padding:0;margin:12px 0 0}
+.inbox-item{padding:16px 0;border-top:1px solid var(--line, rgba(11,13,31,.1))}
+.inbox-item.seen{opacity:.72}
+.inbox-top{gap:8px;align-items:center}
+.inbox-said{margin-top:10px;font-size:15.5px;line-height:1.5;overflow-wrap:anywhere;white-space:pre-wrap}
+.inbox-draft{padding:12px 14px;border-radius:12px;background:rgba(11,13,31,.04)}
+.inbox-facts{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:10px 0 0}
+.inbox-facts dt{font:500 11px/1.6 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2)}
+.inbox-facts dd{margin:0;line-height:1.45;overflow-wrap:anywhere}
+.inbox-old{margin-top:14px}
+.inbox-old summary{cursor:pointer;font-weight:500;padding:8px 0}
 .state-row .sel{flex:1}
 .steps{position:relative;display:flex;flex-direction:column}
 .step{position:relative;border-top:1px solid var(--line)}
@@ -1854,6 +1865,7 @@ function teamTab() {
   return [stageCard(),
     // A job waiting on the owner (a yes before saving, or a sign-in) is shown first, where they land.
     isOwner() ? workCard(true) : null,
+    isOwner() ? inboxCard() : null,
     isOwner() ? notesCard() : null,
     d.agents.length ? h("section", { class: "stack", "aria-label": "Your team" }, h("div", { class: "row", style: { justifyContent: "space-between", marginTop: "6px" } }, h("h2", { class: "h-s" }, "Your team"), h("span", { class: "fine" }, d.agents.length === 1 ? "1 teammate" : d.agents.length + " teammates")), h("div", { class: "team" }, d.agents.map(mateCard)))
       : h("div", { class: "card dash empty rise", style: { "--i": 2 }, "data-pip-empty": "" }, h("p", { class: "h-s" }, "Your teammates will show here.")),
@@ -2005,6 +2017,47 @@ function setupTab() {
 // ---------- weekly notes: what each teammate did last week, what went wrong, and one suggestion at most ----------
 // A suggestion is only words. "Good idea" and "No thanks" record what the owner thinks and tell Pip's builder; neither
 // changes the teammate.
+// ---------- messages from the team ----------
+// What a teammate passed to the owner: a message it took, a lead, a booking it asked the owner to confirm, a draft, a
+// conversation it handed over. New ones are listed first; "Got it" only marks one as seen and never deletes it.
+// The words came from a customer by way of a teammate: they go on the page as text (h() never treats a string as markup).
+const INBOX_KIND = { notify_owner: "Message", capture_lead: "Lead", request_booking: "Booking request", draft_for_approval: "Draft", handoff: "Handed to you" };
+const INBOX_VIA = { voice: "on a call", sms: "by text", web_chat: "in website chat", email: "by email" };
+const INBOX_LABEL = { name: "Name", phone: "Phone", email: "Email", need: "Wants", when: "When", contact: "Contact", what: "For", reason: "Why" };
+function inboxWhen(iso) {
+  const d = new Date(iso), mins = Math.round((Date.now() - d.getTime()) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return mins + " min ago";
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }), day = dayWord(iso);
+  return (day ? day + ", " : d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + ", ") + time;
+}
+function inboxCard() {
+  const all = S.data.inbox || [], id = S.bid;
+  if (!all.length) return null;
+  const fresh = all.filter((m) => !m.seen), old = all.filter((m) => m.seen).slice(0, 20);
+  const mark = (m, seen) => run(() => api("/business/" + id + "/inbox", { id: m.id, seen }), seen ? "Marked as seen." : "Marked as new.");
+  const body = (m) => {
+    const s = m.said || {};
+    if (m.kind === "notify_owner") return h("p", { class: "inbox-said" }, s.summary || "No details were written down.");
+    if (m.kind === "draft_for_approval") return [s.what ? h("p", { class: "small" }, h("b", {}, "For: "), s.what) : null, h("p", { class: "inbox-said inbox-draft" }, s.text || "")];
+    const keys = Object.keys(INBOX_LABEL).filter((k) => s[k]);
+    return keys.length ? h("dl", { class: "inbox-facts" }, keys.map((k) => [h("dt", {}, INBOX_LABEL[k]), h("dd", {}, s[k])])) : h("p", { class: "inbox-said" }, "No details were written down.");
+  };
+  const one = (m) => h("li", { class: "inbox-item" + (m.seen ? " seen" : ""), "data-k": "inbox-" + m.id },
+    h("div", { class: "row wrap inbox-top" }, pill(INBOX_KIND[m.kind] || "Message", m.urgent ? "warn" : m.seen ? "" : "vio"), m.urgent ? pill("Urgent", "warn") : null,
+      h("span", { class: "fine" }, m.teammate + (INBOX_VIA[m.channel] ? ", " + INBOX_VIA[m.channel] : "") + " · " + inboxWhen(m.at))),
+    body(m),
+    m.waiting ? h("p", { class: "fine", style: { marginTop: "8px" } }, m.kind === "request_booking" ? m.teammate + " did not confirm this. It is yours to confirm with the customer." : m.teammate + " sent nothing. This is waiting on you.") : null,
+    h("div", { class: "btns", style: { marginTop: "10px" } }, m.seen
+      ? h("button", { class: "btn link", type: "button", "data-k": "inbox-new", onclick: () => mark(m, false) }, "Mark as new")
+      : h("button", { class: "btn ghost", type: "button", "data-k": "inbox-seen", onclick: () => mark(m, true) }, icon("check"), "Got it")));
+  return h("section", { class: "card" + (fresh.length ? " warm" : " dash") + " rise", style: { "--i": 1 }, "aria-label": "Messages from your team", "data-k": "inbox" },
+    h("div", { class: "card-h" }, h("div", {}, kick(fresh.length ? fresh.length + " new" : "All caught up"), h("h2", { class: "h-s", style: { marginTop: "10px" } }, "Messages from your team")),
+      fresh.length > 1 ? h("button", { class: "btn link", type: "button", "data-k": "inbox-all", onclick: () => run(() => api("/business/" + id + "/inbox", { all: true }), "All marked as seen.") }, "Mark all as seen") : null),
+    h("p", { class: "small", style: { marginTop: "6px" } }, "When a teammate takes a message, saves a lead or needs you to confirm something, it lands here."),
+    fresh.length ? h("ul", { class: "inbox-list" }, fresh.map(one)) : null,
+    old.length ? h("details", { class: "inbox-old", "data-k": "inbox-old" }, h("summary", {}, "Earlier (" + old.length + ")"), h("ul", { class: "inbox-list" }, old.map(one))) : null);
+}
 function notesCard() {
   const notes = S.data.notes || [], id = S.bid;
   if (!notes.length) return null;
