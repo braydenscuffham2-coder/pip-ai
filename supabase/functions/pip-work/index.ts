@@ -19,7 +19,7 @@ import { Cdp, openPage } from "../_shared/setup/cdp.ts";
 import { browserbase } from "../_shared/setup/vendors.ts";
 import { sessionMinutes } from "../_shared/setup/guards.ts";
 import { failureEmail, FILL_CODES, nextRelease } from "../_shared/work/worker.ts";
-import { type ScreenAction, type ScreenDeps, type ScreenPlan, screenStep } from "../_shared/work/screen.ts";
+import { readAction, type ScreenDeps, type ScreenPlan, screenStep } from "../_shared/work/screen.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 const SB_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -58,18 +58,26 @@ async function vault(path: "fill" | "code", identity: string, session: string): 
 /** The model's one proposed action for a screen job, read from a masked screenshot. It is only a proposal: screen.ts decides. */
 const screenDeps: ScreenDeps = {
   async model(input) {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST", signal: AbortSignal.timeout(60000),
-      headers: { "content-type": "application/json", "x-api-key": ANTHROPIC, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: MODEL, max_tokens: 500, system: [{ type: "text", text: input.system, cache_control: { type: "ephemeral" } }],
-        messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: input.image } }, { type: "text", text: input.text }] }] }),
-    });
-    const j = await r.json().catch(() => ({}));
-    // deno-lint-ignore no-explicit-any
-    const text = ((j.content || []) as any[]).filter((c) => c.type === "text").map((c) => c.text).join("");
-    let action: ScreenAction = { type: "need_owner", reason: "Pip could not read the page." };
-    try { const m = text.match(/\{[\s\S]*\}/); if (m) action = JSON.parse(m[0]); } catch { /* keep need_owner */ }
-    return { action, usage: j.usage ?? {} };
+    const messages: unknown[] = [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: input.image } }, { type: "text", text: input.text }] }];
+    const usage: Record<string, number> = {};
+    // One retry when the answer is not one readable action. A failed call or a second unreadable answer is an error
+    // (the job is tried again later, and ends after three), never a made-up request for the owner.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST", signal: AbortSignal.timeout(60000),
+        headers: { "content-type": "application/json", "x-api-key": ANTHROPIC, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({ model: MODEL, max_tokens: 500, system: [{ type: "text", text: input.system, cache_control: { type: "ephemeral" } }], messages }),
+      });
+      if (!r.ok) { await r.body?.cancel().catch(() => {}); throw new Error(`model call failed with status ${r.status}`); }
+      const j = await r.json().catch(() => ({}));
+      for (const [k, v] of Object.entries(j.usage ?? {})) if (typeof v === "number") usage[k] = (usage[k] ?? 0) + v;
+      // deno-lint-ignore no-explicit-any
+      const text = ((j.content || []) as any[]).filter((c) => c.type === "text").map((c) => c.text).join("");
+      const action = readAction(text);
+      if (action) return { action, usage };
+      messages.push({ role: "assistant", content: text || "(no answer)" }, { role: "user", content: "That was not one JSON action. Answer with exactly one JSON action and nothing else." });
+    }
+    throw new Error("the model's answer was not a readable action, twice");
   },
   async take(usd) { const why = await rpc("pip_take", { p_kind: "work_usd", p_units: Math.round(usd * 10000) / 10000, p_room: 0 }); return typeof why === "string" ? why : null; },
 };
