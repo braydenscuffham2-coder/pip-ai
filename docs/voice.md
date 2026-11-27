@@ -36,13 +36,13 @@ How a call to a business's Pip number works, what is enforced where, and how to 
 | --- | --- |
 | ElevenLabs is down, slow (over 4 seconds) or answers with nonsense | "Thanks for calling BUSINESS. This is an automated message. Our phone assistant is not available right now. Please call back in a few minutes." The owner gets an urgent alert. |
 | ElevenLabs drops in the middle of a call | "Sorry, we got cut off. Please call back. The team has been told you called." The owner is alerted. |
-| `pip-turn` fails | "Sorry, I'm having trouble right now. I've let the team know, and someone will call you back. Goodbye." Urgent alert. |
+| `pip-turn` fails | "Sorry, I'm having trouble right now. I've let the team know you called. Please try again in a few minutes. Goodbye." Urgent alert. It no longer promises a call back: the caller's number is kept only as a one-way code, so nobody could make that call. |
 | `pip-voice` itself is down | Twilio's backup address (a TwiML Bin with a plain message, set on the number). |
 
 ## Speed, measured
 
 - The greeting needs no model: it starts when the call connects.
-- For each later turn, the caller hears a short holding phrase if `pip-turn` has not answered in 0.7 seconds.
+- For each later turn, the caller hears a short holding phrase if `pip-turn` has not answered in 1.5 seconds (it was 0.7 when a turn took 2.4 seconds, so nearly every answer began with "One moment.").
 - **Measured on the first two real calls (November 27, +1 208 248 7311, TEST Fork): 16 turns, median 2.4 seconds, fastest 0.8, slowest 4.0.** Twilio's first question was answered in 0.75 and 1.45 seconds.
 - `pip-turn` itself, measured on TEST Fork on November 17: **4.0, 4.9 and 6.6 seconds** for three ordinary turns, each of which used one tool. That is too slow for a phone call. The fix is in `pip-turn` (lane 01): no model thinking on the voice channel, shorter replies, and streaming the words as they are written.
 - November 27: the first two are in. `pip-turn` runs on the fast model with no thinking, and on the voice channel it is told to answer in one or two short sentences and is given a small reply budget (320 tokens against 1,600). A spoken answer is a fraction of the length, so less time is spent writing it. **Not re-measured:** a voice turn can only be timed with the service key or a real call, and neither was used. Streaming is not built; it needs `pip-voice` to pass words through as they arrive.

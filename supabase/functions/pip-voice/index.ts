@@ -29,7 +29,10 @@ const SELF = `${SB_URL}/functions/v1/pip-voice`;
 const EL = (Deno.env.get("ELEVENLABS_BASE_URL") || "https://api.elevenlabs.io").replace(/\/+$/, "");
 const TW = (Deno.env.get("TWILIO_BASE_URL") || "https://api.twilio.com").replace(/\/+$/, "");
 const WORDING = "v2-by-state"; // the opening line is chosen per call by _shared/call-notices.ts from jurisdiction_rules
-const HOLD_MS = 700; // how long the caller waits in silence before a holding phrase
+// How long the caller waits in silence before a holding phrase. It was 700 ms when a turn took 2.4 seconds, so nearly
+// every answer began with "One moment." A person at a front desk does not say that before giving the opening hours.
+// A turn with no tool now comes back in about a second, so the phrase is kept for turns that really take a while.
+const HOLD_MS = 1500;
 const HOLD = ["One moment.", "Let me check.", "Okay, one second.", "Sure, just a moment."];
 const TURN_TIMEOUT_MS = 20000;
 // deno-lint-ignore no-explicit-any
@@ -223,7 +226,7 @@ async function answer(open: J, heard: string, canEnd: boolean): Promise<Said> {
     if (!reply) {
       await db.rpc("voice_alert", { p_call: call, p_summary: `The teammate could not answer a caller${heard ? `: "${heard.slice(0, 160)}"` : ""}. The caller was told someone will call back.`, p_urgency: "urgent" });
       await close(canEnd ? "hangup" : null, "teammate_failed");
-      return { say: "Sorry, I'm having trouble right now. I've let the team know, and someone will call you back. Goodbye.", end: canEnd ? "hangup" : undefined };
+      return { say: "Sorry, I'm having trouble right now. I've let the team know you called. Please try again in a few minutes. Goodbye.", end: canEnd ? "hangup" : undefined };
     }
     if (MAYBE_DANGER.test(heard)) reply = `${DANGER_FIRST} ${reply}`;
     const handed = Array.isArray(j?.actions) && j.actions.some((a: J) => a?.tool === "handoff" && a?.status === "done");
@@ -270,7 +273,7 @@ async function llm(req: Request) {
       if (open?.reason === "ending") out = { say: "" };
       else if (open?.reason === "too_long") {
         await db.rpc("voice_turn_close", { p_call: open.call, p_next: canEnd ? "hangup" : null, p_outcome: "too_long" });
-        out = { say: "I need to end this call here. The team has my notes and will follow up. Goodbye.", end: canEnd ? "hangup" : undefined };
+        out = { say: "I need to end this call here. The team has my notes. Goodbye.", end: canEnd ? "hangup" : undefined };
       } else {
         // The caller spoke again before the last turn finished: wait for it, so nothing is done twice.
         let waited = false;
