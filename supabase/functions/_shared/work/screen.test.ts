@@ -2,7 +2,7 @@
 //   node --test supabase/functions/_shared/work/screen.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { allowScreenAction, type ElementInfo, onScreens, sameForm, type ScreenAction, type ScreenCtx, type ScreenPlan, screenStep } from "./screen.ts";
+import { allowScreenAction, type ElementInfo, onScreens, readAction, sameForm, type ScreenAction, type ScreenCtx, type ScreenPlan, screenStep } from "./screen.ts";
 import type { Identity, Out, WorkDeps, WorkJob } from "./engine.ts";
 import type { Page } from "../setup/engine.ts";
 
@@ -212,4 +212,10 @@ test("a read-only job reports what it found and changes nothing", async () => {
   assert.equal(out.next, "done"); assert.equal(out.outcome, "ok");
   assert.deepEqual(w.pressed, [], "the save button was refused");
   assert.equal((w.job.plan as ScreenPlan).writes, 0);
+});
+
+test("a model answer is one readable action or nothing: an error or stray prose is never turned into a request for the owner", () => {
+  assert.deepEqual(readAction('{"type":"click","x":10,"y":20,"label":"Save"}'), { type: "click", x: 10, y: 20, label: "Save" });
+  assert.deepEqual(readAction('Here is my action:\n{"type":"done","summary":"Read it."}'), { type: "done", summary: "Read it." });
+  for (const bad of ["", "I cannot help with that.", "{not json}", '{"type":"delete_everything"}', '["click"]', '{"x":1}']) assert.equal(readAction(bad), null, bad);
 });
