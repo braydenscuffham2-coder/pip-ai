@@ -217,22 +217,45 @@ const refusal = (who: unknown, tool: string, why: string) => cut(`${who} asked f
 /** On a phone call every second of silence is felt. A spoken answer is one or two sentences, so the model is told so and is not given room to write more. */
 const VOICE_MAX_TOKENS = 320;
 // The phone rules themselves are in _shared/voice-style.ts.
-async function claude(system: string, messages: J[], tools: J[], maxTokens = 1600): Promise<J | null> {
+//
+// Thinking and a phone call (found Nov 27, 2026 on live test turns). The newer models think before they answer unless
+// told not to, and that thinking is paid for out of max_tokens: with the 320-token phone budget a reply came back as
+// "Hi, I'm Hallie, an" and stopped. It also made every caller wait while the model thought about "what time do you
+// open". On a call the model is asked to answer without thinking first, in the way each model accepts (Anthropic's
+// docs, "Thinking" and "Effort"). A model that is not in this list keeps its thinking and is given room for it, so its
+// reply is never cut short by it. Chat, text and email are unchanged.
+const NO_THINKING: Record<string, J> = {
+  "claude-haiku-5-5": { type: "disabled" }, "claude-sonnet-5": { type: "disabled" }, "claude-opus-5": { type: "disabled" },
+  "claude-sonnet-5-5": { type: "between_tools" },
+};
+const THINKING_ROOM = 2000;
+type ModelAsk = { maxTokens?: number; voice?: boolean; model?: string };
+async function claude(system: string, messages: J[], tools: J[], ask: ModelAsk = {}): Promise<J | null> {
   const key = Deno.env.get("ANTHROPIC_API_KEY");
   if (!key) return null;
+  const model = ask.model ?? MODEL, quiet = ask.voice ? NO_THINKING[model] : undefined;
+  const max = (ask.maxTokens ?? 1600) + (ask.voice && !quiet ? THINKING_ROOM : 0);
   try {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }], messages, ...(tools.length ? { tools } : {}) }),
+      body: JSON.stringify({ model, max_tokens: max, ...(quiet ? { thinking: quiet } : {}), system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }], messages, ...(tools.length ? { tools } : {}) }),
       signal: AbortSignal.timeout(22000),
     });
     if (!r.ok) { console.error("[turn] model", r.status, (await r.text()).slice(0, 200)); return null; }
     return await r.json();
   } catch (e) { console.error("[turn] model", String(e).slice(0, 120)); return null; }
 }
-function costOf(u: J): number {
-  const p = PRICE[MODEL] ?? [2, 10];
+/**
+ * A reply that ran out of room is cut back to its last whole sentence, so nobody hears or reads half a word.
+ * With no whole sentence at all there is nothing safe to say, and the caller of this gets "".
+ */
+export function wholeSentences(text: string): string {
+  const m = String(text ?? "").match(/^[\s\S]*[.!?]["')\]]?(?=\s|$)/);
+  return m ? m[0].trim() : "";
+}
+function costOf(u: J, model = MODEL): number {
+  const p = PRICE[model] ?? [2, 10];
   const inTok = (u?.input_tokens ?? 0) + (u?.cache_creation_input_tokens ?? 0) * 1.25 + (u?.cache_read_input_tokens ?? 0) * 0.1;
   return (inTok * p[0] + (u?.output_tokens ?? 0) * p[1]) / 1e6;
 }
@@ -361,7 +384,15 @@ async function turn(body: J, trace: boolean) {
   }
 
   // may this teammate act for real right now?
-  const { data: sb } = await db.from("forge_settings").select("value").eq("key", "act_sandbox_businesses").maybeSingle();
+  // On a call the model can be chosen without a deploy (forge_settings.voice_model = {"model": "..."}), so a faster or
+  // a smarter one can be tried on real calls. Only a model whose price Pip knows is accepted; anything else is ignored.
+  const onCall = channel === "voice";
+  const [{ data: sb }, vm] = await Promise.all([
+    db.from("forge_settings").select("value").eq("key", "act_sandbox_businesses").maybeSingle(),
+    onCall ? db.from("forge_settings").select("value").eq("key", "voice_model").maybeSingle() : Promise.resolve({ data: null }),
+  ]);
+  const asked = (vm as J)?.data?.value?.model;
+  const turnModel = typeof asked === "string" && Object.hasOwn(PRICE, asked) ? asked : MODEL;
   const real = c.s.status === "live" || (Array.isArray(sb?.value) && !!c.biz && sb.value.includes(c.biz.id));
 
   // The job that answers this channel. It is found by code from the teammate's spec, never chosen by the model.
@@ -623,14 +654,17 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
   }
 
   for (let round = 0; round < 5 && Date.now() < deadline && body?.limited !== true && job; round++) {
-    const r = await claude(channel === "voice" ? system + voiceRules(tools.some((x: J) => (MESSAGE_TOOLS as readonly string[]).includes(x.name))) : system, msgs, tools, channel === "voice" ? VOICE_MAX_TOKENS : 1600);
+    const t0 = Date.now();
+    const r = await claude(onCall ? system + voiceRules(tools.some((x: J) => (MESSAGE_TOOLS as readonly string[]).includes(x.name))) : system, msgs, tools, onCall ? { maxTokens: VOICE_MAX_TOKENS, voice: true, model: turnModel } : { model: turnModel });
     if (!r) break;
-    usedModel = true; cost += costOf(r.usage);
+    usedModel = true; cost += costOf(r.usage, turnModel);
     const uses = (r.content ?? []).filter((x: J) => x.type === "tool_use");
-    const text = (r.content ?? []).filter((x: J) => x.type === "text").map((x: J) => x.text).join(" ").trim();
-    steps.push({ stop: r.stop_reason, text: text.length, tools: uses.map((u: J) => u.name), kinds: (r.content ?? []).map((x: J) => x.type) });
+    let text = (r.content ?? []).filter((x: J) => x.type === "text").map((x: J) => x.text).join(" ").trim();
+    // Out of room: keep the whole sentences and drop the half one. Nothing whole means nothing is said from this answer.
+    if (r.stop_reason === "max_tokens") text = wholeSentences(text);
+    steps.push({ stop: r.stop_reason, text: text.length, tools: uses.map((u: J) => u.name), kinds: (r.content ?? []).map((x: J) => x.type), ms: Date.now() - t0, model: turnModel });
     if (!uses.length || r.stop_reason !== "tool_use") {
-      if (!text && round < 2) continue; // the model spent its whole answer thinking: ask again
+      if (!text && round < 2) continue; // the model spent its whole answer thinking, or was cut off before one whole sentence: ask again
       reply = text; break;
     }
     msgs.push({ role: "assistant", content: r.content });
@@ -663,7 +697,7 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
   if (!usedModel || !reply) {
     // Never leave the customer hanging: the owner is told and the customer gets a plain holding reply.
     if (!usedModel) await note("notify_owner", { summary: `New message: ${message.slice(0, 200)}`, urgency: "normal" }, "none");
-    reply = reply || `Thanks for reaching out to ${c.name}! A team member will get back to you shortly.`;
+    reply = reply || (onCall ? (usedModel ? "Sorry, I didn't catch that. Could you say it again?" : "Sorry, I'm having trouble on my end right now. I've let the team know you called.") : `Thanks for reaching out to ${c.name}! A team member will get back to you shortly.`);
   }
   if (first && !AI_RE.test(reply)) reply = `This is ${c.teammate}, an AI assistant for ${c.name}. ${reply}`;
   // On every channel and in every state: never a claim to be a person, and "an AI" whenever the customer asks.
@@ -671,7 +705,7 @@ ${earlier ? `ALREADY DONE EARLIER IN THIS CONVERSATION (these are real tool resu
   reply = clean(reply).slice(0, channel === "sms" ? 700 : 1400);
 
   await db.from("messages").insert([{ conversation_id: conv, role: "user", content: message }, { conversation_id: conv, role: "assistant", content: reply, actions }]);
-  if (c.biz?.id && cost > 0) await db.from("usage_events").insert({ business_id: c.biz.id, spec_id: id, unit: channel === "sms" ? "sms" : channel === "voice" ? "voice_minute" : "conversation", qty: 0, cost_usd: Math.round(cost * 1e5) / 1e5, provider: "anthropic", meta: { conversation: conv, model: MODEL } });
+  if (c.biz?.id && cost > 0) await db.from("usage_events").insert({ business_id: c.biz.id, spec_id: id, unit: channel === "sms" ? "sms" : channel === "voice" ? "voice_minute" : "conversation", qty: 0, cost_usd: Math.round(cost * 1e5) / 1e5, provider: "anthropic", meta: { conversation: conv, model: turnModel } });
   return json({ conversation: conv, reply, actions, live: usedModel, first, real, ...(trace ? { steps, offered: tools.map((t) => t.name), unavailable } : {}) });
 }
 
