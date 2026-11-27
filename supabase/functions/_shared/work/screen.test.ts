@@ -217,5 +217,6 @@ test("a read-only job reports what it found and changes nothing", async () => {
 test("a model answer is one readable action or nothing: an error or stray prose is never turned into a request for the owner", () => {
   assert.deepEqual(readAction('{"type":"click","x":10,"y":20,"label":"Save"}'), { type: "click", x: 10, y: 20, label: "Save" });
   assert.deepEqual(readAction('Here is my action:\n{"type":"done","summary":"Read it."}'), { type: "done", summary: "Read it." });
+  assert.deepEqual(readAction('{"type":"click","x":120,"y":560,"label":"Save {patient}"}\nI chose this because the form is {complete}.'), { type: "click", x: 120, y: 560, label: "Save {patient}" }, "words after the action, even with braces, do not spoil it");
   for (const bad of ["", "I cannot help with that.", "{not json}", '{"type":"delete_everything"}', '["click"]', '{"x":1}']) assert.equal(readAction(bad), null, bad);
 });

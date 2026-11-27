@@ -149,12 +149,26 @@ export function sameForm(a: Record<string, string> | null | undefined, b: Record
 }
 
 const ACTION_TYPES = ["click", "type", "select", "key", "scroll", "navigate", "wait", "done", "need_owner"];
+/** The first complete {...} in a text, respecting quoted strings. Null when there is none. */
+function firstObject(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0, inString = false, escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (inString) { if (escaped) escaped = false; else if (c === "\\") escaped = true; else if (c === '"') inString = false; continue; }
+    if (c === '"') inString = true;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) return text.slice(start, i + 1);
+  }
+  return null;
+}
 /** The one action in a model's answer, or null when the answer is not one readable action. Never guesses. */
 export function readAction(text: string): ScreenAction | null {
-  const m = String(text ?? "").match(/\{[\s\S]*\}/);
-  if (!m) return null;
+  const obj = firstObject(String(text ?? ""));
+  if (!obj) return null;
   try {
-    const a = JSON.parse(m[0]);
+    const a = JSON.parse(obj);
     return a && typeof a === "object" && !Array.isArray(a) && ACTION_TYPES.includes(a.type) ? a as ScreenAction : null;
   } catch { return null; }
 }
