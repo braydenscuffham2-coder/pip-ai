@@ -2,7 +2,7 @@
 // novelty ideas used to prove Part E: a bookstore's staff picks and a taproom's tap list.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkPiece, closeness, closestParts, intakeForm, memoryStore, ownerAdd, ownerUpdate, piecePrompt, pieceWords, publicPage, readPieceAnswer, selfTest, submitIntake, wordsOf, type PieceSpec } from "./piece.ts";
+import { checkPiece, closeness, closestParts, intakeForm, memoryStore, ownerAdd, ownerUpdate, piecePrompt, pieceWords, publicPage, readPieceAnswer, REUSE_AT, reusedPart, selfTest, submitIntake, wordsOf, type PieceSpec } from "./piece.ts";
 
 export const STAFF_PICKS = {
   contract: "piece/1", kind: "portal", name: "staff_picks", label: "Staff picks", does: "Staff send in the books they are recommending, and the approved ones show on a public picks page.",
@@ -105,4 +105,13 @@ test("the Forge's answer is read as data, checked by the contract, and a refusal
   assert.deepEqual(readPieceAnswer('{"cannot":"It would need card numbers."}'), { cannot: "It would need card numbers." });
   assert.equal(readPieceAnswer("no json here"), null);
   assert.equal(readPieceAnswer('{"piece": {"contract":'), null);
+});
+
+test("a draft reuses a library part only when it was shown that part and the part is close enough", () => {
+  const shown = [{ id: "a", score: 0.52 }, { id: "b", score: 0.31 }];
+  assert.equal(reusedPart("a", shown), "a");
+  assert.equal(reusedPart("b", shown), null, "0.31 is a neighbour, not the same shape: the new piece is filed on its own");
+  assert.equal(reusedPart("c", shown), null, "a part it was never shown");
+  assert.equal(reusedPart(null, shown), null); assert.equal(reusedPart({ id: "a" }, shown), null);
+  assert.equal(reusedPart("x", [{ id: "x", score: REUSE_AT }]), "x");
 });

@@ -301,6 +301,15 @@ export function closestParts(idea: string, lib: LibraryPart[], n = 5, min = 0.2)
   return lib.map((p) => ({ ...p, score: closeness(idea, p.words) })).filter((p) => p.score >= min).sort((x, y) => y.score - x.score || (y.uses ?? 0) - (x.uses ?? 0)).slice(0, n);
 }
 
+/** How close a library part must be before a piece counts as a reuse of it. Measured live on Nov 27, 2026: a second
+ * form-approve-publish board scored 0.52 against the first and was the same shape; a tap list with no form and a daily
+ * report scored 0.31 and was not. Below this line the new piece is filed as its own shape, so the library learns it. */
+export const REUSE_AT = 0.4;
+/** The part a draft may claim to reuse: one it was actually shown, and close enough. Anything else is no reuse. */
+export function reusedPart(claim: unknown, shown: { id: string; score: number }[]): string | null {
+  return typeof claim === "string" && shown.some((p) => p.id === claim && p.score >= REUSE_AT) ? claim : null;
+}
+
 /** What the Forge is asked when it writes a piece. The answer is checked by checkPiece and run by selfTest; nothing else is trusted. */
 export function piecePrompt(a: { business: string; industry?: string; idea: string; library: (LibraryPart & { score: number })[] }): string {
   return `You are Pip's Forge. A local business needs a small piece of software that does not exist for it yet. Write its description. You do not write code: Pip's own runtime runs the description.
