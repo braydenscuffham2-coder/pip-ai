@@ -1850,7 +1850,8 @@ function teamTab() {
     d.agents.length ? h("section", { class: "stack", "aria-label": "Your team" }, h("div", { class: "row", style: { justifyContent: "space-between", marginTop: "6px" } }, h("h2", { class: "h-s" }, "Your team"), h("span", { class: "fine" }, d.agents.length === 1 ? "1 teammate" : d.agents.length + " teammates")), h("div", { class: "team" }, d.agents.map(mateCard)))
       : h("div", { class: "card dash empty rise", style: { "--i": 2 }, "data-pip-empty": "" }, h("p", { class: "h-s" }, "Your teammates will show here.")),
     d.business.health_lane ? h("div", { class: "card warm rise", style: { "--i": 4 } }, kick("Health agreements"), h("p", { class: "lead", style: { marginTop: "10px", fontSize: "15.5px" } }, "No health teammate goes live until each of these is signed."),
-      d.health_missing.length ? h("ul", { class: "health", style: { marginTop: "12px" } }, d.health_missing.map((m) => h("li", {}, icon("info"), m.party))) : h("p", { class: "note ok", style: { marginTop: "12px" } }, icon("check"), h("span", {}, "All signed."))) : null];
+      d.health_missing.length ? h("ul", { class: "health", style: { marginTop: "12px" } }, d.health_missing.map((m) => h("li", {}, icon("info"), m.party))) : h("p", { class: "note ok", style: { marginTop: "12px" } }, icon("check"), h("span", {}, "All signed."))) : null,
+    piecesCard()];
 }
 
 // ---------- sign-in steps: what the owner should know before the tool's own screen opens ----------
@@ -1963,6 +1964,54 @@ function setupTab() {
     isOwner() && (d.setup_unlocked || d.role === "founder") ? vaultCard() : null,
     isOwner() ? doorsCard() : null,
     isOwner() ? workCard() : null];
+}
+// ---------- pieces: small software Pip built for this business ----------
+// Everyone at the business sees the records, adds one and moves one between the piece's own stages. There is no delete.
+// Values people typed are put on the page as text (the h() helper never treats a string as markup).
+function piecesCard() {
+  const pieces = S.data.pieces || [], id = S.bid;
+  if (!pieces.length) return null;
+  S.piece = S.piece || {};
+  const open = (p) => { S.piece = { id: p.id, records: null, stage: null, adding: false }; render(); loadRecords(p); };
+  const loadRecords = async (p) => { try { const r = await api("/business/" + id + "/piece", { piece: p.id, action: "list" }); if (S.piece.id === p.id) { S.piece.records = r.records; render(); } } catch (e) { say(e.message, "err"); } };
+  const act = async (p, body, ok) => { try { await api("/business/" + id + "/piece", Object.assign({ piece: p.id }, body)); say(ok, "ok"); S.piece.adding = false; await load(); await loadRecords(p); } catch (e) { say(e.message, "err"); } };
+  const one = (p) => {
+    const mine = S.piece.id === p.id, total = Object.values(p.by_stage || {}).reduce((a, b) => a + b, 0);
+    const head = h("div", { class: "row", style: { alignItems: "baseline", flexWrap: "wrap", gap: "8px" } }, h("b", {}, p.label), p.status === "live" ? null : h("span", { class: "fine" }, p.status === "paused" ? "Paused" : "Not live yet"),
+      h("span", { class: "small" }, p.stages.map((st) => (p.by_stage[st] || 0) + " " + st).join(" · ")));
+    const links = h("div", { class: "btns", style: { marginTop: "8px" } },
+      h("button", { class: "btn ghost", type: "button", "data-k": "piece-open-" + p.id, onclick: () => (mine ? (S.piece = {}, render()) : open(p)) }, mine ? "Close" : total ? "Open the list" : "Open"),
+      p.has_form || p.has_page ? h("a", { class: "btn link", href: p.page, target: "_blank", rel: "noopener" }, p.has_page ? "See the public page" : "See the public form") : null);
+    let body = null;
+    if (mine) {
+      const recs = S.piece.records;
+      const lead = p.fields[0];
+      const row = (r) => h("li", { "data-k": "rec-" + r.ref, style: { padding: "12px 0", borderTop: "1px solid var(--line, rgba(11,13,31,.1))" } },
+        h("div", { class: "row", style: { justifyContent: "space-between", alignItems: "baseline", gap: "10px", flexWrap: "wrap" } },
+          h("b", { style: { overflowWrap: "anywhere" } }, String(r.data[lead.id] ?? "(no " + lead.label.toLowerCase() + ")")), h("span", { class: "fine" }, r.ref + (r.source === "form" ? " · from the form" : ""))),
+        h("dl", { style: { margin: "6px 0 0", display: "grid", gap: "2px" } }, p.fields.slice(1).filter((f) => r.data[f.id] !== undefined && r.data[f.id] !== "").map((f) => h("div", { class: "small", style: { overflowWrap: "anywhere", whiteSpace: "pre-wrap" } }, h("b", {}, f.label + ": "), String(r.data[f.id])))),
+        h("label", { class: "field", for: "st-" + r.id, style: { marginTop: "8px", maxWidth: "260px" } }, h("span", { class: "lab" }, "Stage"),
+          (() => { const sel = h("select", { class: "in", id: "st-" + r.id, "data-k": "stage-" + r.ref, onchange: () => act(p, { action: "update", record: r.id, stage: sel.value }, "Moved to " + sel.value + ".") }, p.stages.map((st) => h("option", { value: st, selected: st === r.stage }, st + (p.public_stages.includes(st) ? " (shows on the public page)" : "")))); return sel; })()));
+      const addForm = () => {
+        const inputs = {};
+        const f = h("form", { "data-k": "piece-add-form", onsubmit: (e) => { e.preventDefault(); const fields = {}; for (const fd of p.fields) { const el = inputs[fd.id]; fields[fd.id] = fd.type === "yes" ? el.checked : el.value; } act(p, { action: "add", fields, stage: stageSel.value }, "Added."); } },
+          p.fields.map((fd) => { const fid = "pa-" + fd.id;
+            const el = fd.type === "longtext" ? h("textarea", { class: "in", id: fid, rows: "3", maxlength: "2000" }) : fd.type === "choice" ? h("select", { class: "in", id: fid }, h("option", { value: "" }, "Choose one"), fd.options.map((o) => h("option", { value: o }, o))) : fd.type === "yes" ? h("input", { type: "checkbox", id: fid }) : h("input", { class: "in", id: fid, type: { email: "email", phone: "tel", number: "number", date: "date" }[fd.type] || "text", step: fd.type === "number" ? "any" : null, maxlength: "200" });
+            inputs[fd.id] = el; return h("label", { class: "field", for: fid, style: { marginTop: "10px" } }, h("span", { class: "lab" }, fd.label), el); }));
+        const stageSel = h("select", { class: "in", id: "pa-stage" }, p.stages.map((st) => h("option", { value: st }, st)));
+        f.append(h("label", { class: "field", for: "pa-stage", style: { marginTop: "10px" } }, h("span", { class: "lab" }, "Stage"), stageSel), h("div", { class: "btns" }, h("button", { class: "btn pri", type: "submit", "data-k": "piece-add-save" }, "Add it"), h("button", { class: "btn link", type: "button", onclick: () => { S.piece.adding = false; render(); } }, "Cancel")));
+        return f;
+      };
+      body = h("div", { style: { marginTop: "10px" } },
+        S.piece.adding ? addForm() : h("button", { class: "btn ghost", type: "button", "data-k": "piece-add", onclick: () => { S.piece.adding = true; render(); } }, "Add one"),
+        recs == null ? h("p", { class: "small", style: { marginTop: "10px" } }, "Loading…") : recs.length ? h("ul", { style: { listStyle: "none", padding: 0, margin: "10px 0 0" } }, recs.map(row)) : h("p", { class: "small", style: { marginTop: "10px" } }, "Nothing here yet."),
+        h("p", { class: "fine", style: { marginTop: "10px" } }, "Nothing is ever deleted. Move something to its last stage when it is finished."));
+    }
+    return h("li", { style: { padding: "14px 0", borderTop: "1px solid var(--line, rgba(11,13,31,.1))" } }, head, h("p", { class: "small", style: { marginTop: "4px" } }, p.does), links, body);
+  };
+  return h("section", { class: "card dash rise", style: { "--i": 3 }, "aria-label": "Built for you by Pip" },
+    h("h2", { class: "h-s" }, "Built for you by Pip"), h("p", { class: "small", style: { marginTop: "6px" } }, "Small tools Pip made because nothing you use does this job."),
+    h("ul", { style: { listStyle: "none", padding: 0, margin: "10px 0 0" } }, pieces.map(one)));
 }
 // ---------- doors: how the owner's own tools start a teammate, and where a teammate may post ----------
 // The list never holds a secret. "Show the secret" asks the server for it once (a fresh sign-in is needed) and it is

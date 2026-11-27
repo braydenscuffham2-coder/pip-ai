@@ -14,6 +14,8 @@ import { checkOperate, operatePlainWords } from "../_shared/operate.ts";
 import { checkAsk, mayApprove, mayRevoke } from "../_shared/operate-approval.ts";
 import { vaultRefusal } from "../_shared/vault-input.ts";
 import { setupOpen } from "../_shared/setup/gate.ts";
+import { checkPiece, ownerAdd, ownerUpdate } from "../_shared/piece.ts";
+import { dbStore } from "../_shared/piece-store.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -223,8 +225,53 @@ async function business(u: User, bid: string) {
     setup_on: (await setupGate(r.admin, bid)).open,
     work: r.role === "staff" ? [] : await workList(bid),
     doors: r.role === "staff" ? [] : await doorList(bid),
+    pieces: await pieceList(bid),
     setups: r.role === "staff" ? [] : ((await db.from("setup_sessions").select("id,tool,state,reason,result,created_at").eq("business_id", bid).order("created_at", { ascending: false }).limit(10)).data || []),
   });
+}
+// Pieces (pip-piece): small software Pip built for this business. The owner and staff see every record, add one and
+// move one between the piece's own stages. Nothing here deletes a record. The rules are the same code the sandbox ran
+// (_shared/piece.ts); a stored description is checked again each time it is used.
+const PIECE_SEEN = ["staged", "live", "paused"];
+async function pieceList(bid: string) {
+  const { data } = await db.from("pieces").select("id,name,label,does,status,spec").eq("business_id", bid).in("status", PIECE_SEEN).order("created_at", { ascending: true }).limit(20);
+  const out = [];
+  for (const p of ((data as any[]) || [])) {
+    const c = checkPiece(p.spec); if (!c.ok) continue;
+    const { data: recs } = await db.from("piece_records").select("stage").eq("piece_id", p.id).limit(5000);
+    const by: Record<string, number> = {}; for (const r of ((recs as any[]) || [])) by[r.stage] = (by[r.stage] ?? 0) + 1;
+    out.push({ id: p.id, label: p.label, does: p.does, status: p.status, stages: c.spec.stages, fields: c.spec.fields.map((f) => ({ id: f.id, label: f.label, type: f.type, ...(f.options ? { options: f.options } : {}) })), by_stage: by,
+      has_form: !!c.spec.intake, has_page: !!c.spec.page, public_stages: c.spec.page?.stages ?? [], report: c.spec.report ?? null, page: `https://www.hirepip.com/piece.html?p=${p.id}` });
+  }
+  return out;
+}
+async function pieceAction(u: User, bid: string, body: any) {
+  await access(u, bid);
+  const pid = cut(body.piece, 40), action = cut(body.action, 20);
+  if (!UUID.test(pid)) throw new Fail(400, "bad_request");
+  const { data: p } = await db.from("pieces").select("id,spec,status,label").eq("id", pid).eq("business_id", bid).in("status", PIECE_SEEN).maybeSingle();
+  const c = p ? checkPiece((p as any).spec) : null;
+  if (!p || !c || !c.ok) throw new Fail(404, "not_found");
+  const store = dbStore(db, pid, c.spec.limits);
+  if (action === "list") {
+    const stage = typeof body.stage === "string" && c.spec.stages.includes(body.stage) ? [body.stage] : null;
+    const rows = await store.list(stage, 100, true);
+    return json({ ok: true, records: rows.map((r) => ({ id: r.id, ref: r.ref, stage: r.stage, data: r.data, source: r.source, updated_at: r.updated_at })) });
+  }
+  if ((p as any).status === "paused") throw new Fail(409, "not_now", "This piece is paused.");
+  const WORDS: Record<string, string> = { missing: "Fill in at least one field.", bad_value: "One of the values does not fit its field.", bad_stage: "That is not one of this piece's stages.", bad_field: "That is not one of this piece's fields.", slow_down: "This piece has taken as many records as it may today.", full: "This piece is full.", not_found: "That record was not found." };
+  if (action === "add") {
+    const r = await ownerAdd(c.spec, store, { ...(body.fields && typeof body.fields === "object" ? body.fields : {}), stage: body.stage }, u.email);
+    if (!r.ok) throw new Fail(400, r.error, WORDS[r.error] ?? "That could not be added.");
+    return json({ ok: true, ref: r.ref });
+  }
+  if (action === "update") {
+    const rid = cut(body.record, 40); if (!UUID.test(rid)) throw new Fail(400, "bad_request");
+    const r = await ownerUpdate(c.spec, store, rid, { stage: body.stage, fields: body.fields }, u.email);
+    if (!r.ok) throw new Fail(400, r.error, WORDS[r.error] ?? "That could not be changed.");
+    return json({ ok: true });
+  }
+  throw new Fail(400, "bad_request");
 }
 // Doors (pip-edge): the ways this business's own world starts a teammate's job, and where a teammate may post out.
 // The list never carries a secret. The owner reads a webhook's secret (a new one each time, the old one stops) or an
@@ -1009,6 +1056,7 @@ Deno.serve(async (req) => {
       if (a === "setup") return await setupAction(u, bid, body);
       if (a === "work") return await workAction(u, bid, body);
       if (a === "door") return await doorAction(u, bid, body);
+      if (a === "piece") return await pieceAction(u, bid, body);
       if (a === "unsupported") return await unsupported(u, bid, body);
       if (a === "issue") return await issue(u, bid, body);
       if (a === "people") return await addPerson(u, bid, body);

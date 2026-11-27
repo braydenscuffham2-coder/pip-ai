@@ -618,6 +618,42 @@ const T: Record<string, { description: string; inputSchema: any; readOnly?: bool
       return { ok: true, order: order.code, toolkit: slug, link: link.redirect_url, expires_at: link.expires_at ?? null, note: 'Send this link to the owner yourself. It opens a Composio sign-in page; nothing goes live until you approve it.' };
     },
   },
+  piece_draft: {
+    description: "The Forge's code lane: write a small piece of software for a business that has none for a job (an intake form, a tracker, a public page, a daily or weekly report). You give the idea in plain words; the Forge writes a description (contract piece/1), which is checked and run in the sandbox. Pieces Pip has built before are matched by what they do and offered as a starting shape. Nothing is saved: read the result, then call piece_save. The Forge writes descriptions, never code; one audited runtime runs every piece.",
+    inputSchema: { type: 'object', properties: { business_id: { type: 'string' }, idea: { type: 'string', description: 'What the piece should do for this business, in plain words.' } }, required: ['business_id', 'idea'], additionalProperties: false },
+    async run(a) {
+      const id = uuid(a?.business_id); if (!id) throw new Error('business_id must be a business id');
+      const r = await fetch(`${SB_URL}/functions/v1/pip-piece/draft`, { method: 'POST', headers: { authorization: `Bearer ${SB_KEY}`, 'content-type': 'application/json' }, body: JSON.stringify({ business: id, idea: cut(a?.idea, 600) }), signal: AbortSignal.timeout(200000) });
+      return await r.json().catch(() => ({ ok: false, error: 'no_answer' }));
+    },
+  },
+  piece_save: {
+    description: "Keep a piece: it is checked against the contract and run in the sandbox again, and only if every line passes is it kept, as 'staged', with its shape filed in the parts library (or the reused part counted). A staged piece works for a TEST business only; going live for a real business is a separate go-live tap that this tool does not have.",
+    inputSchema: { type: 'object', properties: { business_id: { type: 'string' }, spec: { type: 'object', description: 'The piece/1 description, usually the one piece_draft returned.', additionalProperties: true }, idea: { type: 'string' }, reuse: { type: 'string', description: 'The library part it was made from, if piece_draft named one.' } }, required: ['business_id', 'spec'], additionalProperties: false },
+    async run(a) {
+      const id = uuid(a?.business_id); if (!id) throw new Error('business_id must be a business id');
+      const r = await fetch(`${SB_URL}/functions/v1/pip-piece/save`, { method: 'POST', headers: { authorization: `Bearer ${SB_KEY}`, 'content-type': 'application/json' }, body: JSON.stringify({ business: id, spec: a?.spec, idea: cut(a?.idea, 600) || undefined, reuse: uuid(a?.reuse) ?? undefined, by: 'forge' }), signal: AbortSignal.timeout(60000) });
+      return await r.json().catch(() => ({ ok: false, error: 'no_answer' }));
+    },
+  },
+  piece_list: {
+    description: "A business's pieces (what each does, its status, how its sandbox run went, how many records it holds) and the parts library (every shape Pip has built, with how often it was reused). Never a record's contents.",
+    inputSchema: { type: 'object', properties: { business_id: { type: 'string', description: 'Leave out to see only the parts library.' } }, additionalProperties: false },
+    readOnly: true,
+    async run(a) {
+      const id = uuid(a?.business_id);
+      const lib = (await rows('parts_library?status=eq.ready&select=id,kind,name,does,industry,uses,created_at&order=uses.desc,created_at.desc&limit=200')) ?? [];
+      if (!id) return { library: lib };
+      const pieces = (await rows(`pieces?business_id=eq.${id}&select=id,name,label,does,status,tests,library_id,created_at,staged_at,live_at&order=created_at.asc`)) ?? [];
+      const out = [];
+      for (const p of pieces) {
+        const recs = (await rows(`piece_records?piece_id=eq.${p.id}&select=stage&limit=2000`)) ?? [];
+        const by: Record<string, number> = {}; for (const r of recs) by[r.stage] = (by[r.stage] ?? 0) + 1;
+        out.push({ id: p.id, name: p.name, label: p.label, does: p.does, status: p.status, sandbox: p.tests ? { passed: p.tests.passed === true, lines: Array.isArray(p.tests.lines) ? p.tests.lines.length : 0 } : null, from_library: p.library_id, records: recs.length, by_stage: by, page: `https://www.hirepip.com/piece.html?p=${p.id}` });
+      }
+      return { pieces: out, library: lib };
+    },
+  },
   ladder_pick: {
     description: "Decide how Pip reaches one of a business's tools, by the integration ladder (1 the tool's own API or sign-in, 2 a sync partner, 3 the owner's own Zapier, 4 email, webhooks, forms and exports, 5 screen work, 6 the on-site box or a desktop connector, 7 Pip builds the piece). Picks the highest rung that fits AND that Pip can run today, names any better rung that is not ready yet, lists what is not known instead of guessing, and writes the decision down for that business. Pass only facts you have checked; leave the rest out. Pip's catalog and the tool's recorded terms are looked up here.",
     inputSchema: { type: 'object', properties: {

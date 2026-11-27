@@ -21,6 +21,8 @@ const TOOLS = [
   "brain_scan",
   // Added November 27, 2026: Pip's doors (pip-edge) and the integration ladder's written decision.
   "door_make", "door_list", "ladder_pick",
+  // Added November 27, 2026: the Forge's code lane (pieces) and the parts library.
+  "piece_draft", "piece_save", "piece_list",
 ];
 
 test("every tool the live connector offers is still offered", async () => {
