@@ -756,7 +756,14 @@ async function _e(e, n) {
       if (o === "operate" && l.skipped) return await stop("review_unavailable", "Operators always go through review, and the reviewer is not available. Nothing was staged.");
       if (await t.updateSpec(r.id, { review: l, forge_stage: "reviewed" }), l.blocking.length) {
         let d = { errors: l.blocking.map((u) => `reviewer: ${u}`), failed: [], previous: r.spec };
-        return e.attempt < s ? (await t.enqueue({ order_id: e.order_id, spec_id: r.id, stage: "compile", attempt: e.attempt + 1, log: [...e.log ?? [], d] }), { outcome: "retry", detail: l.blocking.join("; ") }) : (await t.updateSpec(r.id, { status: "needs_review", forge_stage: "review_blocked" }), await t.notify(r.id, "needs_founder", { stage: "review", blocking: l.blocking }), { outcome: "founder", detail: l.blocking.join("; ") });
+        if (e.attempt < s) return await t.enqueue({ order_id: e.order_id, spec_id: r.id, stage: "compile", attempt: e.attempt + 1, log: [...e.log ?? [], d] }), { outcome: "retry", detail: l.blocking.join("; ") };
+        // Out of attempts with review lines still open. An operator stops here: it acts in public. A teammate that only
+        // talks is still staged, because nothing in the sandbox is real, and it is not stranded: every open line is
+        // carried into "before_golive", so go-live is refused until the founder has settled each one, and the founder
+        // is told now. (Nov 28, 2026: with the review on, five proof builds out of five ended here and none was staged.)
+        if (o === "operate") return await t.updateSpec(r.id, { status: "needs_review", forge_stage: "review_blocked" }), await t.notify(r.id, "needs_founder", { stage: "review", blocking: l.blocking }), { outcome: "founder", detail: l.blocking.join("; ") };
+        let carried = { ...l, before_golive: [...l.before_golive ?? [], ...l.blocking.map((u) => `Not fixed by the Forge after ${e.attempt} attempts: ${u}`)].slice(0, 24), open: l.blocking.length };
+        return await t.updateSpec(r.id, { review: carried }), await t.notify(r.id, "needs_founder", { stage: "review", staged: true, blocking: l.blocking }), await t.enqueue({ order_id: e.order_id, spec_id: r.id, stage: "stage", attempt: e.attempt, log: e.log }), { outcome: "next", detail: `staged with ${l.blocking.length} review line${l.blocking.length === 1 ? "" : "s"} not fixed; go-live waits on them` };
       }
       return await t.enqueue({ order_id: e.order_id, spec_id: r.id, stage: "stage", attempt: e.attempt, log: e.log }), { outcome: "next", detail: l.skipped ?? `${l.notes.length} notes${l.before_golive?.length ? `, ${l.before_golive.length} to settle before go-live` : ""}` };
     }
