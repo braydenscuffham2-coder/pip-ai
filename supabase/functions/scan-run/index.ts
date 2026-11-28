@@ -205,7 +205,8 @@ async function brainStep(job: Job): Promise<'again' | 'done' | 'failed'> {
   const out = toOutput(brain);
   const result = { ...siteResult(brain), scanId: job.id, spentUsd: Number(spentNow.toFixed(3)), primitivesVersion: PRIMITIVES.length, critique: brain.critique ?? null };
   const raw = brain.input.raw;
-  const keptRaw = { ...raw, pages: (raw.pages || []).map((p: any) => ({ ...p, text: String(p.text).slice(0, 1500) })), place: raw.place ? { id: raw.place.id, primaryType: raw.place.primaryType } : undefined, competitors: (raw.competitors || []).map((c: any) => ({ name: c.name, distanceMi: c.distanceMi, tools: c.tools, signals: c.signals })) };
+  // `kept: 'slim'` says what this copy is. The website never serves it as a full read (lib/server/scan-cache.ts).
+  const keptRaw = { ...raw, kept: 'slim', pages: (raw.pages || []).map((p: any) => ({ ...p, text: String(p.text).slice(0, 1500) })), place: raw.place ? { id: raw.place.id, primaryType: raw.place.primaryType } : undefined, competitors: (raw.competitors || []).map((c: any) => ({ name: c.name, distanceMi: c.distanceMi, tools: c.tools, signals: c.signals })) };
   await db('scans?on_conflict=domain', { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ domain: job.domain, raw: keptRaw, profile: out.profile, used_model: true, created_at: new Date().toISOString() }) }).then((r) => r.body?.cancel());
   const selectedIds = new Set(out.selection.selected.map((s) => s.candidate.id));
   const wildId = out.selection.wild?.candidate.id;
