@@ -3,7 +3,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { runForgeJob } from "./forge.js";
+import { renderConsole, runForgeJob } from "./forge.js";
+import { unsettled } from "../_shared/forge-check.ts";
 
 const SPEC = { skill_id: "front-desk", name: "Front desk", version: 1, goal: "Answer the phone", channels: [], triggers: [], connections: [], agent: { persona: "You answer calls.", tools: [] }, guardrails: { never: [], escalate_on: [] }, tests: [] };
 function world(reviewer, lane = "spec") {
@@ -20,7 +21,7 @@ test("a review on Pip's own key is recorded under its own name, and a clean one 
   const w = world(says(OK, "claude-opus"));
   const out = await w.run();
   assert.equal(out.outcome, "next"); assert.equal(out.detail, "1 notes");
-  assert.deepEqual(w.row.review, { blocking: [], notes: ["the tests cover the price case"], reviewer: "claude-opus" });
+  assert.deepEqual(w.row.review, { blocking: [], before_golive: [], notes: ["the tests cover the price case"], reviewer: "claude-opus" });
   assert.deepEqual(w.queue.map((j) => j.stage), ["stage"]); assert.equal(w.asked, 1);
 });
 
@@ -71,4 +72,54 @@ test("the key engine always has a reviewer: with no second vendor's key it revie
   const src = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
   assert.match(src, /const reviewer = OPENAI \? openaiModel\(\{ apiKey: OPENAI \}\) : Object\.assign\(\(prompt: string\) => model\(prompt, 'opus', 'forge:review'\), \{ label: 'claude-opus' \}\);/);
   assert.doesNotMatch(src, /reviewer = OPENAI \?[^\n]*: null/);
+});
+
+// ---- two lists: what a rewrite can fix, and what only a person can settle ----
+const HOURS = "The shop's hours are not loaded: load Saturday hours before it is switched on.";
+const SHOWN = "The owner was shown a teammate that follows up on estimates; this build only answers people who write in. Tell the owner and get their yes.";
+
+test("what only a person can settle does not send the build back: it is staged, and the list is kept", async () => {
+  const w = world(says(JSON.stringify({ blocking: [], before_golive: [HOURS, SHOWN, "  "], notes: ["fine"] }), "claude-opus"));
+  const out = await w.run();
+  assert.equal(out.outcome, "next"); assert.equal(out.detail, "1 notes, 2 to settle before go-live");
+  assert.deepEqual(w.row.review.before_golive, [HOURS, SHOWN]); assert.deepEqual(w.queue.map((j) => j.stage), ["stage"]);
+});
+
+test("a spec defect still sends it back, whatever else is listed", async () => {
+  const w = world(says(JSON.stringify({ blocking: ["says it stopped texts, and it has no texting"], before_golive: [HOURS], notes: [] }), "claude-opus"));
+  const out = await w.run(1);
+  assert.equal(out.outcome, "retry"); assert.deepEqual(w.queue.map((j) => j.stage), ["compile"]);
+  assert.deepEqual(w.queue[0].log.at(-1).errors, ["reviewer: says it stopped texts, and it has no texting"], "only what a rewrite can fix goes to the rewrite");
+});
+
+test("the reviewer is told where the build is and how to sort what it finds", async () => {
+  let seen = "";
+  const w = world(Object.assign(async (p) => { seen = p; return OK; }, { label: "claude-opus" }));
+  await w.run();
+  assert.match(seen, /staged in a sandbox/); assert.match(seen, /not loaded yet is expected at this point and is not a defect/);
+  assert.match(seen, /"blocking": something wrong in the compiled spec that rewriting it can fix/);
+  assert.match(seen, /"before_golive": something only the owner or Pip's founder can settle/);
+  assert.match(seen, /Return JSON: \{"blocking": \[one line each\], "before_golive": \[one line each\], "notes": \[one line each\]\}/);
+});
+
+test("go-live is refused, with the list, until the tap says they are settled", () => {
+  const review = { blocking: [], before_golive: [HOURS, SHOWN], notes: [], reviewer: "claude-opus" };
+  const no = unsettled(review, false);
+  assert.equal(no[0], "The review raised things only you or the owner can settle. Nothing was switched on.");
+  assert.deepEqual(no.slice(1, 3), [`- ${HOURS}`, `- ${SHOWN}`]); assert.match(no.at(-1), /say they are settled/);
+  assert.equal(unsettled(review, true), null);
+  for (const v of [undefined, "true", 1, null]) assert.ok(unsettled(review, v), "only a plain true settles it");
+  for (const r of [null, undefined, {}, { before_golive: [] }, { before_golive: ["", "  "] }, { before_golive: "hours" }, { skipped: "none" }, []]) assert.equal(unsettled(r, false), null, JSON.stringify(r));
+});
+
+test("both go-live paths ask the same question, and the console shows the list with a box to tick", () => {
+  const forge = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+  assert.match(forge, /const open = unsettled\(\(spec as any\)\.review, b\?\.settled === true\);\n\s+if \(open\) return json\(\{ ok: false, error: open\.join\(' '\)/);
+  const mcp = readFileSync(new URL("../pip-forge-mcp/index.ts", import.meta.url), "utf8");
+  assert.match(mcp, /const open = unsettled\(s\.review, a\?\.settled === true\);\n\s+if \(open\) \{ out\.push\(\{ id: s\.skill_id, live: false, before_golive: true/);
+  assert.match(mcp, /select=id,skill_id,status,spec,review`/);
+  assert.ok(mcp.indexOf("const open = unsettled(") < mcp.indexOf("await patch('skill_specs', `id=eq.${s.id}`, { status: 'live'"), "asked before anything is switched on");
+  const page = renderConsole([{ id: "o1", code: "PIP-TEST", domain: "x.test", status: "awaiting_golive", created_at: "2026-11-28T00:00:00Z", order: { business: { name: "TEST Shop" }, owner: { name: "Test Owner" }, package: { agents: [{ agent_id: "front-desk", name: "Front desk", uses: [], presented: {} }] } }, specs: [{ id: "s1", order_id: "o1", skill_id: "front-desk", status: "sandbox", forge_stage: "sandbox", tests: null, quote: {}, review: { blocking: [], before_golive: [HOURS], notes: [], reviewer: "claude-opus" } }] }], "tok");
+  assert.match(page, /1 to settle before go-live/); assert.ok(page.includes("Saturday hours"));
+  assert.match(page, /id="settled-s1"/); assert.match(page, /body:JSON\.stringify\(\{note,settled\}\)/);
 });

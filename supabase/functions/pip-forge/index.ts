@@ -17,7 +17,7 @@
 import { buildOrder, checkOrder, runForgeJob, agentTurn, openaiModel, renderConsole, anthropicModel, primitive } from './forge.js';
 import type { ForgeDb, ForgeJob, SpecRow } from './forge.js';
 import { connectionGate } from '../_shared/golive-connections.ts';
-import { declares, goLive, loadCatalog, NO_CATALOG, stamp } from '../_shared/forge-check.ts';
+import { declares, goLive, loadCatalog, NO_CATALOG, stamp, unsettled } from '../_shared/forge-check.ts';
 import { compileForForge, dryRun } from '../_shared/operate.ts';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
@@ -263,6 +263,9 @@ async function routeConsole(req: Request, u: URL) {
       // The same second refusal as the connector: a required connection must be connected and tested for this business.
       const conn = await connectionGate(rows, specId, (spec as any).skill_id || '').catch((e: Error) => ({ ok: false as const, missing: [], why: `The connections could not be checked, so nothing was switched on: ${String(e.message || e).slice(0, 200)}` }));
       if (!conn.ok) return json({ ok: false, error: conn.why }, 409);
+      // What the review said only a person can settle stops go-live until the tap says it is settled ({ settled: true }).
+      const open = unsettled((spec as any).review, b?.settled === true);
+      if (open) return json({ ok: false, error: open.join(' '), before_golive: (spec as any).review.before_golive }, 409);
       const m = models();
       const r = await runForgeJob({ id: 0, order_id: orderId || (spec as any).order_id, spec_id: specId, stage: 'golive', attempt: 1, status: 'queued', log: [] }, { model: m?.model ?? (async () => '{}'), reviewer: null, db: forgeDb });
       await insert('events', { kind: 'golive', domain: spec.domain, detail: { spec: specId, by: 'founder', note: String(b.note ?? '').slice(0, 500) } });
