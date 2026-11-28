@@ -1008,6 +1008,10 @@ html.fl-paper-on .hl-cam{opacity:0}
 .os2::after{display:none}
 .os2 .mb{position:absolute;left:0;right:0;top:0;height:36px;display:flex;align-items:center;gap:10px;padding:0 14px 0 12px;background:rgba(255,255,255,.6);border-bottom:1px solid rgba(20,24,60,.06);font-size:13.5px;color:var(--ink-3);z-index:4}
 .os2 .mb .fl-av{width:22px;height:22px;flex:none}
+/* a teammate's picture: an app-style tile in their colour with the icon of their job */
+.fl-av.job{border-radius:30%;display:inline-grid;place-items:center;color:#fff;background:radial-gradient(130% 90% at 28% 8%,rgba(255,255,255,.55) 0,transparent 55%),linear-gradient(165deg,color-mix(in srgb,var(--c) 88%,#fff) 0%,color-mix(in srgb,var(--c) 74%,#2b2357) 100%)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.6),inset 0 -2px 5px rgba(30,20,80,.18),0 3px 8px -3px color-mix(in srgb,var(--c) 60%,#1b1540)!important;overflow:hidden}
+.fl-av.job svg{width:60%;height:60%;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 1px 1px rgba(30,20,80,.28))}
+.fl-roster .fl-mate.k-paused .fl-av.job{filter:saturate(.25) brightness(1.08)}
 .os2 .mb b{color:var(--ink);font-weight:600}
 .os2 .mb .role{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px}
 .os2 .sp{flex:1}
@@ -1276,7 +1280,29 @@ html:not(.office-live) .fl-say{left:12px;transform:none!important}
 .fl-tags .tag.st{padding:8px 12px 9px}
 .tag.st .st-ico{width:22px;height:22px;border-radius:8px;display:grid;place-items:center;background:linear-gradient(160deg,#fff,#efeafe);box-shadow:inset 0 0 0 1px rgba(var(--violet-rgb),.18);color:#6f64c9;flex:none}
 .tag.st .st-ico svg.i{width:14px;height:14px}
-.fl-floors-wrap,.fl-office-wrap{position:relative;display:flex}
+.fl-floors-wrap,.fl-office-wrap,.fl-inbox-wrap{position:relative;display:flex}
+.fl-inbox{position:relative}
+.fl-inbox .n{position:absolute;top:-4px;right:-4px;min-width:19px;height:19px;padding:0 5px;border-radius:999px;display:grid;place-items:center;font:700 11px/1 var(--f-body);color:#fff;background:linear-gradient(160deg,#ffb84d,#e8890b);box-shadow:0 0 0 2px #fff,0 4px 10px -3px rgba(232,137,11,.6);animation:ib-pop .5s cubic-bezier(.3,1.6,.5,1) both}
+@keyframes ib-pop{from{transform:scale(0)}}
+.fl-inbox.has .tray{color:#8a5a00}
+.fl-menu.fl-inbox-menu{right:0;top:calc(100% + 10px);width:min(392px,calc(100vw - 24px));max-width:none;max-height:min(70vh,560px);overflow:auto}
+.fl-inbox-menu .ib-head{display:flex;align-items:baseline;justify-content:space-between;padding:10px 12px 8px}
+.fl-inbox-menu .ib-head b{font:400 24px/1 var(--f-display)}
+.fl-inbox-menu .ib-head span{font-size:13px;color:var(--ink-3)}
+.fl-inbox-menu>button{min-height:64px;align-items:center}
+.fl-inbox-menu>button .tx b{font-weight:600;font-size:14.5px}
+.fl-inbox-menu>button .tx small{white-space:normal}
+.fl-inbox-menu>button .go{width:16px;height:16px;margin-left:auto;flex:none;color:var(--ink-3)}
+.fl-inbox-menu>button.warn .tx b{color:#9a3412}
+.fl-inbox-menu .lg{width:36px;height:36px;flex:none;display:grid;place-items:center;border-radius:11px;background:#fff;box-shadow:0 0 0 1px rgba(20,24,60,.08)}
+.fl-inbox-menu .lg img{width:72%;height:72%;object-fit:contain}.fl-inbox-menu .lg.off img{filter:grayscale(.85);opacity:.65}
+.fl-inbox-menu .lg.multi{display:flex;padding:0 4px}.fl-inbox-menu .lg.multi img{width:46%;height:46%;margin:0 -2px}
+.fl-inbox-menu .lg b{font-size:16px;color:var(--ink-2)}
+.fl-inbox-menu .fl-av.ib{width:36px;height:36px}
+.fl-inbox-menu .ib-empty{padding:8px 12px 14px;margin:0;color:var(--ink-3);font-size:14px}
+/* Pip says his piece, then gets out of the way; tap him to hear it again */
+@media (max-width:719px){.fl-menu.fl-inbox-menu{position:fixed;left:12px;right:12px;top:70px;width:auto}}
+html.fl-quiet .fl-say{opacity:0;visibility:hidden;pointer-events:none;transition:opacity .45s var(--ease),visibility 0s .45s}
 .fl-floors-btn svg.i:last-child{width:14px;height:14px;opacity:.6}
 .fl-menu{position:absolute;z-index:30;min-width:260px;max-width:min(360px,calc(100vw - 28px));padding:6px;border-radius:20px;display:flex;flex-direction:column;gap:2px;background:rgba(251,250,247,.96);box-shadow:0 0 0 1px rgba(11,13,31,.06),0 24px 60px -20px rgba(36,30,90,.35);animation:fl-menu-in .28s var(--ease) both}
 .fl-menu>button{appearance:none;border:0;background:transparent;display:flex;align-items:center;gap:12px;min-height:50px;padding:6px 12px;border-radius:14px;text-align:left;font:inherit;color:var(--ink);cursor:pointer}
@@ -1365,7 +1391,7 @@ function loadPart(name) {
   if (!PARTS[name]) PARTS[name] = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "/" + name + ".js?v=" + PART_V; sc.async = true; sc.onload = res; sc.onerror = () => { delete PARTS[name]; rej(new Error(name)); }; document.head.append(sc); });
   return PARTS[name];
 }
-const PART_V = "19";
+const PART_V = "20";
 function loadThree() {
   if (!threeP) { const l = document.createElement("link"); l.rel = "modulepreload"; l.href = THREE_URL; l.integrity = THREE_SRI; l.crossOrigin = "anonymous"; document.head.append(l); threeP = import(THREE_URL); threeP.catch(() => { threeP = null; }); }
   return threeP;
@@ -1400,10 +1426,15 @@ const Pip = (() => {
     setLine(o ? o.line : plan.line, o ? o.tone : plan.tone);
     paintBubbles(); kick();
   }
+  let quietT = 0;
+  function speak(text) { // the bubble shows while he talks and a few seconds after, then folds away
+    document.documentElement.classList.remove("fl-quiet"); clearTimeout(quietT);
+    quietT = setTimeout(() => document.documentElement.classList.add("fl-quiet"), Math.min(11000, 5000 + (text || typed.text || "").length * 45));
+  }
   function setLine(text, tone) {
     if (!text) return;
     if (text !== typed.text) {
-      typed = { text, tone, t0: T(), n: rm() ? text.length : 0 };
+      typed = { text, tone, t0: T(), n: rm() ? text.length : 0 }; speak(text);
       sr.textContent = ""; setTimeout(() => { if (typed.text === text) sr.textContent = text; }, 90);
       if (eng && !rm() && !deleg) eng.talk(Math.min(5.5, text.length / 48 + 0.25));
       if (deleg && !rm()) deleg.talk(Math.min(5.5, text.length / 48 + 0.25));
@@ -1484,6 +1515,7 @@ const Pip = (() => {
     office(x) { deleg = x && typeof x === "object" ? x : null; hold3d = !!x; if (eng) { live = !x; el.classList.toggle("live", !x); if (!x) kick(); } },
     screen(s) { lastScreen = s; },
     sync() { if (S.me && S.data) show(bizPlan(), true); },
+    again() { speak(typed.text); }, // tap Pip: the bubble comes back
     place,
     nod() { if (deleg) return deleg.nod(); act((e) => e.nod()); },
     happy() { if (deleg) return deleg.happy(1.4); act((e) => e.happy(1.4)); if (!eng) hold({ still: "happy" }, 2.2); },
@@ -2507,6 +2539,9 @@ function bizPlan() {
     if (S.logState === "ok" && !S.log.length) plan.point = pointAt("[data-pip-empty]");
   } else if (S.tab === "people") plan.line = owner ? "Add the people who should see this. Staff can pause and report. Owners can do everything." : "Owners manage who has access.";
   else plan.line = "Here's how your team behaves, and the switches that stop it.";
+  if (floorOn() && !opNow) { const n = inboxItems().length, st2 = stageOf(d); // on the floor he keeps it short: the details wait in his inbox
+    if (n && st2 !== "disconnected") { plan.line = n === 1 ? "Hey, one thing needs your attention. I put it in your inbox." : "Hey, we have some urgent things needing your attention. I put them in your inbox."; plan.mood = "calm"; plan.tone = null; plan.point = null; }
+    else if (!n && st2 === "live") plan.line = "All quiet. Your team is working, and I'll flag anything new."; }
   return plan;
 }
 
@@ -2652,7 +2687,7 @@ async function startOffice() {
     const [THREE] = await Promise.all([loadThree(), loadPart("portal-pip"), loadPart("portal-office")]);
     await Promise.all([document.fonts.load("600 44px Geist"), document.fonts.load("italic 400 120px 'Instrument Serif'")]).catch(() => null);
     if (!FLOOR.X) FLOOR.X = threeAddons(THREE);
-    FLOOR.office = createOffice(THREE, FLOOR.X, { host: document.getElementById("office"), cssHost: document.getElementById("office"), reduce: reduced, onPick: (id) => openMate(id), onStation: (id, slot) => openStation(id, slot), room: "/portal-art/office.glb?v=" + PART_V, roomLite: "/portal-art/office-lite.glb?v=" + PART_V, face: (id) => { const a = S.data && S.data.agents.find((x) => x.spec_id === id); return a ? face(mateName(a), (a.role || "") + " " + a.name) : null; }, onEntered: () => { FLOOR.entered = true; }, onAvatars: () => { clearTimeout(FLOOR.avT); FLOOR.avT = setTimeout(() => { if (floorOn() && !S.focus) render({ keepFocus: document.activeElement && document.activeElement.dataset && document.activeElement.dataset.k }); }, 60); }, safeTop: () => { const r = document.querySelector(".fl-head"); return r ? r.getBoundingClientRect().bottom : 0; }, safeBottom: () => { const r = document.querySelector(".fl-roster"); return r ? innerHeight - r.getBoundingClientRect().top : 0; },
+    FLOOR.office = createOffice(THREE, FLOOR.X, { host: document.getElementById("office"), cssHost: document.getElementById("office"), reduce: reduced, onPick: (id) => openMate(id), onPip: () => Pip.again(), onStation: (id, slot) => openStation(id, slot), room: "/portal-art/office.glb?v=" + PART_V, roomLite: "/portal-art/office-lite.glb?v=" + PART_V, face: (id) => { const a = S.data && S.data.agents.find((x) => x.spec_id === id); return a ? face(mateName(a), (a.role || "") + " " + a.name) : null; }, onEntered: () => { FLOOR.entered = true; }, onAvatars: () => { clearTimeout(FLOOR.avT); FLOOR.avT = setTimeout(() => { if (floorOn() && !S.focus) render({ keepFocus: document.activeElement && document.activeElement.dataset && document.activeElement.dataset.k }); }, 60); }, safeTop: () => { const r = document.querySelector(".fl-head"); return r ? r.getBoundingClientRect().bottom : 0; }, safeBottom: () => { const r = document.querySelector(".fl-roster"); return r ? innerHeight - r.getBoundingClientRect().top : 0; },
       onReveal: (el) => { el.classList.add("on"); fitTargets(); setTimeout(fitTargets, 700); } });
     await FLOOR.office.ready; // every shader is compiled before the first frame, so the walk-in is smooth from the start
     document.documentElement.classList.add("office-live");
@@ -2678,10 +2713,38 @@ function shortSum(sum, name) {
   return s;
 }
 const hexOf = (a) => TEAM_HEX[colorOf(mateName(a))];
-const avatar = (a, cls) => { // their real 3D head once the office has drawn it, a coloured pearl until then
-  const u = FLOOR.office && FLOOR.office.avatar && FLOOR.office.avatar(a.spec_id);
-  return h("span", { class: "fl-av" + (cls ? " " + cls : "") + (u ? " img" : ""), style: u ? { "--c": hexOf(a), backgroundImage: "url(" + u + ")" } : { "--c": hexOf(a) }, "aria-hidden": "true" });
+// a teammate's picture is what they do: a phone for the one who answers calls, a message bubble for texting, and so on
+const JOB_GLYPH = {
+  phone: ICONS.phone,
+  messages: '<path d="M4 6.6A2.6 2.6 0 0 1 6.6 4h7.3a2.6 2.6 0 0 1 2.6 2.6v4.1a2.6 2.6 0 0 1-2.6 2.6H9.3l-3.4 2.8v-2.8A2.6 2.6 0 0 1 4 10.7z"/><path d="M19 9.4a1.8 1.8 0 0 1 1.5 1.8v4.3a1.8 1.8 0 0 1-1.8 1.8H18v2.6l-3-2.6h-3a1.8 1.8 0 0 1-1.8-1.6"/>',
+  chat: '<path d="M12 4.5c4.4 0 8 2.9 8 6.6s-3.6 6.6-8 6.6c-.9 0-1.8-.1-2.6-.3L5 19.5l1.2-3.6C4.8 14.7 4 13 4 11.1 4 7.4 7.6 4.5 12 4.5z"/><path d="M8.6 11.2h.1M12 11.2h.1M15.4 11.2h.1"/>',
+  mail: ICONS.mail,
+  calendar: '<rect x="4" y="5.5" width="16" height="14.5" rx="3"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4M8.5 14h.1M12 14h.1M15.5 14h.1M8.5 17h.1M12 17h.1"/>',
+  star: '<path d="M12 4.2l2.4 5 5.4.7-4 3.8 1 5.4L12 16.5l-4.8 2.6 1-5.4-4-3.8 5.4-.7z"/>',
+  doc: '<path d="M7 3.5h7l4 4v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1z"/><path d="M14 3.5v4h4M9 12h6M9 15.5h6"/>',
+  pen: '<path d="M14.5 5.5l4 4L9 19H5v-4z"/><path d="M12.5 7.5l4 4M13 20.5h7"/>',
+  bag: '<path d="M5.5 8.5h13l-1 11.5h-11z"/><path d="M9 10.5V7a3 3 0 0 1 6 0v3.5"/>',
+  card: '<rect x="3.5" y="6" width="17" height="12" rx="2.5"/><path d="M3.5 10h17M7 14.5h3"/>',
+  megaphone: '<path d="M4 10v4a1 1 0 0 0 1 1h2l8 4V5L7 9H5a1 1 0 0 0-1 1z"/><path d="M18 9.5a3.5 3.5 0 0 1 0 5M8 15l1.2 4.5"/>',
+  chart: '<path d="M5 19.5V12M10 19.5V5.5M15 19.5v-7.5M20 19.5V9"/>',
+  bell: '<path d="M4.5 17h15M6 17a6 6 0 0 1 12 0"/><path d="M12 11v.1M12 9V7.2M10.4 7h3.2M3.5 20h17"/>',
+  people: ICONS.people,
+  clipboard: '<rect x="5.5" y="5" width="13" height="15.5" rx="2.5"/><path d="M9.5 5V4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1M9 12.6l2 2 4-4"/>',
+  spark: ICONS.spark,
 };
+const JOB_WORDS = [[/call|phone|receptionist|answer/, "phone"], [/review|reputation|feedback|rating/, "star"], [/\btext|sms/, "messages"], [/chat|website/, "chat"], [/email|inbox|mail/, "mail"],
+  [/record|file|paperwork|document|form/, "doc"], [/sign|contract|agreement/, "pen"], [/dining|food|menu|restaurant|kitchen|host|concierge/, "bell"], [/book|schedul|appointment|calendar|reserv|date|visit/, "calendar"],
+  [/order|shop|store|retail|piece|registry|inventory/, "bag"], [/invoice|payment|bill|deposit/, "card"], [/social|post|instagram|content|marketing/, "megaphone"], [/report|sheet|log|data/, "chart"],
+  [/lead|referral|intake|client|guest|customer|people/, "people"], [/prep|coordinator|assistant|manager/, "clipboard"]];
+const SLOT_GLYPH = { phone: "phone", texting: "messages", web_chat: "chat", email: "mail", calendar: "calendar", booking: "calendar", esign: "pen", store: "bag", sheets: "chart", crm: "people", health_records: "doc", google_profile: "star" };
+function jobGlyph(a) {
+  const words = ((a.role || "") + " " + (a.teammate ? "" : a.name || "")).toLowerCase();
+  for (const [re, g] of JOB_WORDS) if (re.test(words)) return g;
+  const slot = (S.data ? S.data.checklist : []).find((x) => (x.agents || []).includes(a.skill_id) && SLOT_GLYPH[x.slot]);
+  return slot ? SLOT_GLYPH[slot.slot] : "spark";
+}
+const avatar = (a, cls) => { const sv = document.createElementNS("http://www.w3.org/2000/svg", "svg"); sv.setAttribute("viewBox", "0 0 24 24"); sv.innerHTML = JOB_GLYPH[jobGlyph(a)];
+  return h("span", { class: "fl-av job" + (cls ? " " + cls : ""), style: { "--c": hexOf(a) }, "aria-hidden": "true" }, sv); };
 
 // ---------- the screen you read over a teammate's shoulder: their own computer ----------
 // A real desktop: their files down the side, the app they're working in, widgets for the week and their tools, a dock.
@@ -2885,6 +2948,7 @@ document.addEventListener("keydown", (e) => {
 
 // the one next thing to do, on Pip's bubble
 function floorCta() {
+  if (inboxItems().length && stageOf(S.data) !== "disconnected") return { label: "Open inbox", go: () => { S.menu = "inbox"; render({ keepFocus: "fl-inbox" }); } };
   const d = S.data, st = stageOf(d), nx = nextStep(d), owner = isOwner(), ps = d.agents.filter(isPaused), needy = d.agents.find((a) => youNeeds(a).length && !isPaused(a));
   if (st === "priced") return owner ? { label: "See your price", go: () => openStation("meter") } : null;
   if (st === "setup") return { label: owner ? "Start this step" : "See setup", go: () => openStation(nx && COMMS_KINDS.includes(nx.kind) ? "comms" : "tools", nx && nx.slot) };
@@ -2902,7 +2966,7 @@ const notOff = () => S.data.business.status !== "disconnected";
 const STATIONS = {
   front: { name: "Front desk", line: "People, alerts and rules", ico: "people", hex: "#ff9ac0", body: () => [peopleTab(), alertsCard(), locationCard(), rulesCard(), notOff() ? consentCard() : null] },
   meter: { name: "Usage meter", line: "Your price, card and this month", ico: "activity", hex: "#5eead9", body: () => [stageCard(), isOwner() && notOff() ? cardCard() : null, notOff() ? usageCard() : null, S.data.role === "founder" && notOff() ? termsCard() : null] },
-  tools: { name: "Tool wall", line: "Every tool your team uses", ico: "setup", hex: "#9b86ff", body: () => [lockBar(), stepsCard((x) => !COMMS_KINDS.includes(x.kind), "Your tools"), isOwner() && (S.data.setup_unlocked || S.data.role === "founder") && S.data.connect_on ? anyToolCard() : null] },
+  tools: { name: "Integrations Wall", line: "The software your team works in", ico: "setup", hex: "#9b86ff", body: () => [lockBar(), stepsCard((x) => !COMMS_KINDS.includes(x.kind), "Your tools"), isOwner() && (S.data.setup_unlocked || S.data.role === "founder") && S.data.connect_on ? anyToolCard() : null] },
   comms: { name: "Comms corner", line: "Phone, texting, logins, deliveries", ico: "phone", hex: "#7cc4ff", body: () => [lockBar(), stepsCard((x) => COMMS_KINDS.includes(x.kind), "Phone, texting and deliveries"), isOwner() && S.data.setup_unlocked ? vaultCard() : null] },
   exit: { name: "Exit", line: "Disconnect or close the office", ico: "out", hex: "#ff9a8b", body: () => [isOwner() ? disconnectCard() : h("div", { class: "card empty rise", style: { "--i": 1 } }, h("p", { class: "lead" }, "Only an owner can disconnect or close the office.")), signOutRow()] },
   founder: { name: "Your office", line: "Founder only", ico: "grid", hex: "#ffc861", body: () => [founderCard(), ...founderLoft()] },
@@ -2965,7 +3029,7 @@ function sceneCards() {
   if (where === "tools") {
     const list = d.checklist.filter((x) => !COMMS_KINDS.includes(x.kind)).slice(0, 12), [line] = stationStatus("tools");
     out.tools = list.map((x, i) => { const st = stateOf(x); return label({ x: [40, 46.4, 52.7, 59][i % 4], y: [29, 39.5, 50][Math.floor(i / 4)] + 4.4, k: "sc-t-" + x.slot, state: st, text: shortTool(x.label || x.name || "Tool"), title: (x.label || "Tool") + " · " + word[st], go: () => openPanel(x.slot) }); });
-    out.tools.push(card({ x: 50, y: 77, k: "sc-tools", hex: "#9b86ff", kick: "Tool wall", title: line, line: list.length ? "Tap a tool to connect it or check it." : "Your teammates use no tools yet.", cta: owner && S.data.connect_on ? "Connect any tool" : "See every tool", go: () => openPanel() }));
+    out.tools.push(card({ x: 50, y: 77, k: "sc-tools", hex: "#9b86ff", kick: "Integrations Wall", title: line, line: list.length ? "Tap an app to connect it or check on it." : "Your teammates use no apps yet.", cta: owner && S.data.connect_on ? "Connect any tool" : "See every tool", go: () => openPanel() }));
   }
   if (where === "comms") {
     const pick = (kinds) => d.checklist.find((x) => kinds.includes(x.kind)), [line] = stationStatus("comms");
@@ -3028,6 +3092,33 @@ function letGoCard(a) {
 }
 function letGoNow() { /* not wired yet: Brayden ties the backend action here later */ }
 
+// ---------- Pip's inbox: everything that needs you, in one place he can point you to ----------
+function inboxItems() {
+  const d = S.data, st = stageOf(d), owner = isOwner(), out = [], bad = (x) => ["failed", "expired", "revoked"].includes(x.status);
+  const names = (l) => (l.length === 1 ? mateName(l[0]) : l.length === 2 ? mateName(l[0]) + " and " + mateName(l[1]) : mateName(l[0]) + " and " + (l.length - 1) + " others");
+  if (st === "disconnected") out.push({ k: "off", ico: "out", warn: true, title: "Everything is switched off", sub: "Nothing is answering. Reconnect at the exit when you're ready.", go: () => openStation("exit") });
+  if (st === "priced") out.push({ k: "price", ico: "activity", title: "Your price is ready", sub: owner ? "Accept it and setup opens." : "An owner accepts it, then setup opens.", go: () => openStation("meter") });
+  d.agents.filter(isPaused).forEach((a) => out.push({ k: "p-" + a.spec_id, mate: a, warn: true, title: mateName(a) + " is paused", sub: "Nothing goes out until " + (owner ? "you resume." : "an owner resumes."), go: () => openMate(a.spec_id) }));
+  const by = new Map();
+  d.agents.filter((a) => !isPaused(a)).forEach((a) => youNeeds(a).forEach((n) => { const x = stepFor(n); if (!x) return; if (!by.has(x.slot)) by.set(x.slot, { x, mates: [] }); by.get(x.slot).mates.push(a); }));
+  [...by.values()].sort((p, q) => q.mates.length - p.mates.length).forEach(({ x, mates }) => out.push({ k: "t-" + x.slot, tool: x, warn: bad(x), title: (bad(x) ? "Reconnect " : "Connect ") + toolName(x), sub: names(mates) + (mates.length === 1 ? " is" : " are") + " waiting on it.", go: () => goTool(x) }));
+  (d.inbox || []).forEach((m, i) => out.push({ k: "m" + i, ico: "mail", title: m.title || m.subject || "A note from Pip", sub: m.body || m.summary || "", go: null }));
+  return out;
+}
+function inboxMenu() {
+  const items = inboxItems();
+  return h("div", { class: "fl-menu fl-inbox-menu glass", role: "menu", "aria-label": "Inbox" },
+    h("div", { class: "ib-head" }, h("b", {}, "Inbox"), h("span", {}, items.length ? items.length + (items.length === 1 ? " thing needs you" : " things need you") : "All clear")),
+    items.length ? items.map((it) => h("button", { type: "button", role: "menuitem", class: it.warn ? "warn" : "", "data-k": "ib-" + it.k, onclick: () => { S.menu = null; render(); if (it.go) it.go(); } },
+      it.tool ? logoMark(it.tool, 36) : it.mate ? avatar(it.mate, "ib") : h("span", { class: "ico", "aria-hidden": "true" }, icon(it.ico || "info")),
+      h("span", { class: "tx" }, h("b", {}, it.title), it.sub ? h("small", {}, it.sub) : null), it.go ? icon("arrow", "go") : null))
+      : h("p", { class: "ib-empty" }, "Nothing needs you right now. I'll put anything new here."));
+}
+function inboxButton() {
+  const n = inboxItems().length;
+  return h("div", { class: "fl-inbox-wrap" }, h("button", { class: "fl-view fl-inbox" + (n ? " has" : ""), type: "button", "data-k": "fl-inbox", "aria-haspopup": "menu", "aria-expanded": S.menu === "inbox" ? "true" : "false", "aria-label": n ? "Inbox: " + n + (n === 1 ? " thing needs" : " things need") + " you" : "Inbox: all clear", onclick: () => { S.menu = S.menu === "inbox" ? null : "inbox"; render({ keepFocus: "fl-inbox" }); } },
+    icon("mail", "tray"), n ? h("b", { class: "n", "aria-hidden": "true" }, String(n > 9 ? "9+" : n)) : null), S.menu === "inbox" ? inboxMenu() : null);
+}
 function floorsMenu() { // the founder's (and a multi-business owner's) elevator between floors
   const list = S.me.founder ? ((S.founder && S.founder.businesses) || []) : (S.me.businesses || []);
   if (S.me.founder && !S.founder) api("/founder/businesses", {}).then((r) => { S.founder = r; if (S.menu === "floors") render(); }).catch(() => null);
@@ -3063,7 +3154,7 @@ function renderFloor(opts = {}) {
     multi ? h("div", { class: "fl-floors-wrap" }, h("button", { class: "fl-view fl-floors-btn", type: "button", "data-k": "fl-floors", "aria-haspopup": "menu", "aria-expanded": S.menu === "floors" ? "true" : "false", onclick: () => { S.menu = S.menu === "floors" ? null : "floors"; render({ keepFocus: "fl-floors" }); } }, icon("team"), h("span", {}, "Floors"), icon("chev")), S.menu === "floors" ? floorsMenu() : null) : null,
     counts.length ? h("ul", { class: "fl-counts", "aria-label": "Your team right now" }, counts.map(([k, c, w]) => h("li", { class: "c-" + k }, h("i", { "aria-hidden": "true" }), c + " " + (c === 1 && w === "need you" ? "needs you" : w)))) : null,
     h("button", { class: "fl-view", "data-k": "fl-list", title: "List view", onclick: () => setView("list") }, icon("grid"), h("span", { class: "sr" }, "List view")),
-    acct);
+    inboxButton(), acct);
 
   const tags = new Map();
   ag.forEach((a) => {

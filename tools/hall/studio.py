@@ -50,6 +50,11 @@ def sky_mat():
 def materials():
     mat('floor', '#e8e2d9', 0.32); mat('wall', '#f7f5f1', 0.7); mat('peach', '#f2d6c2', 0.8); mat('mint', '#cde6df', 0.8); mat('coffee', '#3a3633', 0.4); mat('ceil', '#fafaf8', 0.8); mat('white', '#f8f8f6', 0.45)
     mat('oak', '#e2c7a2', 0.55); mat('fabric', '#dfe1e4', 0.9); mat('rug', '#e9e7e3', 0.95); mat('metal', '#d6d9de', 0.3)
+    ped = mat('pedestal', '#f8f8f6', 0.45); nt = ped.node_tree; bs = next(n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED')
+    geo = nt.nodes.new("ShaderNodeNewGeometry"); sep = nt.nodes.new("ShaderNodeSeparateXYZ"); ramp = nt.nodes.new("ShaderNodeValToRGB")
+    nt.links.new(geo.outputs["Position"], sep.inputs[0]); nt.links.new(sep.outputs["Z"], ramp.inputs[0])
+    e = ramp.color_ramp.elements; e[0].position = 0.0; e[0].color = hexc('#e8e2d9'); e[1].position = 0.32; e[1].color = hexc('#f8f8f6'); ramp.color_ramp.interpolation = 'EASE'
+    nt.links.new(ramp.outputs[0], bs.inputs["Base Color"])
     mat('sage', '#a8c8a2', 0.7); mat('sage2', '#8db38c', 0.7); mat('pot', '#f1efeb', 0.6); mat('stem', '#9c8a73', 0.7)
     mat('ink', '#2b2f3a', 0.4); mat('soft', '#eceef1', 0.6); mat('city', '#eef3fa', 0.9, '#f1f5fb', 1.9)
     mat('slot', '#ffffff', 0.3, '#ffffff', 3.2); mat('aqua', '#5fd6c8', 0.3, '#5fd6c8', 4.0); mat('lampglow', '#fff1da', 0.3, '#ffe2b0', 5.0)
@@ -202,13 +207,36 @@ def shell(room, live, marks):
     # where the camera starts and where the team's rows begin
     empty("cam_arrive", (0, -1.5, 1.62), c=marks)
 
+def pedestal(name, sx, m, c):
+    """A desk end that grows out of the floor: a soft slab leaning outward, its foot sweeping into the floor on a cove."""
+    import bmesh
+    N, R, n = 40, 0.16, 5.0
+    zs = [0.0, 0.004, 0.012, 0.025, 0.042, 0.064, 0.09, 0.12, 0.155, 0.2, 0.27, 0.36, 0.46, 0.56, 0.65, 0.72]
+    def ring(z):
+        cove = R - math.sqrt(max(0.0, R * R - (R - min(z, R)) ** 2))  # a quarter circle: flat at the floor, upright by R
+        lean = 1 - z / 0.72
+        cx, ht, hd = sx * (0.7 + 0.04 * lean), 0.032 + cove * 0.8, 0.3 + 0.05 * lean + cove
+        pts = []
+        for i in range(N):
+            a = 2 * math.pi * i / N; ca, sa = math.cos(a), math.sin(a)
+            pts.append((cx + ht * math.copysign(abs(ca) ** (2 / n), ca), hd * math.copysign(abs(sa) ** (2 / n), sa), z))
+        return pts
+    bm = bmesh.new(); rings = [[bm.verts.new(p) for p in ring(z)] for z in zs]
+    for r0, r1 in zip(rings, rings[1:]):
+        for i in range(N): bm.faces.new((r0[i], r0[(i + 1) % N], r1[(i + 1) % N], r1[i]))
+    bm.faces.new(list(reversed(rings[0]))); bm.faces.new(rings[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
+    o = bpy.data.objects.new(name, me); bpy.context.scene.collection.objects.link(o)
+    for p in me.polygons: p.use_smooth = len(p.vertices) == 4
+    return finish(o, m, c, smooth=False)
+
 def desk(dc, live, marks):
     """One desk at the origin, in Pip's shape language: everything soft, rounded, pearl and oak. The teammate floats behind
     it facing -y (towards you); the monitor stands to their left, turned in towards them."""
     rbox("desk_top", (1.6, 0.78, 0.045), (0, 0, 0.745), M['oak'], dc, bevel=0.022, segs=6)
     rbox("desk_lip", (1.56, 0.74, 0.02), (0, 0, 0.716), M['white'], dc, bevel=0.009, segs=4)
-    for sx in (-1, 1): rbox("desk_leg%d" % (sx > 0), (0.06, 0.62, 0.7), (sx * 0.71, 0, 0.36), M['white'], dc, bevel=0.029, segs=6)
-    rbox("desk_rail", (1.36, 0.035, 0.1), (0, 0.27, 0.64), M['white'], dc, bevel=0.017, segs=4)
+    for sx in (-1, 1): pedestal("desk_leg%d" % (sx > 0), sx, M['pedestal'], dc)  # the ends lean out and flow into the floor
     mx, my, rz = 0.34, 0.12, math.radians(24)  # turned in, towards the seat
     rbox("mon_body", (0.66, 0.028, 0.40), (mx, my, 1.13), M['white'], dc, bevel=0.014, segs=6, rot=(0, 0, rz))
     n = Vector((-math.sin(rz), math.cos(rz), 0))
@@ -390,7 +418,7 @@ def export(scale=0.25):
 
 # ---------- lightmaps: the light baked into textures (sharp contact shadows), not into vertices ----------
 LM = {"room": (4096, 64), "desk": (2048, 64), "device": (512, 128)}   # texture size, samples
-WEIGHT = {"sky": 0.03, "city": 0.06, "ceil": 0.5, "slot": 0.25, "wall": 0.75, "floor": 1.25, "rug": 1.0, "sage": 0.55, "sage2": 0.55, "stem": 0.5}
+WEIGHT = {"pedestal": 1.0, "sky": 0.03, "city": 0.06, "ceil": 0.5, "slot": 0.25, "wall": 0.75, "floor": 1.25, "rug": 1.0, "sage": 0.55, "sage2": 0.55, "stem": 0.5}
 
 def lm_uv(R):
     import numpy as np

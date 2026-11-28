@@ -324,7 +324,15 @@ function createPipEngine(THREE, opts) {
     }
 
     // concerned: head down and tilted, hands held in, small mouth, the antenna droops, the light inside cools to pink
-    if (A.concern > 0.01) {
+    if (A.concern > 0.01 && o.pm) {
+      // the floor manager doesn't cower: something needs you, so he stands tall and shows you his list
+      const k = A.concern, tap = Math.max(0, Math.sin(t * 3.1)) ** 6;
+      Y.pitch -= 0.03 * k; Y.mouth = lerp(Y.mouth, 0.3, k); Y.mouthW = lerp(Y.mouthW, 0.42, k);
+      hand(0, V(-0.5, -0.5 + Math.sin(t * 1.6) * 0.02, 1.0), k); Y.clipR.lerp(V(-0.18, 0.28, 0.02), k);
+      hand(1, V(0.08, -0.52 + tap * 0.05, 1.22), k * 0.9);
+      Y.core = "#" + new THREE.Color(Y.core).lerp(new THREE.Color("#ffc65c"), 0.35 * k).getHexString();
+      Y.bulb = "#" + new THREE.Color(Y.bulb).lerp(new THREE.Color("#ffc65c"), 0.6 * k).getHexString();
+    } else if (A.concern > 0.01) {
       const k = A.concern;
       Y.pitch += 0.1 * k; Y.roll += 0.1 * k; Y.mouth = lerp(Y.mouth, 0.1, k); Y.mouthW = lerp(Y.mouthW, 0.25, k);
       hand(0, V(-0.62, -0.3, 1.0).add(V(0, Math.sin(t * 2.4) * 0.03, 0)), k); hand(1, V(0.62, -0.3, 1.0).add(V(0, Math.sin(t * 2.4 + 1) * 0.03, 0)), k);
@@ -421,7 +429,7 @@ function createPipEngine(THREE, opts) {
     Y.ant.x -= ex * 0.22; Y.ant.z -= ez * 0.16; Y.roll -= ex * 0.09; Y.pitch += ez * 0.07; // leans into the move, the antenna streams behind
     // a little crouch before he sets off
     if (A.crouchAt != null) { const y = t - A.crouchAt; if (y > 0 && y < 0.6) { const c = pulse(y, 0.1, 0.09); Y.sy -= c * 0.1; Y.sx = Math.max(Y.sx, 1 + c * 0.055); Y.pos.y -= c * 0.12; } }
-    if (A.concern > 0.01) { Y.ant.y -= 0.12 * A.concern; Y.ant.x += 0.1 * A.concern; }
+    if (A.concern > 0.01 && !o.pm) { Y.ant.y -= 0.12 * A.concern; Y.ant.x += 0.1 * A.concern; }
     if (A.wakeAt != null) { const P = wakeP(t); if (P < 1.1) { Y.ant.y = -0.18; Y.ant.x = 0.14; } else if (P < 2.2) { Y.ant.y = lerp(-0.18, 0, back(ramp(P, 1.1, 1.5))); Y.ant.x = lerp(0.14, 0, ramp(P, 1.1, 1.5)); } }
     return Y;
   }

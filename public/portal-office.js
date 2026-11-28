@@ -136,9 +136,9 @@ function createOffice(THREE, X, opts) {
     g.fillStyle = "#1b1e2b"; g.font = "600 " + Math.round(14 * k) + "px " + FONT; g.fillText(a.kind === "needs" ? "Waiting on you" : a.kind === "paused" ? "Paused" : a.kind === "build" ? "Getting set up" : a.kind === "live" ? "Today" : "Ready", wx + 84 * k, wy + 26 * k);
     g.fillStyle = "#f0eff6"; g.fillRect(wx, wy + 42 * k, ww, 1.5 * k);
     g.fillStyle = "#1b1e2b"; g.font = "400 " + Math.round(33 * k) + "px " + SERIF;
-    const txt = typed == null ? (a.line || "") : typed, ls = lines(g, txt, ww - 48 * k).slice(0, 3);
+    const hush = s.hush, txt = hush ? "" : typed == null ? (a.line || "") : typed, ls = hush ? [] : lines(g, txt, ww - 48 * k).slice(0, 3); // the one you're zooming into stays blank: the live screen fades in over it
     ls.forEach((l, i) => g.fillText(l, wx + 24 * k, wy + (104 + i * 36) * k));
-    if (typed != null && Math.floor(t * 2.2) % 2 === 0) { const last = ls[ls.length - 1] || ""; g.fillStyle = hex; g.fillRect(wx + 24 * k + g.measureText(last).width + 4 * k, wy + (104 + (ls.length - 1) * 36 - 26) * k, 2.5 * k, 30 * k); }
+    if (!hush && typed != null && Math.floor(t * 2.2) % 2 === 0) { const last = ls[ls.length - 1] || ""; g.fillStyle = hex; g.fillRect(wx + 24 * k + g.measureText(last).width + 4 * k, wy + (104 + (ls.length - 1) * 36 - 26) * k, 2.5 * k, 30 * k); }
     const ly = wy + (104 + ls.length * 36 + 18) * k;
     for (let r = 0; r < 4 && ly + r * 34 * k < wy + wh - 30 * k; r++) { g.fillStyle = "#f4f3f8"; g.fillRect(wx + 24 * k, ly + r * 34 * k, ww - 48 * k, 1.5 * k); g.fillStyle = "#c9ccd8"; g.fillRect(wx + 24 * k, ly + (r * 34 + 13) * k, 40 * k, 7 * k); g.fillStyle = "#e2e4ec"; g.fillRect(wx + 84 * k, ly + (r * 34 + 13) * k, (ww - 160 * k) * (0.55 + 0.4 * Math.abs(Math.sin(r * 2.3 + (a.ph || 0)))), 7 * k); }
     // widgets
@@ -158,6 +158,16 @@ function createOffice(THREE, X, opts) {
     g.fillStyle = "#7a4e00"; g.font = "700 30px " + FONT; g.fillText("Needs you", 24, 52);
     g.font = "500 24px " + FONT; lines(g, text, W - 48).slice(0, 3).forEach((l, i) => g.fillText(l, 24, 92 + i * 30)); t.needsUpdate = true;
   }
+  // the sign over the rack: "Integrations Wall", in mounted letters that catch a little shadow
+  { const c = cvs(2048, 384), g = c.getContext("2d"), draw = () => {
+      g.clearRect(0, 0, c.width, c.height); g.textAlign = "center"; g.textBaseline = "alphabetic";
+      g.font = "400 190px " + SERIF; g.fillStyle = "rgba(40,36,70,.14)"; g.fillText("Integrations Wall", 1024 + 3, 196 + 8);
+      g.fillStyle = "#23263a"; g.fillText("Integrations Wall", 1024, 196);
+      g.fillStyle = "#c9b6ff"; g.fillRect(1024 - 70, 262, 140, 5);
+      g.font = "500 38px " + MONO; g.fillStyle = "#7d8299"; g.fillText("T H E   S O F T W A R E   Y O U R   T E A M   W O R K S   I N", 1024, 340); t.needsUpdate = true; };
+    const t = texOf(c), sign = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.6), new THREE.MeshBasicMaterial({ map: t, transparent: true, toneMapped: false, depthWrite: false }));
+    sign.position.copy(B(0, 23.99, 3.875)); scene.add(sign); draw();
+    if (document.fonts) document.fonts.ready.then(draw); }
   // a tool's tile: the software's own logo, full colour once it's connected, greyed while it waits on you
   const LOGO_BASE = opts.logoBase || "/portal-art/logos/", logoImgs = new Map();
   function logoImg(k) {
@@ -213,7 +223,7 @@ function createOffice(THREE, X, opts) {
     const rig = kit.buildPip(env, look);
     a.add(rig.root, rig.shadow, rig.floorGlow, ...rig.handShadows);
     const actor = kit.makeActor(rig, camera, { base, pm: !!look.pm, core: look.core, local: (v) => a.worldToLocal(v), world: (v) => a.localToWorld(v) });
-    a.traverse((o) => o.layers.enable(1));
+    if (look.pm) a.traverse((o) => o.layers.enable(1)); // only Pip, out on the open floor, shows in it: the team sit behind desks the reflection can't see
     for (const o of [rig.shadow, rig.floorGlow, ...rig.handShadows]) o.traverse((x) => x.layers.disable(1));
     return { a, rig, actor, last: V(), vel: V() };
   }
@@ -236,7 +246,7 @@ function createOffice(THREE, X, opts) {
     const cv = cvs(1024, 600), tex = texOf(cv); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(side > 0 ? 1 : -1, -1); // the glass is laid in upside down
     const screen = mesh("desk_screen", new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, side: THREE.DoubleSide }), g);
     const lamp = mesh("lamp_glow", glowMat("#ffe2b0", 0.6), g);
-    contact(g, 0, 0.1, 2.4, 1.5, 0.55); contact(g, 0, -0.68, 1.0, 1.0, 0.45);
+    contact(g, 0, 0.1, 2.4, 1.5, 0.42); contact(g, 0, -0.68, 1.0, 1.0, 0.45); for (const sx of [-1, 1]) contact(g, sx * 0.72, 0, 0.55, 1.35, 0.3); // where each end meets the floor
     const nc = cvs(320, 220), note = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.14), new THREE.MeshBasicMaterial({ map: texOf(nc), transparent: true, toneMapped: false }));
     g.updateMatrixWorld(true);
     // the screen's centre and facing, in the room
@@ -276,7 +286,7 @@ function createOffice(THREE, X, opts) {
   const STOPS = {
     arrive: () => ({ pos: B(0, -1.5, EYE), look: B(0, 6, 1.5) }),
     floor: () => (TALL() ? { pos: B(0, 1.2, 2.05), look: B(0, 20, 1.05) } : { pos: B(0, 3.5, 1.8), look: B(0, 18, 0.98) }),
-    tools: () => (TALL() ? { pos: B(0, 15.2, 1.8), look: B(0, 24.4, 1.55) } : { pos: B(0, 18.4, 1.62), look: B(0, 24.4, 1.58) }),
+    tools: () => (TALL() ? { pos: B(0, 14.6, 1.95), look: B(0, 24.4, 1.85) } : { pos: B(0, 17.7, 1.8), look: B(0, 24.4, 1.92) }), // the whole wall and its sign
     front: () => ({ pos: B(1.4, 7.6, 1.66), look: B(4.6, 3.4, 1.05) }),
     meter: () => ({ pos: B(4.4, 9.2, 1.75), look: B(8, 8.2, 2.0) }),
     comms: () => ({ pos: B(4.2, 13.2, 1.7), look: B(7.8, 15.4, 1.2) }),
@@ -604,7 +614,10 @@ function createOffice(THREE, X, opts) {
     if (h.kind === "mate" || (h.kind === "desk" && h.d.mate)) { const id = h.kind === "mate" ? h.id : h.d.mate.id, m = mates.get(id); if (m) { m.actor.acts.hop(); m.actor.acts.happy(0.9); } opts.onPick && opts.onPick(id); }
     else if (h.kind === "device") { const v = devices[h.i]; v.lift = performance.now(); opts.onStation && opts.onStation("tools", v.tool && v.tool.slot); }
     else if (h.kind === "place") opts.onStation && opts.onStation(h.id);
+    else if (h.kind === "pip") { pip.actor.acts.hop(); pip.actor.acts.happy(1); opts.onPip && opts.onPip(); }
   });
+  // tap Pip and he says it again
+  hits.push({ obj: pip.a, kind: "pip" });
   // poke Pip: the Marketplace's little reaction
   addEventListener("click", (e) => { const b = model.bubble; if (b && b.contains(e.target) && !e.target.closest("button")) { pip.actor.acts.hop(); pip.actor.acts.happy(1); } });
   // he watches you fill in a form, and nods when you've typed a while
@@ -832,6 +845,7 @@ function createOffice(THREE, X, opts) {
       if (mode === "floor" && !travel) return Promise.resolve();
       const wasDesk = mode === "desk", m = mates.get(focusId);
       mode = "floor"; focusId = null; stationId = null; zoomed = false; mountScreen(null, null); syncPins();
+      if (m && m.desk.hush) { m.desk.hush = false; setTimeout(() => paintScreen(m.desk, m.desk.data, m.desk.data.kind === "live" ? "" : null, 0), 300); }
       return ready.then(() => { const home = STOPS.floor(); pipSide = -1; pipGo(pipSpot(home), 1300); // he sets off first and keeps ahead
         const st = wasDesk && m ? deskStops(m.desk) : null;
         return go(home, { before: st ? [st.shoulder.pos, st.side, st.corner] : [], delay: 80 }).then(() => pip.actor.acts.lookAt(camera.position.clone(), 1)); });
@@ -840,7 +854,7 @@ function createOffice(THREE, X, opts) {
       if (!(id in STOPS) || (mode === "station" && stationId === id)) return Promise.resolve();
       mode = "station"; stationId = id; focusId = null; zoomed = false; syncPins();
       return ready.then(() => { const s = STOPS[id](); pipSide = id === "front" || id === "meter" || id === "comms" ? -1 : 1;
-        if (!RM()) pip.actor.acts.beckon(PLACE[id].clone()); pipGo(pipSpot(s, pipSide, 2.7, 1.5), 1500); // off to the side, clear of what you came to see // "this way", and he leads
+        if (!RM()) pip.actor.acts.beckon(PLACE[id].clone()); pipGo(id === "tools" ? pipSpot(s, pipSide, TALL() ? 6.2 : 4.6, TALL() ? 1.1 : 2.35) : pipSpot(s, pipSide, 2.7, 1.5), 1500); // off to the side, clear of what you came to see // "this way", and he leads
         return go(s).then(() => { if (mode === "station" && stationId === id) pip.actor.acts.present(PLACE[id].clone(), 1.8); }); });
     },
     desk(id) {
@@ -848,6 +862,8 @@ function createOffice(THREE, X, opts) {
         const m = mates.get(id); if (!m) return; if (mode === "desk" && focusId === id && zoomed) return;
         mode = "desk"; focusId = id; zoomed = false; syncPins();
         const d = m.desk, st = deskStops(d);
+        for (const x of mates.values()) if (x.desk.hush && x !== m) { x.desk.hush = false; paintScreen(x.desk, x.desk.data, null, 0); }
+        if (d.data) { d.hush = true; paintScreen(d, d.data, null, 0); }
         // Pip waits by the desk on the aisle side; the camera comes over the teammate's shoulder and into their screen
         if (!RM()) pip.actor.acts.beckon(d.seat.clone()); pipGo(d.g.localToWorld(V(-0.9, 0, 2.3)).setY(0), 1400);
         setTimeout(() => { if (mode === "desk" && focusId === id) pip.actor.acts.present(d.seat.clone().add(V(0, 0.3, 0)), 1.4); }, 1500); // "here's Maren"
