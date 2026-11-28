@@ -2,6 +2,7 @@
 // so the public key alone can't read or write anything. All functions fail soft.
 import type { Profile } from '../types';
 import type { Raw } from './gather';
+import { usableScan } from './scan-cache';
 
 const URL_ = () => process.env.SUPABASE_URL;
 const KEY = () => process.env.SUPABASE_ANON_KEY;
@@ -32,7 +33,8 @@ async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T | nu
 
 export interface Cached { raw: Raw; profile: Profile; used_model: boolean; created_at: string }
 
-export const getScan = (domain: string, maxAgeHours = 168) => rpc<Cached>('pip_scan_get', { p_domain: domain, p_max_age_hours: maxAgeHours });
+// A slimmed copy (what Pip's server-side scan keeps) is never returned as a saved scan: see scan-cache.ts.
+export const getScan = async (domain: string, maxAgeHours = 168) => usableScan(await rpc<Cached>('pip_scan_get', { p_domain: domain, p_max_age_hours: maxAgeHours }));
 export const putScan = (domain: string, raw: Raw, profile: Profile, usedModel: boolean) =>
   rpc<null>('pip_scan_put', { p_domain: domain, p_raw: raw, p_profile: profile, p_used_model: usedModel });
 export const addLead = (name: string, contact: string, profile: Profile, modules: string[]) =>
