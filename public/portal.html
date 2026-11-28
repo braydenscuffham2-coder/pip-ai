@@ -1392,7 +1392,7 @@ function loadPart(name) {
   if (!PARTS[name]) PARTS[name] = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "/" + name + ".js?v=" + PART_V; sc.async = true; sc.onload = res; sc.onerror = () => { delete PARTS[name]; rej(new Error(name)); }; document.head.append(sc); });
   return PARTS[name];
 }
-const PART_V = "21";
+const PART_V = "22";
 function loadThree() {
   if (!threeP) { const l = document.createElement("link"); l.rel = "modulepreload"; l.href = THREE_URL; l.integrity = THREE_SRI; l.crossOrigin = "anonymous"; document.head.append(l); threeP = import(THREE_URL); threeP.catch(() => { threeP = null; }); }
   return threeP;
@@ -3030,7 +3030,7 @@ function sceneCards() {
   if (where === "tools") {
     const list = d.checklist.filter((x) => !COMMS_KINDS.includes(x.kind)).slice(0, 12), [line] = stationStatus("tools");
     out.tools = list.map((x, i) => { const st = stateOf(x); return label({ x: [40, 46.4, 52.7, 59][i % 4], y: [29, 39.5, 50][Math.floor(i / 4)] + 4.4, k: "sc-t-" + x.slot, state: st, text: shortTool(x.label || x.name || "Tool"), title: (x.label || "Tool") + " · " + word[st], go: () => openPanel(x.slot) }); });
-    out.tools.push(card({ x: 50, y: 77, k: "sc-tools", hex: "#9b86ff", kick: "Integrations Wall", title: line, line: list.length ? "Tap an app to connect it or check on it." : "Your teammates use no apps yet.", cta: owner && S.data.connect_on ? "Connect any tool" : "See every tool", go: () => openPanel() }));
+    out.tools.push(card({ x: 50, y: 86, k: "sc-tools", hex: "#9b86ff", kick: "Integrations Wall", title: line, line: list.length ? "Tap an app to connect it or check on it." : "Your teammates use no apps yet.", cta: owner && S.data.connect_on ? "Connect any tool" : "See every tool", go: () => openPanel() }));
   }
   if (where === "comms") {
     const pick = (kinds) => d.checklist.find((x) => kinds.includes(x.kind)), [line] = stationStatus("comms");
