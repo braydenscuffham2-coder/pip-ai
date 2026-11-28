@@ -298,14 +298,16 @@ function G() {
   return b.filter((e) => P(e)).map((e) => `- ${e.id} (${P(e)}): ${e.label}. ${e.tier === "ready" ? "Available now." : e.tier === "needs_setup" ? `Available after setup: ${e.setup ?? e.how}.` : "NOT available yet."}`).join(`
 `);
 }
-var _ = (e, n) => typeof e == "string" ? e.replace(/\s+/g, " ").trim().slice(0, n) : "", k = (e) => Array.isArray(e) ? e : [], ue = { ready: 1, needs_setup: 2, build: 3, hardware: 4 };
+// Text over its limit is cut at the last whole word, never in the middle of one. (Nov 28, 2026: a repair wrote two
+// guardrails of about 200 characters, the limit was 120, and the enforced list ended "...capture_l" and "...detail on f".)
+var _ = (e, n) => { if (typeof e != "string") return ""; let x = e.replace(/\s+/g, " ").trim(); return x.length <= n ? x : x.slice(0, n + 1).replace(/\s+\S*$/, "").slice(0, n); }, k = (e) => Array.isArray(e) ? e : [], ue = { ready: 1, needs_setup: 2, build: 3, hardware: 4 };
 function V(e, n) {
   let t = [], s = e && typeof e == "object" ? e : {}, r = (p, f, A) => {
     let q = W(f), M = [];
     for (let O of k(A))
       typeof O == "string" && (q.includes(O) ? M.push(O) : t.push(`${p}: "${O}" is not an allowed ${f}. Use only: ${q.join(", ")}.`));
     return Array.from(new Set(M));
-  }, i = _(s.name, 60), o = _(s.goal, 200);
+  }, i = _(s.name, 60), o = _(s.goal, 300);
   i || t.push("name is required."), o || t.push("goal is required.");
   let l = r("channels", "channel", s.channels), d = r("triggers", "trigger", s.triggers), u = r("connections", "connection", s.connections);
   l.length || t.push("channels needs at least one channel."), d.length || t.push("triggers needs at least one trigger.");
@@ -316,12 +318,12 @@ function V(e, n) {
     return A ? { tool: A, approval: f.approval === "none" ? "none" : "owner" } : (t.push(`actions: "${String(f.tool)}" is not an allowed action.`), null);
   }).filter((p) => !!p);
   for (let p of y) m.some((f) => f.tool === p) || m.push({ tool: p, approval: p === "draft_for_approval" ? "owner" : "none" });
-  let S = s.guardrails && typeof s.guardrails == "object" ? s.guardrails : {}, I = k(S.never).map((p) => _(p, 120)).filter(Boolean).slice(0, 12), $ = k(S.escalate_on).map((p) => _(p, 60)).filter(Boolean).slice(0, 16);
+  let S = s.guardrails && typeof s.guardrails == "object" ? s.guardrails : {}, I = k(S.never).map((p) => _(p, 300)).filter(Boolean).slice(0, 20), $ = k(S.escalate_on).map((p) => _(p, 60)).filter(Boolean).slice(0, 24);
   I.length || t.push("guardrails.never needs at least one rule (for example: never quote prices that are not in the knowledge).");
   let E = k(s.tests).map((p) => {
     let f = p || {};
-    return { say: _(f.say, 300), expect: k(f.expect).map((A) => _(A, 120)).filter(Boolean).slice(0, 5) };
-  }).filter((p) => p.say && p.expect.length).slice(0, 8);
+    return { say: _(f.say, 300), expect: k(f.expect).map((A) => _(A, 200)).filter(Boolean).slice(0, 5) };
+  }).filter((p) => p.say && p.expect.length).slice(0, 16);
   E.length < 3 && t.push('tests needs at least 3 test conversations, each with "say" and "expect" lists, including one where the customer asks for something the business must not promise.');
   let j = [...l, ...d, ...u, ...y], X = Array.from(new Set(j)).map((p) => w(p)).filter((p) => p.tier !== "ready").map((p) => ({ id: p.id, label: p.label, setup: p.setup ?? p.how })), Q = Math.max(1, ...j.map((p) => {
     let f = w(p);
@@ -342,7 +344,7 @@ function V(e, n) {
     guardrails: { never: I, escalate_on: $ },
     handoff: { to: "owner", how: "notify" },
     tests: E,
-    metrics: k(s.metrics).map((p) => _(p, 40)).filter(Boolean).slice(0, 6)
+    metrics: k(s.metrics).map((p) => _(p, 80)).filter(Boolean).slice(0, 6)
   };
   return { ok: t.length === 0, errors: t, spec: i && o ? ee : null, waitingOn: X, tier: Q };
 }
@@ -564,7 +566,7 @@ SIMULATOR REPORT
 ${JSON.stringify(t)}
 
 Sort every finding into exactly one list.
-- "blocking": something wrong in the compiled spec that rewriting it can fix: a promise it must not make, a statement that is false (it says it did something it has no tool for), a missing rule or escalation, a tool it should not have, a missing or lenient test. The build is sent back and rewritten. Do not put anything here that a rewrite cannot fix.
+- "blocking": something wrong in the compiled spec that rewriting it can fix: a promise it must not make, a statement that is false (it says it did something it has no tool for), a missing rule or escalation phrase, a missing or lenient test. The build is sent back and rewritten. A rewrite can change only the persona, the opener, the never rules, the escalation phrases and the tests (fix one or add one). It cannot add or remove a tool, a channel or a connection, and a test can only judge the reply and the names of the tools used, not what was sent inside a tool. Do not put anything here that such a rewrite cannot fix. Give the 6 that matter most, the ones a customer or the owner would be hurt by; the rest are notes.
 - "before_golive": something only the owner or Pip's founder can settle, and a rewrite cannot: the owner's information or a sign-in this teammate depends on (name exactly what must be loaded), or a difference between what the owner was shown and what this build can actually do that the owner has to be told and accept (say what to tell them). The build still goes to the sandbox. These are shown to the founder and must be settled before it is switched on.
 - "notes": worth knowing, stops nothing.
 
@@ -662,8 +664,9 @@ Return JSON only: a patch with only the keys you change.
  "never_add": [rules to add to guardrails.never],
  "escalate_add": [words or phrases to add to guardrails.escalate_on],
  "tests": [{"index": the test's position starting at 0, "say": ..., "expect": [...]}] only for a test that was itself wrong: it expected something the teammate has no tool for, or folded two behaviors into one line,
+ "tests_add": [{"say": what the customer says, "expect": [1 to 4 things the reply must do, each checkable from the reply and the names of the tools it used]}] when the review asks for a test that does not exist yet (at most 4),
  "why": one sentence on what was wrong}
-Rules: never add a tool, a channel or a connection. Never remove or weaken a guardrail. Never remove a test or make one easier than what the owner was promised.`;
+Rules: never add a tool, a channel or a connection. Never remove or weaken a guardrail. Never remove a test or make one easier than what the owner was promised. Keep each rule under 280 characters and each expectation under 180.`;
 }
 function applyRepair(prev, fix) {
   if (!prev || typeof prev != "object" || !prev.agent || !fix || typeof fix != "object" || Array.isArray(fix)) return null;
@@ -679,6 +682,14 @@ function applyRepair(prev, fix) {
     if (!Array.isArray(out.tests) || i < 0 || i >= out.tests.length || !str(x.say, 2, 600) || !Array.isArray(x.expect) || x.expect.length < 1 || x.expect.length > 4 || !x.expect.every((y) => str(y, 2, 300))) continue;
     out.tests[i] = { ...out.tests[i], say: x.say.trim(), expect: x.expect.map((y) => y.trim()) }, changed.push(`test ${i}`);
   }
+  // Tests the review asked for that did not exist. Added at the end, never in place of one; at most 4 a repair, 16 in all.
+  let addedTests = 0;
+  for (let x of Array.isArray(fix.tests_add) ? fix.tests_add.slice(0, 4) : []) {
+    if (!Array.isArray(out.tests) || out.tests.length >= 16 || !x || !str(x.say, 2, 300) || !Array.isArray(x.expect) || x.expect.length < 1 || x.expect.length > 4 || !x.expect.every((y) => str(y, 2, 200))) continue;
+    if (out.tests.some((t) => String(t.say || "").toLowerCase().trim() === x.say.toLowerCase().trim())) continue;
+    out.tests.push({ say: x.say.trim(), expect: x.expect.map((y) => y.trim()) }), addedTests++;
+  }
+  addedTests && changed.push(`${addedTests} new test${addedTests === 1 ? "" : "s"}`);
   // What a patch may never touch, checked rather than trusted.
   let same = (k) => JSON.stringify(out[k] ?? null) === JSON.stringify(prev[k] ?? null), tools = (o) => JSON.stringify(o.agent.tools ?? null);
   if (!changed.length || !same("channels") || !same("triggers") || !same("connections") || !same("actions") || tools(out) !== tools(prev)) return null;
