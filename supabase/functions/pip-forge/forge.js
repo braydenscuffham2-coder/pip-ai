@@ -563,9 +563,16 @@ ${JSON.stringify(t)}
 Return JSON: {"blocking": [findings that must be fixed before go-live, one line each], "notes": [non-blocking observations]}`;
 }
 async function Z(e, n, t, s) {
-  if (!s) return { blocking: [], notes: [], reviewer: "none", skipped: "OPENAI_API_KEY not set; tests are the only gate" };
-  let r = x(await s(fe(e, n, t))) ?? {};
-  return { blocking: Array.isArray(r.blocking) ? r.blocking.map(String).slice(0, 12) : [], notes: Array.isArray(r.notes) ? r.notes.map(String).slice(0, 12) : [], reviewer: "openai" };
+  if (!s) return { blocking: [], notes: [], reviewer: "none", skipped: "no reviewer is set up; tests are the only gate" };
+  // An answer that cannot be read is not a pass. The reviewer is asked once more; a second unreadable answer is
+  // recorded as a review that did not happen (skipped), which the operator lane refuses to stage on.
+  let r = x(await s(fe(e, n, t)));
+  if (!r || !Array.isArray(r.blocking)) r = x(await s(fe(e, n, t)));
+  // Which reviewer it was is the caller's label (the key engine's own reviewer says "claude-opus"); a reviewer
+  // with no label is the second vendor's.
+  const who = typeof s.label === "string" && s.label ? s.label.slice(0, 40) : "openai";
+  if (!r || !Array.isArray(r.blocking)) return { blocking: [], notes: [], reviewer: who, skipped: "the reviewer's answer could not be read; tests are the only gate" };
+  return { blocking: r.blocking.map(String).slice(0, 12), notes: Array.isArray(r.notes) ? r.notes.map(String).slice(0, 12) : [], reviewer: who };
 }
 
 // src/forge/stages.ts
