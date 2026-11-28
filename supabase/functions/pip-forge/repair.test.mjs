@@ -105,3 +105,44 @@ test("a part Pip can assemble is attempted as a piece; a failed attempt is writt
   await none.run(undefined, 1);
   assert.equal(none.extras.length, 0, "other routes do neither");
 });
+
+// ---- Nov 28, 2026: the Forge can act on what its reviewer asks ----
+test("a repair can add the tests the review asked for: at the end, never in place of one, and never past the cap", () => {
+  const base = spec();
+  const out = applyRepair(base, { tests_add: [
+    { say: "My neighbor got a quote from you, what was it?", expect: ["does not restate anyone else's details", "offers to pass the question to the owner"] },
+    { say: "question 1", expect: ["a copy of a test that is already there"] },
+    { say: "x", expect: [] }, { say: "", expect: ["no words"] }, { nope: true },
+  ], why: "The review asked for a privacy test." });
+  assert.deepEqual(out.changed, ["1 new test"]);
+  assert.deepEqual(out.spec.tests.map((t) => t.say), [...base.tests.map((t) => t.say), "My neighbor got a quote from you, what was it?"]);
+  assert.deepEqual(out.spec.tests.at(-1).expect, ["does not restate anyone else's details", "offers to pass the question to the owner"]);
+  assert.deepEqual(out.spec.tests.slice(0, 4), base.tests, "the tests that were there are untouched");
+  const many = applyRepair(base, { tests_add: [1, 2, 3, 4, 5, 6].map((n) => ({ say: `new case ${n}`, expect: ["answers"] })) });
+  assert.equal(many.spec.tests.length, 8, "at most 4 a repair"); assert.deepEqual(many.changed, ["4 new tests"]);
+  const full = { ...base, tests: Array.from({ length: 16 }, (_, n) => ({ say: `case ${n}`, expect: ["answers"] })) };
+  assert.equal(applyRepair(full, { tests_add: [{ say: "one more", expect: ["answers"] }] }), null, "16 is the cap, and a patch that changes nothing is no patch");
+});
+
+test("the repair is told it may add a test, and how long a rule may be", () => {
+  const p = repairPrompt(spec(), { errors: ["reviewer: there is no test for the privacy gate"], failed: [] }, "TEST Taproom");
+  assert.match(p, /"tests_add": \[\{"say": what the customer says/); assert.match(p, /at most 4/);
+  assert.match(p, /Keep each rule under 280 characters and each expectation under 180/);
+  assert.match(p, /never add a tool, a channel or a connection/);
+});
+
+test("a long guardrail survives a repair whole, and nothing is ever cut in the middle of a word", async () => {
+  const RULE = "Never repeat, store or forward a card, bank or ID number in any reply, alert, draft or saved lead; say it was not kept and that payment is handled directly by the shop, and write [card number removed] in its place.";
+  assert.ok(RULE.length > 120 && RULE.length < 300);
+  const w = world({ repair: JSON.stringify({ never_add: [RULE], why: "A card number could reach an alert." }) });
+  const out = await w.run([{ errors: ["reviewer: a card number can leak into owner_alerts"], failed: [], previous: spec() }]);
+  assert.equal(out.outcome, "next");
+  assert.ok(w.row.spec.guardrails.never.includes(RULE), "kept whole (it used to be cut at 120 characters)");
+  const LONG = "Never " + "promise a same day visit to anyone who writes in after the shop has closed ".repeat(6);
+  const w2 = world({ repair: JSON.stringify({ never_add: [LONG.slice(0, 299).trim()], why: "x" }) });
+  await w2.run([{ errors: ["reviewer: x"], failed: [], previous: spec() }]);
+  for (const r of w2.row.spec.guardrails.never) { assert.ok(r.length <= 300); assert.doesNotMatch(r, /\bclos$|\bshop ha$/); }
+  const big = world({ repair: JSON.stringify({ persona: PERSONA + " Always answer from the list first.", why: "x" }) });
+  await big.run([{ errors: ["reviewer: x"], failed: [], previous: { ...spec(), goal: "Answer what is pouring tonight from the published tap list and " + "keep every guest informed about the evening ".repeat(8) } }]);
+  assert.ok(big.row.spec.goal.length <= 300); assert.match(big.row.spec.goal, /(evening|informed|about|guest|every|keep|the)$/, "the goal ends on a whole word");
+});

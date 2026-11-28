@@ -99,6 +99,8 @@ test("the reviewer is told where the build is and how to sort what it finds", as
   assert.match(seen, /staged in a sandbox/); assert.match(seen, /not loaded yet is expected at this point and is not a defect/);
   assert.match(seen, /"blocking": something wrong in the compiled spec that rewriting it can fix/);
   assert.match(seen, /"before_golive": something only the owner or Pip's founder can settle/);
+  assert.match(seen, /A rewrite can change only the persona, the opener, the never rules, the escalation phrases and the tests \(fix one or add one\)/);
+  assert.match(seen, /a test can only judge the reply and the names of the tools used/); assert.match(seen, /Give the 6 that matter most/);
   assert.match(seen, /Return JSON: \{"blocking": \[one line each\], "before_golive": \[one line each\], "notes": \[one line each\]\}/);
 });
 
