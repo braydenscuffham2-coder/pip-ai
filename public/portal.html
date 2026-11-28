@@ -1302,6 +1302,7 @@ html:not(.office-live) .fl-say{left:12px;transform:none!important}
 .fl-inbox-menu .ib-empty{padding:8px 12px 14px;margin:0;color:var(--ink-3);font-size:14px}
 /* Pip says his piece, then gets out of the way; tap him to hear it again */
 @media (max-width:719px){.fl-menu.fl-inbox-menu{position:fixed;left:12px;right:12px;top:70px;width:auto}}
+html.fl-quiet .hl-pins .btn.pri.hl-orb{opacity:0;visibility:hidden;pointer-events:none;transition:opacity .45s var(--ease),visibility 0s .45s}
 html.fl-quiet .fl-say{opacity:0;visibility:hidden;pointer-events:none;transition:opacity .45s var(--ease),visibility 0s .45s}
 .fl-floors-btn svg.i:last-child{width:14px;height:14px;opacity:.6}
 .fl-menu{position:absolute;z-index:30;min-width:260px;max-width:min(360px,calc(100vw - 28px));padding:6px;border-radius:20px;display:flex;flex-direction:column;gap:2px;background:rgba(251,250,247,.96);box-shadow:0 0 0 1px rgba(11,13,31,.06),0 24px 60px -20px rgba(36,30,90,.35);animation:fl-menu-in .28s var(--ease) both}
@@ -1391,7 +1392,7 @@ function loadPart(name) {
   if (!PARTS[name]) PARTS[name] = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "/" + name + ".js?v=" + PART_V; sc.async = true; sc.onload = res; sc.onerror = () => { delete PARTS[name]; rej(new Error(name)); }; document.head.append(sc); });
   return PARTS[name];
 }
-const PART_V = "20";
+const PART_V = "21";
 function loadThree() {
   if (!threeP) { const l = document.createElement("link"); l.rel = "modulepreload"; l.href = THREE_URL; l.integrity = THREE_SRI; l.crossOrigin = "anonymous"; document.head.append(l); threeP = import(THREE_URL); threeP.catch(() => { threeP = null; }); }
   return threeP;
@@ -1726,7 +1727,7 @@ const AGENT = { draft: ["Being built", ""], testing: ["Being tested", ""], needs
 const STEP = { needed: ["To do", "wait"], link_made: ["Finish sign-in", "wait"], active: ["Connected", "good"], failed: ["Try again", "warn"], expired: ["Reconnect", "warn"], revoked: ["Disconnected", "warn"], submitted: ["With Pip", "vio"], unsupported: ["Pip is adding it", "vio"] };
 const STATES = "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split(" ");
 const isOwner = () => S.data && (S.data.role === "owner" || S.data.role === "founder");
-const mateName = (a) => a.teammate || a.name;
+const mateName = (a) => a.teammate || (/^[a-z0-9]+(-[a-z0-9]+)+$/.test(a.name || "") ? a.name.charAt(0).toUpperCase() + a.name.slice(1).replace(/-/g, " ") : a.name); // never show a raw id
 // a.needs lists every tool a teammate uses. What it still needs from you: the ones not connected yet that are on your side.
 const stepFor = (n) => (S.data ? S.data.checklist.find((x) => x.label === n || x.slot === n) : null);
 const youNeeds = (a) => a.needs.filter((n) => { const s = stepFor(n); return s ? s.status !== "active" && s.waiting_on !== "pip" && !["submitted", "unsupported"].includes(s.status) : false; });

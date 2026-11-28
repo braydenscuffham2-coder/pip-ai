@@ -212,6 +212,7 @@ def pedestal(name, sx, m, c):
     import bmesh
     N, R, n = 40, 0.16, 5.0
     zs = [0.0, 0.004, 0.012, 0.025, 0.042, 0.064, 0.09, 0.12, 0.155, 0.2, 0.27, 0.36, 0.46, 0.56, 0.65, 0.72]
+    SINK = 0.008  # the foot starts just under the floor, so no sliver of it lies flat on the floor
     def ring(z):
         cove = R - math.sqrt(max(0.0, R * R - (R - min(z, R)) ** 2))  # a quarter circle: flat at the floor, upright by R
         lean = 1 - z / 0.72
@@ -219,12 +220,12 @@ def pedestal(name, sx, m, c):
         pts = []
         for i in range(N):
             a = 2 * math.pi * i / N; ca, sa = math.cos(a), math.sin(a)
-            pts.append((cx + ht * math.copysign(abs(ca) ** (2 / n), ca), hd * math.copysign(abs(sa) ** (2 / n), sa), z))
+            pts.append((cx + ht * math.copysign(abs(ca) ** (2 / n), ca), hd * math.copysign(abs(sa) ** (2 / n), sa), z - SINK * (1 - z / 0.72)))
         return pts
     bm = bmesh.new(); rings = [[bm.verts.new(p) for p in ring(z)] for z in zs]
     for r0, r1 in zip(rings, rings[1:]):
         for i in range(N): bm.faces.new((r0[i], r0[(i + 1) % N], r1[(i + 1) % N], r1[i]))
-    bm.faces.new(list(reversed(rings[0]))); bm.faces.new(rings[-1])
+    bm.faces.new(rings[-1])  # no bottom cap: it would bend the foot's normals down into the floor and bake it black
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
     o = bpy.data.objects.new(name, me); bpy.context.scene.collection.objects.link(o)
