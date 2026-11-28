@@ -12,7 +12,7 @@
 //   GET  /pip-forge/console?token=   founder console (FOUNDER_TOKEN secret); POST ...&action=golive|sendback|pause|turn
 //   GET  /pip-forge/box/config       box pulls its config (x-box-token); POST /pip-forge/box/uplink events; POST /pip-forge/box/zones
 //
-// Secrets: ANTHROPIC_API_KEY (compile/test), FOUNDER_TOKEN (console). Optional: OPENAI_API_KEY (review pass).
+// Secrets: ANTHROPIC_API_KEY (compile/test/review), FOUNDER_TOKEN (console). Optional: OPENAI_API_KEY (the review then runs there).
 // deno-lint-ignore-file no-explicit-any
 import { buildOrder, checkOrder, runForgeJob, agentTurn, openaiModel, renderConsole, anthropicModel, primitive } from './forge.js';
 import type { ForgeDb, ForgeJob, SpecRow } from './forge.js';
@@ -89,7 +89,12 @@ const forgeDb: ForgeDb = {
 function models() {
   if (!ANTHROPIC) return null;
   const model = anthropicModel({ apiKey: ANTHROPIC, budgetUsd: 6, onUsage: (u: { usd: number }) => { rows('rpc/forge_spend_add', { method: 'POST', body: JSON.stringify({ p_usd: u.usd }) }).catch(() => {}); } });
-  const reviewer = OPENAI ? openaiModel({ apiKey: OPENAI }) : null;
+  // The independent review. With a second vendor's key it runs there. Without one it runs on Pip's own Anthropic key,
+  // on Opus: a larger model than the one that writes the spec (Sonnet), given only the reviewer's brief, the spec and
+  // the simulator report. Until Nov 27, 2026 no second key meant no review at all: every teammate built on the key
+  // engine reached the sandbox with its tests as the only gate, and the operator lane, which refuses to stage without
+  // a review, could never stage anything. The review's cost goes on the same Forge meter as the build.
+  const reviewer = OPENAI ? openaiModel({ apiKey: OPENAI }) : Object.assign((prompt: string) => model(prompt, 'opus', 'forge:review'), { label: 'claude-opus' });
   return { model, reviewer };
 }
 
