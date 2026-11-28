@@ -230,3 +230,14 @@ export const BUILDER_NOTE = {
     "https://github.com/braydenscuffham2-coder/pip-ai/tree/main/docs/contracts/examples",
   ],
 };
+
+/**
+ * What the review said only a person can settle (the owner's information not loaded yet, or a promise shown to the
+ * owner that the build does not keep). A rewrite cannot fix these, so they do not send a build back; they stop go-live
+ * instead, until the founder's tap says they are settled. Returns the refusal, or null when there is nothing open.
+ */
+export function unsettled(review: unknown, settled: boolean): string[] | null {
+  const list = isObj(review) && Array.isArray(review.before_golive) ? review.before_golive.map((x) => String(x).trim()).filter(Boolean).slice(0, 12) : [];
+  if (!list.length || settled === true) return null;
+  return ["The review raised things only you or the owner can settle. Nothing was switched on.", ...list.map((x) => `- ${x.slice(0, 600)}`), "When each one is settled, go live again and say they are settled."];
+}
