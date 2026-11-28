@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { guard } from '@/lib/server/guard';
 import { logEvent } from '@/lib/server/store';
 import { costOf } from '@/lib/server/llm';
+import { asksForATeam, loadForgeToday, withForgeToday } from '@/lib/server/forge-today';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -68,7 +69,7 @@ export async function POST(req: Request) {
   if (raw.length > MAX_CHARS + 2000) return fail('prompt_too_large', 413);
   let body: { input?: unknown; modelTier?: unknown; model?: unknown; effort?: unknown };
   try { body = JSON.parse(raw); } catch { return fail('invalid_request', 400); }
-  const turns = turnsOf(body.input);
+  let turns = turnsOf(body.input);
   if (!turns) return fail('invalid_request', 400);
   if (turns.reduce((n, t) => n + t.content.length, 0) > MAX_CHARS) return fail('prompt_too_large', 413);
 
@@ -79,6 +80,10 @@ export async function POST(req: Request) {
 
   const g = await guard(req, 'app_llm');
   if (!g.ok) { console.warn('[sample] over limit', g.why); return fail('rate_limited', 429); }
+
+  // When the Brain is designing a team, it is told what the Forge can deliver today (lib/server/forge-today.ts).
+  // With no list, the prompt goes through unchanged.
+  if (asksForATeam(turns)) turns = withForgeToday(turns, await loadForgeToday());
 
   const client = new Anthropic();
   const enc = new TextEncoder();
