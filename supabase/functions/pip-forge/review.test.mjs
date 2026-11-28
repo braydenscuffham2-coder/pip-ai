@@ -37,10 +37,24 @@ test("a blocking finding sends the build back to be fixed, and after the last at
   const first = await w.run(1);
   assert.equal(first.outcome, "retry"); assert.deepEqual(w.queue.map((j) => [j.stage, j.attempt]), [["compile", 2]]);
   assert.deepEqual(w.queue[0].log.at(-1).errors, ["reviewer: promises a 20 minute arrival"]);
-  const last = world(says(blocked, "claude-opus"));
+  // out of attempts: a teammate that only talks is staged, never stranded, and go-live waits on every open line
+  const last = world(says(JSON.stringify({ blocking: ["promises a 20 minute arrival"], before_golive: ["Load the shop's hours."], notes: [] }), "claude-opus"));
   const out = await last.run(3);
-  assert.equal(out.outcome, "founder"); assert.equal(last.row.status, "needs_review"); assert.equal(last.row.forge_stage, "review_blocked");
-  assert.deepEqual(last.notes.map((n) => n.kind), ["needs_founder"]); assert.deepEqual(last.queue, []);
+  assert.equal(out.outcome, "next"); assert.equal(out.detail, "staged with 1 review line not fixed; go-live waits on them");
+  assert.deepEqual(last.queue.map((j) => j.stage), ["stage"]); assert.notEqual(last.row.status, "needs_review");
+  assert.deepEqual(last.row.review.before_golive, ["Load the shop's hours.", "Not fixed by the Forge after 3 attempts: promises a 20 minute arrival"]);
+  assert.deepEqual(last.row.review.blocking, ["promises a 20 minute arrival"], "what the reviewer said stays on the record");
+  assert.equal(last.row.review.open, 1);
+  assert.deepEqual(last.notes.map((n) => [n.kind, n.body.staged]), [["needs_founder", true]], "the founder is told now");
+  const refusal = unsettled(last.row.review, false);
+  assert.ok(refusal.some((x) => x.includes("promises a 20 minute arrival")), "and go-live is refused while it is open");
+  assert.equal(unsettled(last.row.review, true), null);
+});
+
+test("an operator out of attempts still stops: it acts in public", async () => {
+  const w = world(says(JSON.stringify({ blocking: ["posts a discount nobody approved"], before_golive: [], notes: [] }), "claude-opus"), "operate");
+  const out = await w.run(3);
+  assert.equal(out.outcome, "founder"); assert.equal(w.row.status, "needs_review"); assert.equal(w.row.forge_stage, "review_blocked"); assert.deepEqual(w.queue, []);
 });
 
 test("an answer that cannot be read is asked for once more, and is never counted as a pass", async () => {
